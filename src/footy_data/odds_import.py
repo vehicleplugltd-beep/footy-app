@@ -106,21 +106,21 @@ def normalise_1x2_prices(
     ).dt.floor("D")
     ext["home_key"] = ext[home_team_col].map(_team_key)
     ext["away_key"] = ext[away_team_col].map(_team_key)
-    ext["_home_odds"] = pd.to_numeric(ext[home_odds_col], errors="coerce")
-    ext["_draw_odds"] = pd.to_numeric(ext[draw_odds_col], errors="coerce")
-    ext["_away_odds"] = pd.to_numeric(ext[away_odds_col], errors="coerce")
+    ext["price_home"] = pd.to_numeric(ext[home_odds_col], errors="coerce")
+    ext["price_draw"] = pd.to_numeric(ext[draw_odds_col], errors="coerce")
+    ext["price_away"] = pd.to_numeric(ext[away_odds_col], errors="coerce")
     ext = ext.dropna(
         subset=[
             "match_date_key",
-            "_home_odds",
-            "_draw_odds",
-            "_away_odds",
+            "price_home",
+            "price_draw",
+            "price_away",
         ]
     )
     ext = ext[
-        (ext["_home_odds"] > 1)
-        & (ext["_draw_odds"] > 1)
-        & (ext["_away_odds"] > 1)
+        (ext["price_home"] > 1)
+        & (ext["price_draw"] > 1)
+        & (ext["price_away"] > 1)
     ]
 
     footy = footy_metrics.copy()
@@ -154,9 +154,9 @@ def normalise_1x2_prices(
                 "match_date_key",
                 "home_key",
                 "away_key",
-                "_home_odds",
-                "_draw_odds",
-                "_away_odds",
+                "price_home",
+                "price_draw",
+                "price_away",
             ]
         ],
         on=["match_date_key", "home_key", "away_key"],
@@ -165,15 +165,15 @@ def normalise_1x2_prices(
     )
 
     matched = joined.dropna(
-        subset=["_home_odds", "_draw_odds", "_away_odds"]
+        subset=["price_home", "price_draw", "price_away"]
     ).copy()
 
     records: list[dict] = []
     for row in matched.itertuples(index=False):
         for selection, odds in (
-            ("home", row._home_odds),
-            ("draw", row._draw_odds),
-            ("away", row._away_odds),
+            ("home", row.price_home),
+            ("draw", row.price_draw),
+            ("away", row.price_away),
         ):
             records.append(
                 {
