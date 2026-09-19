@@ -4,6 +4,7 @@ import { PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
 import { decimalToFractional, minimumTakeToFractional } from "@/lib/odds";
+import { getResultsData } from "@/lib/results";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,8 @@ function StatusPill({ status }: { status: ValidationStatus }) {
 }
 
 export default async function Home() {
-  const { board, validation, strategies, configured } =
-    await getDashboardData();
+  const [{ board, validation, strategies, configured }, results] =
+    await Promise.all([getDashboardData(), getResultsData()]);
 
   const status = validation?.status ?? "RESEARCH";
   const homeRule = strategies.find(
@@ -49,6 +50,7 @@ export default async function Home() {
         </div>
         <div className="nav-right">
           <Link className="nav-fpl-link" href="/fpl">Free FPL Assistant</Link>
+          <Link className="nav-pro-link" href="/results">Results</Link>
           <Link className="nav-pro-link" href="/pro">Footy Pro</Link>
           <Link className="nav-pro-link" href="/account">Account</Link>
           <span className="live-dot" />
@@ -125,6 +127,27 @@ export default async function Home() {
             <StatusPill status={status} />
           </div>
         </div>
+      </section>
+
+      <section className="shell home-proof-strip">
+        <div>
+          <span className="eyebrow">Live record</span>
+          <strong>
+            {results.modelCalls.hitRate === null
+              ? "Building the record"
+              : `${(results.modelCalls.hitRate * 100).toFixed(1)}% hit rate`}
+          </strong>
+          <small>
+            {results.modelCalls.settled} settled · {results.modelCalls.open} open
+          </small>
+        </div>
+        <p>
+          Every published model call is frozen before kickoff and settled
+          automatically. Losses stay visible.
+        </p>
+        <Link className="proof-link" href="/results">
+          See every result →
+        </Link>
       </section>
 
       <section className="shell quick-scan" aria-label="Footy quick scan">
