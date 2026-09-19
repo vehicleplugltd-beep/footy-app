@@ -3,7 +3,7 @@ name: forward-current-season
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 5 * * *"
+    - cron: "15 5,23 * * *"
   push:
     branches: ["main"]
     paths:
@@ -71,3 +71,8 @@ jobs:
             --process-span 16 \
             --process-prior-weight 0.50 \
             --venue-split-weight 0.20
+
+      - name: Refresh public results ledger
+        run: |
+          footy-data results-refresh \
+            --model-version "v7-r16-p50-v20"
