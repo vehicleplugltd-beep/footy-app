@@ -500,6 +500,9 @@ def command_calibrate(args: argparse.Namespace) -> None:
         lambda_beta=args.lambda_beta,
         home_lambda_scale=args.home_lambda_scale,
         away_lambda_scale=args.away_lambda_scale,
+        process_span=args.process_span,
+        process_prior_weight=args.process_prior_weight,
+        venue_split_weight=args.venue_split_weight,
     )
     if predictions.empty:
         raise RuntimeError("Walk-forward calibration produced no predictions.")
@@ -782,6 +785,21 @@ def main() -> None:
         "--away-lambda-scale",
         type=float,
         default=1.12646161962879,
+    )
+    predict_upcoming.add_argument(
+        "--process-span",
+        type=int,
+        default=8,
+    )
+    predict_upcoming.add_argument(
+        "--process-prior-weight",
+        type=float,
+        default=0.35,
+    )
+    predict_upcoming.add_argument(
+        "--venue-split-weight",
+        type=float,
+        default=0.35,
     )
 
     calibrate = sub.add_parser(
