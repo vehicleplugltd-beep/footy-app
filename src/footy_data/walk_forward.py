@@ -40,6 +40,7 @@ def build_walk_forward_predictions(
     match_team_metrics: pd.DataFrame,
     min_team_matches: int = 5,
     prior_goals_per_team_match: float = 1.35,
+    use_elo: bool = False,
 ) -> pd.DataFrame:
     """
     Produce historical pre-match predictions with strict temporal ordering.
@@ -105,22 +106,32 @@ def build_walk_forward_predictions(
             prior_goals_per_team_match=prior_goals_per_team_match,
         )
 
+        home_elo = home.get("team_elo") if use_elo else None
+        away_elo = away.get("team_elo") if use_elo else None
+        elo_available = (
+            use_elo
+            and pd.notna(home_elo)
+            and pd.notna(away_elo)
+        )
+
         estimate = estimate_match_xg(
             TeamProcess(
                 attack_xg=float(home_attack),
                 defence_xga=float(home_defence),
                 matches=int(home["team_matches_before"]),
+                elo=float(home_elo) if elo_available else None,
             ),
             TeamProcess(
                 attack_xg=float(away_attack),
                 defence_xga=float(away_defence),
                 matches=int(away["team_matches_before"]),
+                elo=float(away_elo) if elo_available else None,
             ),
             LeagueEnvironment(
                 goals_per_team_match=float(league_xg),
                 home_advantage_ratio=1.10,
             ),
-            use_elo=False,
+            use_elo=bool(elo_available),
         )
         probs = market_probabilities(estimate.expected_goals)
 
@@ -139,6 +150,8 @@ def build_walk_forward_predictions(
             "model_home_xg": estimate.expected_goals.home,
             "model_away_xg": estimate.expected_goals.away,
             "uncertainty_haircut": estimate.uncertainty_haircut,
+            "home_elo": float(home_elo) if elo_available else None,
+            "away_elo": float(away_elo) if elo_available else None,
             "home_win_probability": probs["home_win"],
             "draw_probability": probs["draw"],
             "away_win_probability": probs["away_win"],
