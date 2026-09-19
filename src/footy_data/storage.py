@@ -206,7 +206,10 @@ class SupabaseRESTReader:
             start += self.page_size
         return rows
 
-    def historical_match_team_metrics(self) -> pd.DataFrame:
+    def historical_match_team_metrics(
+        self,
+        include_ratings: bool = False,
+    ) -> pd.DataFrame:
         matches = pd.DataFrame(self._get_all(
             "footy_matches",
             "match_id,league,season,kickoff_at,home_team,away_team",
@@ -219,11 +222,57 @@ class SupabaseRESTReader:
             return pd.DataFrame()
 
         matches = matches.rename(columns={"kickoff_at": "match_date"})
-        return metrics.merge(
+        frame = metrics.merge(
             matches[["match_id", "league", "season", "match_date"]],
             on="match_id",
             how="inner",
         )
+
+        if not include_ratings:
+            return frame
+
+        ratings = pd.DataFrame(self._get_all(
+            "footy_team_ratings",
+            "team,rating_type,rating_value,rating_date,source",
+        ))
+        if ratings.empty:
+            return frame
+
+        ratings = ratings[ratings["rating_type"] == "clubelo"].copy()
+        if ratings.empty:
+            return frame
+
+        frame["rating_date"] = pd.to_datetime(
+            frame["match_date"], utc=True
+        ).dt.floor("D")
+        ratings["rating_date"] = pd.to_datetime(
+            ratings["rating_date"], utc=True
+        ).dt.floor("D")
+        ratings["rating_value"] = pd.to_numeric(
+            ratings["rating_value"], errors="coerce"
+        )
+
+        team_ratings = ratings[
+            ["team", "rating_date", "rating_value"]
+        ].rename(columns={"rating_value": "team_elo"})
+        frame = frame.merge(
+            team_ratings,
+            on=["team", "rating_date"],
+            how="left",
+        )
+
+        opponent_ratings = ratings[
+            ["team", "rating_date", "rating_value"]
+        ].rename(columns={
+            "team": "opponent",
+            "rating_value": "opponent_elo",
+        })
+        frame = frame.merge(
+            opponent_ratings,
+            on=["opponent", "rating_date"],
+            how="left",
+        )
+        return frame
 
 
 def insert_backtest_run(
