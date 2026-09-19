@@ -1058,7 +1058,7 @@ def main() -> None:
     predict_upcoming.add_argument(
         "--venue-split-weight",
         type=float,
-        default=0.35,
+        default=0.20,
     )
 
 
