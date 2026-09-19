@@ -6,6 +6,9 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/ingest-football-data-odds.yml"
+      - "src/footy_data/cli.py"
+      - "src/footy_data/odds_import.py"
+      - "src/footy_data/value_backtest.py"
 
 jobs:
   ingest:
