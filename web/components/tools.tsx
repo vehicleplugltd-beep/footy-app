@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { BoardMatch, ValidationStatus } from "@/lib/types";
-import { decimalToFractional, fractionalToDecimal, impliedProbability } from "@/lib/odds";
+import { decimalToFractional, fractionalToDecimal, impliedProbability, minimumTakeToFractional } from "@/lib/odds";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
