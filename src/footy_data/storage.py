@@ -9,6 +9,28 @@ import pandas as pd
 import requests
 
 
+MATCH_FIELDS = {
+    "match_id", "league", "season", "kickoff_at",
+    "home_team", "away_team", "status", "source", "retrieved_at",
+}
+
+MATCH_TEAM_METRIC_FIELDS = {
+    "match_id", "team", "opponent", "home_away",
+    "goals", "goals_conceded",
+    "xg", "npxg", "xga", "npxga",
+    "shots", "shots_on_target", "shots_conceded", "sot_conceded",
+    "big_chances", "big_chances_conceded",
+    "box_touches", "key_passes", "xa",
+    "set_piece_xg", "set_piece_xga",
+    "possession", "ppda", "field_tilt", "deep_completions",
+    "source", "retrieved_at",
+}
+
+TEAM_RATING_FIELDS = {
+    "team", "rating_type", "rating_value", "rating_date", "source",
+}
+
+
 def _clean_value(value: Any):
     if value is None:
         return None
@@ -31,11 +53,25 @@ def _clean_value(value: Any):
     return value
 
 
-def frame_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    return [
-        {key: _clean_value(value) for key, value in row.items()}
-        for row in frame.to_dict(orient="records")
-    ]
+def _project_row(row: Mapping[str, Any], allowed: set[str]) -> dict[str, Any]:
+    return {
+        key: _clean_value(value)
+        for key, value in dict(row).items()
+        if key in allowed
+    }
+
+
+def frame_records(
+    frame: pd.DataFrame,
+    allowed_fields: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    records = frame.to_dict(orient="records")
+    if allowed_fields is None:
+        return [
+            {key: _clean_value(value) for key, value in row.items()}
+            for row in records
+        ]
+    return [_project_row(row, allowed_fields) for row in records]
 
 
 class SupabaseRESTWriter:
@@ -66,11 +102,9 @@ class SupabaseRESTWriter:
         table: str,
         rows: Iterable[Mapping[str, Any]],
         on_conflict: str,
+        allowed_fields: set[str],
     ) -> None:
-        payload = [
-            {key: _clean_value(value) for key, value in dict(row).items()}
-            for row in rows
-        ]
+        payload = [_project_row(row, allowed_fields) for row in rows]
         if not payload:
             return
 
@@ -89,13 +123,14 @@ class SupabaseRESTWriter:
         response.raise_for_status()
 
     def upsert_matches(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        self._upsert("matches", rows, "match_id")
+        self._upsert("matches", rows, "match_id", MATCH_FIELDS)
 
     def upsert_match_team_metrics(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self._upsert(
             "match_team_metrics",
             rows,
             "match_id,team,source",
+            MATCH_TEAM_METRIC_FIELDS,
         )
 
     def upsert_team_ratings(self, rows: Iterable[Mapping[str, Any]]) -> None:
@@ -103,13 +138,15 @@ class SupabaseRESTWriter:
             "team_ratings",
             rows,
             "team,rating_type,rating_date,source",
+            TEAM_RATING_FIELDS,
         )
 
     def insert_bookmaker_prices(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        payload = [
-            {key: _clean_value(value) for key, value in dict(row).items()}
-            for row in rows
-        ]
+        allowed = {
+            "match_id", "bookmaker", "market", "selection",
+            "line", "decimal_odds", "captured_at",
+        }
+        payload = [_project_row(row, allowed) for row in rows]
         if not payload:
             return
 
