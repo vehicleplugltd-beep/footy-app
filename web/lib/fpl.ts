@@ -146,6 +146,8 @@ export type FplHub = {
   processTeams: number;
   teamAnalysis: TeamAnalysis | null;
   teamError: string | null;
+  baseError: string | null;
+  dataRetrievedAt: string | null;
 };
 
 function num(value: string | number | null | undefined) {
@@ -185,7 +187,13 @@ function canonicalTeam(value: string) {
 
 async function fplFetch<T>(path: string, revalidate = 900): Promise<T> {
   const response = await fetch(`${FPL_BASE}/${path}`, {
-    headers: { Accept: "application/json", "User-Agent": "Footy-FPL/1.0" },
+    headers: {
+      Accept: "application/json,text/plain,*/*",
+      "User-Agent":
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+      Referer: "https://fantasy.premierleague.com/",
+      "Accept-Language": "en-GB,en;q=0.9",
+    },
     next: { revalidate },
   });
   if (!response.ok) throw new Error(`FPL request failed (${response.status})`);
@@ -207,6 +215,20 @@ async function supabaseRest<T>(path: string): Promise<T[]> {
   });
   if (!response.ok) throw new Error(`Supabase request failed (${response.status})`);
   return response.json() as Promise<T[]>;
+}
+
+
+type FplSnapshotRow<T> = {
+  snapshot_key: string;
+  payload: T;
+  retrieved_at: string;
+};
+
+async function cachedFpl<T>(snapshotKey: string) {
+  const rows = await supabaseRest<FplSnapshotRow<T>>(
+    `footy_fpl_snapshots?select=snapshot_key,payload,retrieved_at&snapshot_key=eq.${encodeURIComponent(snapshotKey)}&limit=1`,
+  );
+  return rows[0] ?? null;
 }
 
 function currentAndNext(events: FplEvent[]) {
@@ -514,13 +536,55 @@ async function analyseTeam(
 }
 
 export async function getFplHub(teamId?: number): Promise<FplHub> {
-  const [bootstrap, fixtures, process] = await Promise.all([
-    fplFetch<Bootstrap>("bootstrap-static/"),
-    fplFetch<Fixture[]>("fixtures/"),
+  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
     footyProcesses(),
   ]);
+
+  let bootstrap = bootstrapSnapshot?.payload ?? null;
+  let fixtures = fixturesSnapshot?.payload ?? null;
+  let baseError: string | null = null;
+  let dataRetrievedAt =
+    bootstrapSnapshot?.retrieved_at ?? fixturesSnapshot?.retrieved_at ?? null;
+
+  if (!bootstrap || !fixtures) {
+    try {
+      const direct = await Promise.all([
+        fplFetch<Bootstrap>("bootstrap-static/"),
+        fplFetch<Fixture[]>("fixtures/"),
+      ]);
+      bootstrap = direct[0];
+      fixtures = direct[1];
+      dataRetrievedAt = new Date().toISOString();
+    } catch {
+      baseError =
+        "Official FPL data is temporarily unavailable. Footy is keeping the page online and will retry through the cached feed automatically.";
+    }
+  }
+
+  if (!bootstrap || !fixtures) {
+    return {
+      currentEvent: null,
+      nextEvent: null,
+      captains: [],
+      transfers: [],
+      values: [],
+      processTeams: process.size,
+      teamAnalysis: null,
+      teamError: null,
+      baseError,
+      dataRetrievedAt,
+    };
+  }
+
   const { current, next } = currentAndNext(bootstrap.events);
-  const ranked = rankPlayers(bootstrap, fixtures, next?.id ?? current?.id ?? null, process);
+  const ranked = rankPlayers(
+    bootstrap,
+    fixtures,
+    next?.id ?? current?.id ?? null,
+    process,
+  );
 
   let teamAnalysis: TeamAnalysis | null = null;
   let teamError: string | null = null;
@@ -529,7 +593,7 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
       teamAnalysis = await analyseTeam(teamId, current, ranked);
     } catch {
       teamError =
-        "We could not load that FPL Team ID. Check the number from your public FPL team URL and try again.";
+        "Your public FPL squad could not be loaded right now. The main assistant is still available; personal squad analysis will retry when the FPL endpoint is reachable.";
     }
   }
 
@@ -540,7 +604,8 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     .filter((player) => player.availability >= 75 && player.expectedNext > 0)
     .sort(
       (a, b) =>
-        b.assistantScore + b.valueScore * 1.4 - (a.assistantScore + a.valueScore * 1.4),
+        b.assistantScore + b.valueScore * 1.4 -
+        (a.assistantScore + a.valueScore * 1.4),
     )
     .slice(0, 10);
   const values = [...ranked]
@@ -557,5 +622,7 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     processTeams: process.size,
     teamAnalysis,
     teamError,
+    baseError,
+    dataRetrievedAt,
   };
 }
