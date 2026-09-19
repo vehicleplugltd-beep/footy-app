@@ -7,6 +7,33 @@ from .model import market_probabilities
 from .xg_engine import TeamProcess, LeagueEnvironment, estimate_match_xg
 
 
+def _league_metric_before_match(
+    frame: pd.DataFrame,
+    league: str,
+    match_date,
+    metric: str,
+    prior_value: float,
+    prior_weight_matches: float = 30.0,
+) -> float:
+    prior = frame[
+        (frame["league"] == league)
+        & (frame["match_date"] < match_date)
+    ]
+    if prior.empty or metric not in prior.columns:
+        return prior_value
+
+    values = pd.to_numeric(prior[metric], errors="coerce").dropna()
+    if values.empty:
+        return prior_value
+
+    observed_team_rows = len(values)
+    observed = float(values.mean())
+    weight = observed_team_rows / (
+        observed_team_rows + 2 * prior_weight_matches
+    )
+    return weight * observed + (1 - weight) * prior_value
+
+
 def _league_environment_before_match(
     frame: pd.DataFrame,
     league: str,
@@ -14,26 +41,53 @@ def _league_environment_before_match(
     prior_goals_per_team_match: float = 1.35,
     prior_weight_matches: float = 30.0,
 ) -> float:
-    """
-    Estimate the league scoring environment using only earlier matches.
-
-    A 30-match prior prevents the first few fixtures of a season from creating
-    extreme league baselines.
-    """
-    prior = frame[
-        (frame["league"] == league)
-        & (frame["match_date"] < match_date)
-    ]
-    if prior.empty:
-        return prior_goals_per_team_match
-
-    observed_team_rows = len(prior)
-    observed_xg = float(prior["xg"].mean())
-    weight = observed_team_rows / (observed_team_rows + 2 * prior_weight_matches)
-    return (
-        weight * observed_xg
-        + (1 - weight) * prior_goals_per_team_match
+    return _league_metric_before_match(
+        frame=frame,
+        league=league,
+        match_date=match_date,
+        metric="xg",
+        prior_value=prior_goals_per_team_match,
+        prior_weight_matches=prior_weight_matches,
     )
+
+
+def _league_strength_baseline_before_match(
+    frame: pd.DataFrame,
+    league: str,
+    match_date,
+    npxg_weight: float,
+    prior_goals_per_team_match: float = 1.35,
+    prior_penalty_xg_per_team_match: float = 0.10,
+    prior_weight_matches: float = 30.0,
+) -> float:
+    raw_xg = _league_metric_before_match(
+        frame=frame,
+        league=league,
+        match_date=match_date,
+        metric="xg",
+        prior_value=prior_goals_per_team_match,
+        prior_weight_matches=prior_weight_matches,
+    )
+    npxg_prior = max(
+        prior_goals_per_team_match - prior_penalty_xg_per_team_match,
+        0.5,
+    )
+    nonpen_xg = _league_metric_before_match(
+        frame=frame,
+        league=league,
+        match_date=match_date,
+        metric="npxg",
+        prior_value=npxg_prior,
+        prior_weight_matches=prior_weight_matches,
+    )
+    return (1 - npxg_weight) * raw_xg + npxg_weight * nonpen_xg
+
+
+def _process_value(row: pd.Series, metric: str):
+    venue = row.get(f"{metric}_venue_process")
+    if pd.notna(venue):
+        return venue
+    return row.get(f"{metric}_process")
 
 
 def build_walk_forward_predictions(
@@ -41,13 +95,16 @@ def build_walk_forward_predictions(
     min_team_matches: int = 5,
     prior_goals_per_team_match: float = 1.35,
     use_elo: bool = False,
+    process_mode: str = "xg",
+    npxg_weight: float = 0.70,
 ) -> pd.DataFrame:
     """
     Produce historical pre-match predictions with strict temporal ordering.
 
-    Input must contain one home and one away row per match. Rolling team
-    features are shifted, so the current match never contributes to its own
-    estimate.
+    process_mode="xg" uses raw xG/xGA team strength.
+    process_mode="npxg_blend" uses a weighted blend of npxG and raw xG for
+    relative team strength while keeping final league scoring anchored to raw
+    xG. This reduces penalty noise without erasing expected penalty scoring.
     """
     required = {
         "match_id", "match_date", "league", "season",
@@ -59,6 +116,18 @@ def build_walk_forward_predictions(
         raise ValueError(
             "Walk-forward input missing columns: " + ", ".join(sorted(missing))
         )
+
+    if process_mode not in {"xg", "npxg_blend"}:
+        raise ValueError("process_mode must be 'xg' or 'npxg_blend'.")
+    if not 0 <= npxg_weight <= 1:
+        raise ValueError("npxg_weight must be in [0, 1].")
+    if process_mode == "npxg_blend":
+        missing_nonpen = {"npxg", "npxga"} - set(match_team_metrics.columns)
+        if missing_nonpen:
+            raise ValueError(
+                "npxg_blend requires columns: "
+                + ", ".join(sorted(missing_nonpen))
+            )
 
     frame = match_team_metrics.copy()
     frame["match_date"] = pd.to_datetime(frame["match_date"], utc=True)
@@ -81,19 +150,47 @@ def build_walk_forward_predictions(
         ):
             continue
 
-        home_attack = home.get("xg_venue_process")
-        home_defence = home.get("xga_venue_process")
-        away_attack = away.get("xg_venue_process")
-        away_defence = away.get("xga_venue_process")
+        home_attack_xg = _process_value(home, "xg")
+        home_defence_xg = _process_value(home, "xga")
+        away_attack_xg = _process_value(away, "xg")
+        away_defence_xg = _process_value(away, "xga")
 
-        if pd.isna(home_attack):
-            home_attack = home.get("xg_process")
-        if pd.isna(home_defence):
-            home_defence = home.get("xga_process")
-        if pd.isna(away_attack):
-            away_attack = away.get("xg_process")
-        if pd.isna(away_defence):
-            away_defence = away.get("xga_process")
+        if process_mode == "npxg_blend":
+            home_attack_np = _process_value(home, "npxg")
+            home_defence_np = _process_value(home, "npxga")
+            away_attack_np = _process_value(away, "npxg")
+            away_defence_np = _process_value(away, "npxga")
+
+            blend_values = [
+                home_attack_xg, home_defence_xg,
+                away_attack_xg, away_defence_xg,
+                home_attack_np, home_defence_np,
+                away_attack_np, away_defence_np,
+            ]
+            if any(pd.isna(v) for v in blend_values):
+                continue
+
+            home_attack = (
+                (1 - npxg_weight) * home_attack_xg
+                + npxg_weight * home_attack_np
+            )
+            home_defence = (
+                (1 - npxg_weight) * home_defence_xg
+                + npxg_weight * home_defence_np
+            )
+            away_attack = (
+                (1 - npxg_weight) * away_attack_xg
+                + npxg_weight * away_attack_np
+            )
+            away_defence = (
+                (1 - npxg_weight) * away_defence_xg
+                + npxg_weight * away_defence_np
+            )
+        else:
+            home_attack = home_attack_xg
+            home_defence = home_defence_xg
+            away_attack = away_attack_xg
+            away_defence = away_defence_xg
 
         values = [home_attack, home_defence, away_attack, away_defence]
         if any(pd.isna(v) for v in values):
@@ -105,6 +202,15 @@ def build_walk_forward_predictions(
             match_date=home["match_date"],
             prior_goals_per_team_match=prior_goals_per_team_match,
         )
+        strength_baseline = league_xg
+        if process_mode == "npxg_blend":
+            strength_baseline = _league_strength_baseline_before_match(
+                frame=frame,
+                league=str(home["league"]),
+                match_date=home["match_date"],
+                npxg_weight=npxg_weight,
+                prior_goals_per_team_match=prior_goals_per_team_match,
+            )
 
         home_elo = home.get("team_elo") if use_elo else None
         away_elo = away.get("team_elo") if use_elo else None
@@ -130,6 +236,7 @@ def build_walk_forward_predictions(
             LeagueEnvironment(
                 goals_per_team_match=float(league_xg),
                 home_advantage_ratio=1.10,
+                strength_baseline=float(strength_baseline),
             ),
             use_elo=bool(elo_available),
         )
