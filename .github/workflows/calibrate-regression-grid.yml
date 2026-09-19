@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/calibrate-regression-grid.yml"
       - "src/footy_data/walk_forward.py"
+      - "src/footy_data/cli.py"
       - "src/footy_data/features.py"
 
 jobs:
