@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { decimalToFractional, fractionalToDecimal } from "@/lib/odds";
 
 type Profile = {
   user_id: string;
@@ -210,7 +211,7 @@ export default function AccountPage() {
     if (!userId) return;
 
     const form = new FormData(event.currentTarget);
-    const quotedOdds = optionalNumber(form.get("quoted_odds"));
+    const quotedOdds = fractionalToDecimal(String(form.get("quoted_odds") || ""));
     const modelProbability = optionalNumber(form.get("model_probability"), 100);
 
     const { error } = await supabase.from("footy_saved_tips").insert({
@@ -222,8 +223,8 @@ export default function AccountPage() {
       quoted_odds: quotedOdds,
       model_version: String(form.get("model_version") || "").trim() || null,
       model_probability: modelProbability,
-      fair_odds: optionalNumber(form.get("fair_odds")),
-      minimum_take_price: optionalNumber(form.get("minimum_take_price")),
+      fair_odds: fractionalToDecimal(String(form.get("fair_odds") || "")),
+      minimum_take_price: fractionalToDecimal(String(form.get("minimum_take_price") || "")),
       validation_status:
         String(form.get("validation_status") || "").trim() || null,
       notes: String(form.get("notes") || "").trim() || null,
@@ -250,7 +251,8 @@ export default function AccountPage() {
       market: String(form.get("market") || "").trim(),
       selection: String(form.get("selection") || "").trim(),
       bookmaker: String(form.get("bookmaker") || "").trim() || null,
-      target_odds: n(form.get("target_odds")),
+      target_odds:
+        fractionalToDecimal(String(form.get("target_odds") || "")) ?? 0,
     });
 
     if (!error) event.currentTarget.reset();
@@ -465,9 +467,8 @@ export default function AccountPage() {
                     <span>Quoted odds</span>
                     <input
                       name="quoted_odds"
-                      type="number"
-                      min="1.01"
-                      step="0.01"
+                      inputMode="text"
+                      placeholder="e.g. 7/4"
                     />
                   </label>
                 </div>
@@ -486,18 +487,16 @@ export default function AccountPage() {
                     <span>Fair odds</span>
                     <input
                       name="fair_odds"
-                      type="number"
-                      min="1.01"
-                      step="0.01"
+                      inputMode="text"
+                      placeholder="e.g. 6/4"
                     />
                   </label>
                   <label>
                     <span>Minimum take</span>
                     <input
                       name="minimum_take_price"
-                      type="number"
-                      min="1.01"
-                      step="0.01"
+                      inputMode="text"
+                      placeholder="e.g. 7/4"
                     />
                   </label>
                 </div>
@@ -561,9 +560,8 @@ export default function AccountPage() {
                     <span>Alert at odds</span>
                     <input
                       name="target_odds"
-                      type="number"
-                      min="1.01"
-                      step="0.01"
+                      inputMode="text"
+                      placeholder="e.g. 7/4"
                       required
                     />
                   </label>
@@ -579,7 +577,7 @@ export default function AccountPage() {
                         <strong>{alert.event_name}</strong>
                         <small>
                           {alert.market} · {alert.selection} ·{" "}
-                          {alert.target_odds.toFixed(2)}+
+                          {decimalToFractional(alert.target_odds)}+
                         </small>
                       </div>
                       <div className="row-actions">
@@ -633,10 +631,10 @@ export default function AccountPage() {
 
                       <div className="bet-numbers">
                         <span>
-                          {tip.quoted_odds ? tip.quoted_odds.toFixed(2) : "—"}
+                          {tip.quoted_odds ? decimalToFractional(tip.quoted_odds) : "—"}
                         </span>
                         <span>
-                          Fair {tip.fair_odds ? tip.fair_odds.toFixed(2) : "—"}
+                          Fair {tip.fair_odds ? decimalToFractional(tip.fair_odds) : "—"}
                         </span>
                         <span
                           className={
