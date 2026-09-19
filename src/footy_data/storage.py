@@ -361,3 +361,28 @@ def insert_backtest_run(
         timeout=writer.timeout,
     )
     response.raise_for_status()
+
+
+def insert_value_backtest_run(
+    writer: SupabaseRESTWriter,
+    row: Mapping[str, Any],
+) -> None:
+    allowed = {
+        "model_version", "bookmaker", "price_kind", "source", "market",
+        "target_ev", "bets", "strike_rate", "average_odds", "roi",
+        "average_raw_ev", "average_probability_edge",
+        "average_market_overround", "by_selection", "by_edge_bucket",
+    }
+    payload = [_project_row(row, allowed)]
+    response = requests.post(
+        f"{writer.url}/rest/v1/footy_value_backtest_runs",
+        headers={
+            "apikey": writer.key,
+            "Authorization": f"Bearer {writer.key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        json=payload,
+        timeout=writer.timeout,
+    )
+    response.raise_for_status()
