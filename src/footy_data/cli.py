@@ -262,21 +262,28 @@ def command_football_data_odds_ingest(args: argparse.Namespace) -> None:
         )
 
         if report.match_rate < args.min_match_rate:
-            raise RuntimeError(
-                f"{bookmaker} {price_kind} reconciliation below threshold: "
-                + json.dumps(report.__dict__)
-            )
+            reports.append({
+                "bookmaker": bookmaker,
+                "price_kind": price_kind,
+                "status": "skipped_low_coverage",
+                **report.__dict__,
+            })
+            continue
 
         writer.upsert_bookmaker_prices(frame_records(prices))
         total_rows += len(prices)
         reports.append({
             "bookmaker": bookmaker,
             "price_kind": price_kind,
+            "status": "ingested",
             **report.__dict__,
         })
 
-    if not reports:
-        raise RuntimeError("Football-Data supplied no supported 1X2 price columns.")
+    if total_rows == 0:
+        raise RuntimeError(
+            "Football-Data supplied no supported 1X2 price set above "
+            "the minimum reconciliation threshold."
+        )
 
     print(json.dumps({
         "status": "ok",
