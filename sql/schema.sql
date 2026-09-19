@@ -1,8 +1,8 @@
--- Footy production schema for Supabase/PostgreSQL.
--- Internal model tables are server-side only by default.
--- RLS is enabled and anon/authenticated privileges are revoked.
+-- Footy production schema for the shared Supabase project.
+-- Existing VehiclePlug tables are left untouched.
+-- Footy uses isolated footy_* tables with RLS and server-only grants.
 
-create table if not exists public.data_sources (
+create table if not exists public.footy_data_sources (
   id bigint generated always as identity primary key,
   source_name text not null,
   source_url text,
@@ -10,7 +10,7 @@ create table if not exists public.data_sources (
   retrieved_at timestamptz not null default now()
 );
 
-create table if not exists public.matches (
+create table if not exists public.footy_matches (
   match_id text primary key,
   league text not null,
   season text not null,
@@ -22,9 +22,9 @@ create table if not exists public.matches (
   retrieved_at timestamptz not null default now()
 );
 
-create table if not exists public.match_team_metrics (
+create table if not exists public.footy_match_team_metrics (
   id bigint generated always as identity primary key,
-  match_id text not null references public.matches(match_id) on delete cascade,
+  match_id text not null references public.footy_matches(match_id) on delete cascade,
   team text not null,
   opponent text not null,
   home_away text not null check (home_away in ('H','A')),
@@ -54,13 +54,13 @@ create table if not exists public.match_team_metrics (
   unique (match_id, team, source)
 );
 
-create index if not exists idx_match_team_metrics_team
-  on public.match_team_metrics(team);
+create index if not exists idx_footy_metrics_team
+  on public.footy_match_team_metrics(team);
 
-create index if not exists idx_match_team_metrics_match
-  on public.match_team_metrics(match_id);
+create index if not exists idx_footy_metrics_match
+  on public.footy_match_team_metrics(match_id);
 
-create table if not exists public.team_ratings (
+create table if not exists public.footy_team_ratings (
   id bigint generated always as identity primary key,
   team text not null,
   rating_type text not null,
@@ -70,9 +70,9 @@ create table if not exists public.team_ratings (
   unique (team, rating_type, rating_date, source)
 );
 
-create table if not exists public.bookmaker_prices (
+create table if not exists public.footy_bookmaker_prices (
   id bigint generated always as identity primary key,
-  match_id text not null references public.matches(match_id) on delete cascade,
+  match_id text not null references public.footy_matches(match_id) on delete cascade,
   bookmaker text not null,
   market text not null,
   selection text not null,
@@ -81,20 +81,19 @@ create table if not exists public.bookmaker_prices (
   captured_at timestamptz not null default now()
 );
 
-create index if not exists idx_prices_match_market
-  on public.bookmaker_prices(match_id, market, selection, captured_at desc);
+create index if not exists idx_footy_prices_match_market
+  on public.footy_bookmaker_prices(match_id, market, selection, captured_at desc);
 
-create table if not exists public.model_outputs (
+create table if not exists public.footy_model_outputs (
   id bigint generated always as identity primary key,
-  match_id text not null references public.matches(match_id) on delete cascade,
+  match_id text not null references public.footy_matches(match_id) on delete cascade,
   model_version text not null,
   home_xg double precision not null check (home_xg >= 0),
   away_xg double precision not null check (away_xg >= 0),
   market text not null,
   selection text not null,
   model_probability double precision check (
-    model_probability is null
-    or (model_probability >= 0 and model_probability <= 1)
+    model_probability is null or (model_probability >= 0 and model_probability <= 1)
   ),
   fair_odds double precision not null check (fair_odds >= 1.0),
   uncertainty_haircut double precision not null check (
@@ -104,35 +103,35 @@ create table if not exists public.model_outputs (
   created_at timestamptz not null default now()
 );
 
--- Public is an exposed Supabase schema. Lock all model tables down by default.
-alter table public.data_sources enable row level security;
-alter table public.matches enable row level security;
-alter table public.match_team_metrics enable row level security;
-alter table public.team_ratings enable row level security;
-alter table public.bookmaker_prices enable row level security;
-alter table public.model_outputs enable row level security;
+alter table public.footy_data_sources enable row level security;
+alter table public.footy_matches enable row level security;
+alter table public.footy_match_team_metrics enable row level security;
+alter table public.footy_team_ratings enable row level security;
+alter table public.footy_bookmaker_prices enable row level security;
+alter table public.footy_model_outputs enable row level security;
 
-revoke all on table public.data_sources from public, anon, authenticated;
-revoke all on table public.matches from public, anon, authenticated;
-revoke all on table public.match_team_metrics from public, anon, authenticated;
-revoke all on table public.team_ratings from public, anon, authenticated;
-revoke all on table public.bookmaker_prices from public, anon, authenticated;
-revoke all on table public.model_outputs from public, anon, authenticated;
+revoke all on table public.footy_data_sources from public, anon, authenticated;
+revoke all on table public.footy_matches from public, anon, authenticated;
+revoke all on table public.footy_match_team_metrics from public, anon, authenticated;
+revoke all on table public.footy_team_ratings from public, anon, authenticated;
+revoke all on table public.footy_bookmaker_prices from public, anon, authenticated;
+revoke all on table public.footy_model_outputs from public, anon, authenticated;
 
-grant select, insert, update, delete on table public.data_sources to service_role;
-grant select, insert, update, delete on table public.matches to service_role;
-grant select, insert, update, delete on table public.match_team_metrics to service_role;
-grant select, insert, update, delete on table public.team_ratings to service_role;
-grant select, insert, update, delete on table public.bookmaker_prices to service_role;
-grant select, insert, update, delete on table public.model_outputs to service_role;
+grant select, insert, update, delete on table public.footy_data_sources to service_role;
+grant select, insert, update, delete on table public.footy_matches to service_role;
+grant select, insert, update, delete on table public.footy_match_team_metrics to service_role;
+grant select, insert, update, delete on table public.footy_team_ratings to service_role;
+grant select, insert, update, delete on table public.footy_bookmaker_prices to service_role;
+grant select, insert, update, delete on table public.footy_model_outputs to service_role;
 
-revoke all on all sequences in schema public from public, anon, authenticated;
-grant usage, select on all sequences in schema public to service_role;
+revoke all on sequence public.footy_data_sources_id_seq from public, anon, authenticated;
+revoke all on sequence public.footy_match_team_metrics_id_seq from public, anon, authenticated;
+revoke all on sequence public.footy_team_ratings_id_seq from public, anon, authenticated;
+revoke all on sequence public.footy_bookmaker_prices_id_seq from public, anon, authenticated;
+revoke all on sequence public.footy_model_outputs_id_seq from public, anon, authenticated;
 
--- Prevent future accidental public exposure.
-alter default privileges for role postgres in schema public
-  revoke select, insert, update, delete on tables from anon, authenticated;
-alter default privileges for role postgres in schema public
-  revoke usage, select on sequences from anon, authenticated;
-alter default privileges for role postgres in schema public
-  revoke execute on functions from anon, authenticated;
+grant usage, select on sequence public.footy_data_sources_id_seq to service_role;
+grant usage, select on sequence public.footy_match_team_metrics_id_seq to service_role;
+grant usage, select on sequence public.footy_team_ratings_id_seq to service_role;
+grant usage, select on sequence public.footy_bookmaker_prices_id_seq to service_role;
+grant usage, select on sequence public.footy_model_outputs_id_seq to service_role;
