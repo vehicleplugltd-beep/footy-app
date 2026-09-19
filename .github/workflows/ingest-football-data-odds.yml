@@ -1,0 +1,33 @@
+name: ingest-football-data-odds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/ingest-football-data-odds.yml"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        season: ["2223", "2324", "2425", "2526"]
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Ingest Football-Data historical prices
+        run: |
+          footy-data football-data-odds-ingest \
+            --league "ENG-Premier League" \
+            --season "${{ matrix.season }}" \
+            --min-match-rate 0.95
