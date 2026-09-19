@@ -320,3 +320,164 @@ revoke all on table public.footy_fpl_snapshots
   from public, anon, authenticated;
 grant select, insert, update, delete
   on table public.footy_fpl_snapshots to service_role;
+
+
+-- User-facing Footy information accounts.
+create extension if not exists pgcrypto;
+
+create table if not exists public.footy_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  age_confirmed_at timestamptz,
+  terms_accepted_at timestamptz,
+  pro_waitlist_joined_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.footy_price_alerts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  match_id text,
+  event_name text not null,
+  market text not null,
+  selection text not null,
+  bookmaker text,
+  target_odds numeric(8,3) not null check (target_odds > 1),
+  enabled boolean not null default true,
+  last_triggered_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_footy_alerts_user_enabled
+  on public.footy_price_alerts(user_id, enabled);
+
+create table if not exists public.footy_saved_tips (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  match_id text,
+  event_name text not null,
+  market text not null,
+  selection text not null,
+  bookmaker text,
+  quoted_odds numeric(8,3) check (quoted_odds is null or quoted_odds > 1),
+  model_version text,
+  model_probability numeric(7,6)
+    check (model_probability is null or (model_probability > 0 and model_probability < 1)),
+  fair_odds numeric(8,3) check (fair_odds is null or fair_odds > 1),
+  minimum_take_price numeric(8,3)
+    check (minimum_take_price is null or minimum_take_price > 1),
+  validation_status text
+    check (validation_status is null or validation_status in ('APPROVED','WATCH','RESEARCH','PASS')),
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_footy_saved_tips_user_created
+  on public.footy_saved_tips(user_id, created_at desc);
+
+create table if not exists public.footy_entitlements (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  plan text not null default 'FREE' check (plan in ('FREE','PRO')),
+  status text not null default 'ACTIVE'
+    check (status in ('ACTIVE','TRIALING','PAST_DUE','CANCELLED')),
+  billing_provider text,
+  external_customer_id text,
+  current_period_end timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.footy_profiles enable row level security;
+alter table public.footy_price_alerts enable row level security;
+alter table public.footy_saved_tips enable row level security;
+alter table public.footy_entitlements enable row level security;
+
+revoke all on table public.footy_profiles, public.footy_price_alerts,
+  public.footy_saved_tips, public.footy_entitlements from public, anon;
+
+grant select, update on table public.footy_profiles to authenticated;
+grant select, insert, update, delete on table public.footy_price_alerts to authenticated;
+grant select, insert, update, delete on table public.footy_saved_tips to authenticated;
+grant select on table public.footy_entitlements to authenticated;
+
+grant select, insert, update, delete on table public.footy_profiles,
+  public.footy_price_alerts, public.footy_saved_tips,
+  public.footy_entitlements to service_role;
+
+drop policy if exists "profiles_select_own" on public.footy_profiles;
+create policy "profiles_select_own" on public.footy_profiles
+  for select to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "profiles_update_own" on public.footy_profiles;
+create policy "profiles_update_own" on public.footy_profiles
+  for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "alerts_select_own" on public.footy_price_alerts;
+create policy "alerts_select_own" on public.footy_price_alerts
+  for select to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "alerts_insert_own" on public.footy_price_alerts;
+create policy "alerts_insert_own" on public.footy_price_alerts
+  for insert to authenticated with check ((select auth.uid()) = user_id);
+
+drop policy if exists "alerts_update_own" on public.footy_price_alerts;
+create policy "alerts_update_own" on public.footy_price_alerts
+  for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "alerts_delete_own" on public.footy_price_alerts;
+create policy "alerts_delete_own" on public.footy_price_alerts
+  for delete to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "saved_tips_select_own" on public.footy_saved_tips;
+create policy "saved_tips_select_own" on public.footy_saved_tips
+  for select to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "saved_tips_insert_own" on public.footy_saved_tips;
+create policy "saved_tips_insert_own" on public.footy_saved_tips
+  for insert to authenticated with check ((select auth.uid()) = user_id);
+
+drop policy if exists "saved_tips_update_own" on public.footy_saved_tips;
+create policy "saved_tips_update_own" on public.footy_saved_tips
+  for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "saved_tips_delete_own" on public.footy_saved_tips;
+create policy "saved_tips_delete_own" on public.footy_saved_tips
+  for delete to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "entitlements_select_own" on public.footy_entitlements;
+create policy "entitlements_select_own" on public.footy_entitlements
+  for select to authenticated using ((select auth.uid()) = user_id);
+
+create or replace function public.footy_handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.footy_profiles (user_id)
+  values (new.id)
+  on conflict (user_id) do nothing;
+
+  insert into public.footy_entitlements (user_id)
+  values (new.id)
+  on conflict (user_id) do nothing;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.footy_handle_new_user()
+  from public, anon, authenticated;
+grant execute on function public.footy_handle_new_user() to postgres;
+
+drop trigger if exists on_footy_auth_user_created on auth.users;
+create trigger on_footy_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.footy_handle_new_user();
