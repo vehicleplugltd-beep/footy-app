@@ -150,5 +150,9 @@ def calibration_records(
     bins: int = 10,
 ) -> list[dict]:
     table = calibration_table(probability, outcome, bins=bins).copy()
+    table = table[table["bets"] > 0].copy()
     table["bin"] = table["bin"].astype(str)
+    table["bets"] = table["bets"].astype(int)
+    table["mean_model_probability"] = table["mean_model_probability"].astype(float)
+    table["realized_rate"] = table["realized_rate"].astype(float)
     return table.to_dict(orient="records")
