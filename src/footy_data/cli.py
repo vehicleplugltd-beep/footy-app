@@ -25,8 +25,13 @@ from .walk_forward import build_walk_forward_predictions
 from .backtest import binary_metrics, multiclass_log_loss, calibration_records
 from .elo import ratings_for_match_dates
 from .external_elo import ratings_from_match_dataset
-from .odds_import import normalise_1x2_prices
-from .value_backtest import assess_1x2_history, summarize_qualified_1x2
+from .odds_import import normalise_1x2_prices, normalise_total_2_5_prices
+from .value_backtest import (
+    assess_1x2_history,
+    summarize_qualified_1x2,
+    assess_total_2_5_history,
+    summarize_qualified_total_2_5,
+)
 from .diagnostics import upcoming_process_diagnostics
 from .process_ridge import build_process_feature_rows, holdout_match_predictions
 from .upcoming import (
@@ -286,6 +291,52 @@ def command_football_data_odds_ingest(args: argparse.Namespace) -> None:
             **report.__dict__,
         })
 
+    total_specs = [
+        ("Market Average", "snapshot", ("Avg>2.5", "Avg<2.5")),
+        ("Market Average", "close", ("AvgC>2.5", "AvgC<2.5")),
+        ("Market Maximum", "snapshot", ("Max>2.5", "Max<2.5")),
+        ("Market Maximum", "close", ("MaxC>2.5", "MaxC<2.5")),
+        ("Bet365", "snapshot", ("B365>2.5", "B365<2.5")),
+        ("Bet365", "close", ("B365C>2.5", "B365C<2.5")),
+    ]
+
+    for bookmaker, price_kind, columns in total_specs:
+        if not set(columns).issubset(external.columns):
+            continue
+
+        prices, report = normalise_total_2_5_prices(
+            external=external,
+            footy_metrics=footy,
+            bookmaker=bookmaker,
+            source="football-data.co.uk",
+            price_kind=price_kind,
+            date_col="date",
+            home_team_col="home_team",
+            away_team_col="away_team",
+            over_odds_col=columns[0],
+            under_odds_col=columns[1],
+        )
+
+        if report.match_rate < args.min_match_rate:
+            reports.append({
+                "bookmaker": bookmaker,
+                "price_kind": price_kind,
+                "market": "TOTAL_2.5",
+                "status": "skipped_low_coverage",
+                **report.__dict__,
+            })
+            continue
+
+        writer.upsert_bookmaker_prices(frame_records(prices))
+        total_rows += len(prices)
+        reports.append({
+            "bookmaker": bookmaker,
+            "price_kind": price_kind,
+            "market": "TOTAL_2.5",
+            "status": "ingested",
+            **report.__dict__,
+        })
+
     if total_rows == 0:
         raise RuntimeError(
             "Football-Data supplied no supported 1X2 price set above "
@@ -311,16 +362,25 @@ def command_value_backtest(args: argparse.Namespace) -> None:
         bookmaker=args.bookmaker,
         price_kind=args.price_kind,
         source=args.source,
-        market="1X2",
+        market=args.market,
     )
     if prices.empty:
         raise RuntimeError("No matching historical bookmaker prices found.")
 
-    assessed = assess_1x2_history(
-        predictions,
-        prices,
-        target_ev=args.target_ev,
-    )
+    if args.market == "1X2":
+        assessed = assess_1x2_history(
+            predictions,
+            prices,
+            target_ev=args.target_ev,
+        )
+    elif args.market == "TOTAL_2.5":
+        assessed = assess_total_2_5_history(
+            predictions,
+            prices,
+            target_ev=args.target_ev,
+        )
+    else:
+        raise ValueError(f"Unsupported value-backtest market: {args.market}")
 
     history = reader.historical_match_team_metrics()
     home = (
@@ -340,17 +400,23 @@ def command_value_backtest(args: argparse.Namespace) -> None:
         validate="one_to_one",
     )
 
-    summary, bets = summarize_qualified_1x2(
-        assessed,
-        outcomes,
-    )
+    if args.market == "1X2":
+        summary, bets = summarize_qualified_1x2(
+            assessed,
+            outcomes,
+        )
+    else:
+        summary, bets = summarize_qualified_total_2_5(
+            assessed,
+            outcomes,
+        )
 
     result = {
         "model_version": args.model_version,
         "bookmaker": args.bookmaker,
         "price_kind": args.price_kind,
         "source": args.source,
-        "market": "1X2",
+        "market": args.market,
         "target_ev": args.target_ev,
         **summary,
     }
@@ -900,6 +966,11 @@ def main() -> None:
         required=True,
     )
     value_backtest.add_argument("--source")
+    value_backtest.add_argument(
+        "--market",
+        choices=["1X2", "TOTAL_2.5"],
+        default="1X2",
+    )
     value_backtest.add_argument("--target-ev", type=float, default=0.02)
 
     diagnose_upcoming = sub.add_parser(
