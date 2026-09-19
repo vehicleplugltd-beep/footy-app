@@ -481,3 +481,47 @@ drop trigger if exists on_footy_auth_user_created on auth.users;
 create trigger on_footy_auth_user_created
   after insert on auth.users
   for each row execute procedure public.footy_handle_new_user();
+
+
+-- Immutable public model/tip results ledger.
+create table if not exists public.footy_public_calls (
+  id uuid primary key default gen_random_uuid(),
+  call_key text not null unique,
+  source_kind text not null default 'MODEL_CALL'
+    check (source_kind in ('MODEL_CALL','VALUE_TIP')),
+  match_id text not null,
+  model_version text not null,
+  market text not null,
+  selection text not null,
+  model_probability double precision not null,
+  fair_odds double precision not null,
+  minimum_take_price double precision,
+  validation_status text
+    check (validation_status is null or validation_status in ('APPROVED','WATCH','RESEARCH','PASS')),
+  home_team text not null,
+  away_team text not null,
+  kickoff_at timestamptz not null,
+  published_at timestamptz not null default now(),
+  quoted_bookmaker text,
+  quoted_odds double precision check (quoted_odds is null or quoted_odds > 1),
+  price_captured_at timestamptz,
+  closing_odds double precision check (closing_odds is null or closing_odds > 1),
+  home_goals integer,
+  away_goals integer,
+  result_status text not null default 'OPEN'
+    check (result_status in ('OPEN','WON','LOST','PUSH','VOID')),
+  unit_profit double precision,
+  clv double precision,
+  settled_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_footy_public_calls_kickoff
+  on public.footy_public_calls(kickoff_at desc);
+create index if not exists idx_footy_public_calls_status
+  on public.footy_public_calls(result_status, kickoff_at desc);
+
+alter table public.footy_public_calls enable row level security;
+revoke all on table public.footy_public_calls from public, anon, authenticated;
+grant select, insert, update, delete
+  on table public.footy_public_calls to service_role;
