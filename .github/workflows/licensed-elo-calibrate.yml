@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/licensed-elo-calibrate.yml"
 
+# stores per-match predictions
 jobs:
   calibrate:
     runs-on: ubuntu-latest
