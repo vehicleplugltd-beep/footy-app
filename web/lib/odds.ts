@@ -2,44 +2,24 @@ const COMMON_FRACTIONS: Array<[number, number]> = [
   [1, 20], [1, 16], [1, 14], [1, 12], [1, 10], [1, 9], [1, 8], [1, 7],
   [1, 6], [2, 11], [1, 5], [2, 9], [1, 4], [2, 7], [3, 10], [1, 3],
   [4, 11], [2, 5], [4, 9], [1, 2], [8, 15], [4, 7], [3, 5], [8, 13],
-  [2, 3], [4, 6], [8, 11], [4, 5], [5, 6], [10, 11], [1, 1],
-  [11, 10], [6, 5], [5, 4], [13, 10], [11, 8], [7, 5], [3, 2],
-  [8, 5], [13, 8], [5, 3], [7, 4], [9, 5], [15, 8], [2, 1],
-  [9, 4], [12, 5], [5, 2], [11, 4], [3, 1], [10, 3], [7, 2],
-  [15, 4], [4, 1], [9, 2], [5, 1], [11, 2], [6, 1], [13, 2],
-  [7, 1], [15, 2], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1],
-  [14, 1], [16, 1], [20, 1], [25, 1], [33, 1], [50, 1], [66, 1],
-  [100, 1],
+  [2, 3], [8, 11], [4, 5], [5, 6], [10, 11], [1, 1], [11, 10],
+  [6, 5], [5, 4], [13, 10], [11, 8], [7, 5], [3, 2], [8, 5],
+  [13, 8], [5, 3], [7, 4], [9, 5], [15, 8], [2, 1], [21, 10],
+  [9, 4], [12, 5], [5, 2], [13, 5], [11, 4], [14, 5], [3, 1],
+  [16, 5], [10, 3], [7, 2], [15, 4], [4, 1], [17, 4], [9, 2],
+  [19, 4], [5, 1], [21, 4], [11, 2], [23, 4], [6, 1], [13, 2],
+  [7, 1], [15, 2], [8, 1], [17, 2], [9, 1], [10, 1], [11, 1],
+  [12, 1], [14, 1], [16, 1], [18, 1], [20, 1], [25, 1], [33, 1],
+  [50, 1], [66, 1], [100, 1],
 ];
 
-function gcd(a: number, b: number) {
-  let x = Math.abs(Math.round(a));
-  let y = Math.abs(Math.round(b));
-  while (y) {
-    const t = y;
-    y = x % y;
-    x = t;
-  }
-  return x || 1;
+function fractionValue([numerator, denominator]: [number, number]) {
+  return numerator / denominator;
 }
 
-function rationalApproximation(value: number, maxDenominator = 20) {
-  let bestNumerator = Math.max(1, Math.round(value));
-  let bestDenominator = 1;
-  let bestError = Math.abs(bestNumerator - value);
-
-  for (let denominator = 1; denominator <= maxDenominator; denominator += 1) {
-    const numerator = Math.max(1, Math.round(value * denominator));
-    const error = Math.abs(numerator / denominator - value);
-    if (error < bestError) {
-      bestNumerator = numerator;
-      bestDenominator = denominator;
-      bestError = error;
-    }
-  }
-
-  const divisor = gcd(bestNumerator, bestDenominator);
-  return [bestNumerator / divisor, bestDenominator / divisor] as const;
+function formatFraction([numerator, denominator]: [number, number]) {
+  if (numerator === denominator) return "EVS";
+  return `${numerator}/${denominator}`;
 }
 
 export function decimalToFractional(decimalOdds: number | null | undefined) {
@@ -51,21 +31,26 @@ export function decimalToFractional(decimalOdds: number | null | undefined) {
   let bestError = Number.POSITIVE_INFINITY;
 
   for (const candidate of COMMON_FRACTIONS) {
-    const error = Math.abs(candidate[0] / candidate[1] - target);
+    const error = Math.abs(fractionValue(candidate) - target);
     if (error < bestError) {
       best = candidate;
       bestError = error;
     }
   }
 
-  // For unusual model prices, avoid forcing a misleading bookmaker-standard
-  // fraction when the nearest common quote is too far away.
-  if (bestError > 0.025) {
-    best = [...rationalApproximation(target)] as [number, number];
-  }
+  return formatFraction(best);
+}
 
-  if (best[0] === best[1]) return "EVS";
-  return `${best[0]}/${best[1]}`;
+export function minimumTakeToFractional(decimalOdds: number | null | undefined) {
+  const decimal = Number(decimalOdds);
+  if (!Number.isFinite(decimal) || decimal <= 1) return "—";
+
+  const target = decimal - 1;
+  const ceiling =
+    COMMON_FRACTIONS.find((candidate) => fractionValue(candidate) + 1e-9 >= target) ??
+    COMMON_FRACTIONS[COMMON_FRACTIONS.length - 1];
+
+  return formatFraction(ceiling);
 }
 
 export function fractionalToDecimal(value: string | number | null | undefined) {
