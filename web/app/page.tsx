@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BankrollCalculator, PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
@@ -44,6 +45,7 @@ export default async function Home() {
           <span>Footy</span>
         </div>
         <div className="nav-right">
+          <Link className="nav-fpl-link" href="/fpl">Free FPL Assistant</Link>
           <span className="live-dot" />
           Model board
           <StatusPill status={status} />
