@@ -22,6 +22,9 @@ create table if not exists public.footy_matches (
   retrieved_at timestamptz not null default now()
 );
 
+create index if not exists idx_footy_matches_league_season_kickoff
+  on public.footy_matches(league, season, kickoff_at);
+
 create table if not exists public.footy_match_team_metrics (
   id bigint generated always as identity primary key,
   match_id text not null references public.footy_matches(match_id) on delete cascade,
@@ -109,6 +112,9 @@ create table if not exists public.footy_model_outputs (
 
 create index if not exists idx_footy_model_outputs_match
   on public.footy_model_outputs(match_id);
+
+create index if not exists idx_footy_model_outputs_model_match_created
+  on public.footy_model_outputs(model_version, match_id, created_at desc);
 
 alter table public.footy_data_sources enable row level security;
 alter table public.footy_matches enable row level security;
