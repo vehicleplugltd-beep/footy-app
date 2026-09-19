@@ -427,7 +427,7 @@ function rankPlayers(
         assistantScore: score,
         fixtureDifficulty: difficulty,
         availability: available,
-        xgiPer90,
+        xgiPer90: xgi90,
         selectedBy: num(player.selected_by_percent),
         transfersNet: player.transfers_in_event - player.transfers_out_event,
         valueScore: price > 0 ? score / price : 0,
