@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { BoardMatch, ValidationStatus } from "@/lib/types";
+import { decimalToFractional, fractionalToDecimal, impliedProbability } from "@/lib/odds";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -42,12 +43,17 @@ export function PriceChecker({
       (item) => `${item.match_id}:${item.selection}` === selectedKey,
     ) ?? selections[0];
 
-  const price = Number(odds);
+  const price = fractionalToDecimal(odds);
   const rawEv =
-    selected && price > 1 ? selected.model_probability * price - 1 : null;
+    selected && price ? selected.model_probability * price - 1 : null;
+  const bookieImplied = impliedProbability(price);
+  const priceGap =
+    selected && price
+      ? price / selected.minimum_take_price - 1
+      : null;
 
   const rawPriceVerdict =
-    !selected || !(price > 1)
+    !selected || !price
       ? "ENTER PRICE"
       : price >= selected.minimum_take_price
         ? "RAW VALUE"
@@ -92,12 +98,12 @@ export function PriceChecker({
       </label>
 
       <label>
-        <span>Bookmaker odds you can see</span>
+        <span>Bookmaker odds (fractional)</span>
         <input
-          inputMode="decimal"
+          inputMode="text"
           value={odds}
           onChange={(event) => setOdds(event.target.value)}
-          placeholder="e.g. 2.40"
+          placeholder="e.g. 7/4 or EVS"
         />
       </label>
 
@@ -106,14 +112,22 @@ export function PriceChecker({
           label="Model probability"
           value={`${(selected.model_probability * 100).toFixed(1)}%`}
         />
-        <Metric label="Fair odds" value={selected.fair_odds.toFixed(2)} />
+        <Metric label="Fair odds" value={decimalToFractional(selected.fair_odds)} />
         <Metric
           label="Minimum take"
-          value={selected.minimum_take_price.toFixed(2)}
+          value={`${decimalToFractional(selected.minimum_take_price)}+`}
         />
         <Metric
-          label="Raw EV"
+          label="Bookie implied"
+          value={bookieImplied === null ? "—" : `${(bookieImplied * 100).toFixed(1)}%`}
+        />
+        <Metric
+          label="Model EV"
           value={rawEv === null ? "—" : `${(rawEv * 100).toFixed(1)}%`}
+        />
+        <Metric
+          label="Above take price"
+          value={priceGap === null ? "—" : `${(priceGap * 100).toFixed(1)}%`}
         />
       </div>
 
