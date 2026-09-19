@@ -627,7 +627,7 @@ def main() -> None:
     )
     calibrate.add_argument(
         "--process-mode",
-        choices=["xg", "npxg_blend"],
+        choices=["xg", "npxg_blend", "schedule_adjusted"],
         default="xg",
         help="Team-strength process used before pricing.",
     )
