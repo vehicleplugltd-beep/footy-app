@@ -9,6 +9,7 @@ on:
     paths:
       - ".github/workflows/forward-current-season.yml"
       - "src/footy_data/upcoming.py"
+      - "src/footy_data/cli.py"
       - "src/footy_data/walk_forward.py"
       - "src/footy_data/features.py"
       - "src/footy_data/model.py"
@@ -38,6 +39,11 @@ jobs:
           footy-data predict-upcoming \
             --league "ENG-Premier League" \
             --season "2026" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
             --model-version "baseline-v6-schedule-calibrated" \
             --horizon-days 10 \
             --target-ev 0.02 \
