@@ -270,6 +270,34 @@ class SupabaseRESTReader:
             frame["model_version"].astype(str) == str(model_version)
         ].reset_index(drop=True)
 
+    def upcoming_matches(
+        self,
+        league: str,
+        season: str | None = None,
+    ) -> pd.DataFrame:
+        columns = (
+            "match_id,league,season,match_date,kickoff_at,"
+            "home_team,away_team,status,source,retrieved_at"
+        )
+        rows = pd.DataFrame(self._get_all("footy_matches", columns))
+        if rows.empty:
+            return rows
+        rows["kickoff_at"] = pd.to_datetime(
+            rows["kickoff_at"], errors="coerce", utc=True
+        )
+        rows["match_date"] = pd.to_datetime(
+            rows["match_date"], errors="coerce", utc=True
+        )
+        rows = rows[
+            (rows["league"].astype(str) == str(league))
+            & (rows["kickoff_at"] > pd.Timestamp.now(tz="UTC"))
+        ].copy()
+        if season is not None:
+            rows = rows[
+                rows["season"].astype(str) == str(season)
+            ].copy()
+        return rows.sort_values("kickoff_at").reset_index(drop=True)
+
     def historical_match_team_metrics(
         self,
         include_ratings: bool = False,
