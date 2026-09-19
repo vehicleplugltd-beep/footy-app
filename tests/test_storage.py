@@ -46,6 +46,6 @@ def test_writer_upsert(monkeypatch):
         "source": "understat",
     }])
 
-    assert captured["url"].endswith("/rest/v1/matches")
+    assert captured["url"].endswith("/rest/v1/footy_matches")
     assert captured["params"]["on_conflict"] == "match_id"
     assert captured["headers"]["Authorization"] == "Bearer secret"
