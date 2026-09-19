@@ -251,6 +251,18 @@ class SupabaseRESTReader:
         ratings["rating_value"] = pd.to_numeric(
             ratings["rating_value"], errors="coerce"
         )
+        ratings["_source_priority"] = (
+            ratings["source"].ne("clubelo").astype(int)
+        )
+        ratings = (
+            ratings.sort_values(
+                ["team", "rating_date", "_source_priority"]
+            )
+            .drop_duplicates(
+                ["team", "rating_date"],
+                keep="first",
+            )
+        )
 
         team_ratings = ratings[
             ["team", "rating_date", "rating_value"]
