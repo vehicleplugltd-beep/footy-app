@@ -49,6 +49,7 @@ DEFAULT_ALIASES = {
     "west-ham": "West Ham United",
     "west-ham-utd": "West Ham United",
     "nott-m-forest": "Nottingham Forest",
+    "nottm-forest": "Nottingham Forest",
     "nottingham-forest": "Nottingham Forest",
     "sheffield-utd": "Sheffield United",
     "sheffield-united": "Sheffield United",
