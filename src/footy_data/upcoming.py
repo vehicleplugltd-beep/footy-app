@@ -108,12 +108,12 @@ def build_upcoming_predictions(
     model_version: str,
     min_team_matches: int = 5,
     prior_goals_per_team_match: float = 1.35,
-    lambda_beta: float = 1.05,
-    home_lambda_scale: float = 0.985953318340048,
-    away_lambda_scale: float = 1.12646161962879,
-    process_span: int = 8,
-    process_prior_weight: float = 0.35,
-    venue_split_weight: float = 0.35,
+    lambda_beta: float = 1.0,
+    home_lambda_scale: float = 1.0,
+    away_lambda_scale: float = 1.0,
+    process_span: int = 16,
+    process_prior_weight: float = 0.50,
+    venue_split_weight: float = 0.20,
 ) -> pd.DataFrame:
     if fixtures.empty:
         return pd.DataFrame()
