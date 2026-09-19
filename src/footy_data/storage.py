@@ -308,7 +308,12 @@ class SupabaseRESTReader:
         ))
         metrics = pd.DataFrame(self._get_all(
             "footy_match_team_metrics",
-            "match_id,team,opponent,home_away,goals,goals_conceded,xg,npxg,xga,npxga,ppda,deep_completions,source,retrieved_at",
+            (
+                "match_id,team,opponent,home_away,goals,goals_conceded,"
+                "xg,npxg,xga,npxga,shots,shots_on_target,"
+                "shots_conceded,sot_conceded,set_piece_xg,set_piece_xga,"
+                "ppda,deep_completions,source,retrieved_at"
+            ),
         ))
         if matches.empty or metrics.empty:
             return pd.DataFrame()
