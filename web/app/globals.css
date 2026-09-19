@@ -1042,3 +1042,319 @@ code { color: var(--accent); }
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Modern market UI */
+:root {
+  --panel-soft: rgba(11, 27, 19, .78);
+  --panel-strong: #0b1b13;
+  --line-soft: rgba(123, 176, 141, .18);
+  --shadow-soft: 0 18px 70px rgba(0, 0, 0, .22);
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(50, 126, 82, .20), transparent 30%),
+    radial-gradient(circle at 88% 6%, rgba(114, 245, 158, .07), transparent 24%),
+    var(--bg);
+}
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  min-height: 68px;
+  background: rgba(7, 17, 13, .78);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.brand-mark {
+  box-shadow: 0 0 24px rgba(114, 245, 158, .14);
+}
+
+.market-ticker {
+  position: relative;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  border-bottom: 1px solid var(--line-soft);
+  background: #06100c;
+  overflow: hidden;
+}
+.ticker-label {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: max-content;
+  padding: 11px 16px;
+  background: #0c1f16;
+  border-right: 1px solid var(--line-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .14em;
+}
+.ticker-viewport {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+}
+.ticker-track {
+  width: max-content;
+  display: flex;
+  align-items: center;
+  animation: footyTicker 52s linear infinite;
+  will-change: transform;
+}
+.ticker-viewport:hover .ticker-track {
+  animation-play-state: paused;
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 39px;
+  padding: 0 18px;
+  border-right: 1px solid rgba(255,255,255,.06);
+  color: #b8cabf;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ticker-item strong {
+  color: #e9f4ed;
+  font-size: 11px;
+}
+.ticker-item b {
+  color: var(--muted);
+  font-weight: 700;
+}
+.ticker-take {
+  color: var(--accent);
+  font-weight: 900;
+}
+@keyframes footyTicker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+  .ticker-viewport { overflow-x: auto; }
+}
+
+.hero {
+  padding-top: 58px;
+}
+h1 {
+  font-size: clamp(42px, 6.2vw, 76px);
+}
+.hero-card,
+.panel,
+.match-card,
+.evidence-card,
+.fpl-panel,
+.pricing-card {
+  box-shadow: var(--shadow-soft);
+}
+
+.quick-scan {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.quick-scan > div {
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+  border-radius: 14px;
+  padding: 15px 16px;
+}
+.quick-scan span,
+.quick-scan small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+.quick-scan span {
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.quick-scan strong {
+  display: block;
+  margin: 6px 0 4px;
+  color: var(--text);
+  font-size: 19px;
+  letter-spacing: -.02em;
+}
+
+.product-promise {
+  gap: 8px;
+}
+.product-promise article {
+  background: rgba(8, 24, 17, .62);
+  box-shadow: none;
+}
+
+.section {
+  padding: 38px 0;
+}
+
+.section-head {
+  align-items: center;
+}
+.board-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.board-legend span {
+  border: 1px solid var(--line-soft);
+  background: rgba(9, 24, 17, .74);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 10px;
+}
+.board-legend b {
+  color: #d9e8de;
+}
+
+.match-list {
+  gap: 10px;
+}
+.match-card {
+  border-color: var(--line-soft);
+  background:
+    linear-gradient(180deg, rgba(13, 30, 21, .9), rgba(8, 20, 14, .92));
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.12);
+}
+.match-card:hover {
+  border-color: rgba(114, 245, 158, .34);
+}
+.selection-grid {
+  gap: 8px;
+}
+.selection {
+  position: relative;
+  border-color: rgba(123, 176, 141, .15);
+  background: rgba(5, 17, 11, .72);
+  border-radius: 12px;
+  padding: 14px;
+}
+.selection > strong {
+  font-size: 24px;
+  letter-spacing: -.03em;
+}
+.selection dl div {
+  background: rgba(15, 36, 25, .72);
+}
+.selection dl div:last-child {
+  border: 1px solid rgba(114, 245, 158, .18);
+}
+.selection dl div:last-child dd {
+  color: var(--accent);
+}
+
+.notice {
+  border-left-width: 2px;
+  background: rgba(16, 27, 21, .72);
+  box-shadow: none;
+}
+
+.panel {
+  border-color: var(--line-soft);
+  background: linear-gradient(180deg, rgba(15, 33, 24, .88), rgba(8, 21, 14, .92));
+  border-radius: 18px;
+  box-shadow: 0 14px 46px rgba(0,0,0,.15);
+}
+
+.tool-grid input,
+.tool-grid select,
+.account-form input,
+.account-form select {
+  background: #07130e;
+  border-color: rgba(123, 176, 141, .24);
+}
+.tool-results {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.metric {
+  min-width: 0;
+  background: rgba(5, 19, 12, .72);
+  border-color: var(--line-soft);
+}
+.metric strong {
+  font-size: 18px;
+}
+.verdict-row {
+  background: rgba(5, 17, 11, .42);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 13px;
+}
+.signal-guide > div {
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+}
+
+.primary-cta,
+.secondary-cta {
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.primary-cta:hover,
+.secondary-cta:hover {
+  transform: translateY(-1px);
+}
+
+.pro-roadmap {
+  box-shadow: var(--shadow-soft);
+}
+
+@media (max-width: 1000px) {
+  .quick-scan {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tool-results {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 720px) {
+  .market-ticker {
+    grid-template-columns: 1fr;
+  }
+  .ticker-label {
+    display: none;
+  }
+  .nav {
+    position: sticky;
+  }
+  .nav-right {
+    gap: 8px;
+  }
+  .nav-right a {
+    font-size: 11px;
+  }
+  .status {
+    min-width: 60px;
+  }
+}
+@media (max-width: 560px) {
+  .quick-scan,
+  .tool-results {
+    grid-template-columns: 1fr 1fr;
+  }
+  .board-legend {
+    justify-content: flex-start;
+  }
+  .signal-guide > div {
+    grid-template-columns: 1fr;
+  }
+  .ticker-item {
+    padding-inline: 13px;
+  }
+}
