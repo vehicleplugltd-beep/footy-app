@@ -222,6 +222,25 @@ class SupabaseRESTReader:
             start += self.page_size
         return rows
 
+    def model_market_validation(
+        self,
+        model_version: str | None = None,
+    ) -> pd.DataFrame:
+        rows = self._get_all(
+            "footy_model_market_validation",
+            (
+                "model_version,market,status,sample_size,"
+                "model_log_loss,benchmark_log_loss,close_roi,clv_proxy,"
+                "bookmaker_reference,notes,evaluated_at"
+            ),
+        )
+        frame = pd.DataFrame(rows)
+        if frame.empty or model_version is None:
+            return frame
+        return frame[
+            frame["model_version"].astype(str) == str(model_version)
+        ].reset_index(drop=True)
+
     def historical_match_team_metrics(
         self,
         include_ratings: bool = False,
