@@ -115,6 +115,25 @@ export type RankedPlayer = {
   teamAttackIndex: number;
   teamDefenceIndex: number;
   opponent: string | null;
+  fixtureCount: number;
+};
+
+export type FutureGameweekPlan = {
+  eventId: number;
+  name: string;
+  deadline: string;
+  captain: RankedPlayer | null;
+  viceCaptain: RankedPlayer | null;
+  topTransfers: RankedPlayer[];
+  doubleTeams: string[];
+  blankTeams: string[];
+};
+
+export type ChipSignal = {
+  chip: "TRIPLE CAPTAIN" | "BENCH BOOST" | "FREE HIT" | "WILDCARD";
+  status: "STRONG" | "WATCH" | "HOLD";
+  eventName: string | null;
+  reason: string;
 };
 
 export type SquadSuggestion = {
@@ -148,6 +167,8 @@ export type FplHub = {
   teamError: string | null;
   baseError: string | null;
   dataRetrievedAt: string | null;
+  futurePlan: FutureGameweekPlan[];
+  chipRadar: ChipSignal[];
 };
 
 function num(value: string | number | null | undefined) {
@@ -347,14 +368,16 @@ async function footyProcesses() {
   return buildTeamProcess(matches, metrics);
 }
 
-function fixtureForTeam(teamId: number, eventId: number | null, fixtures: Fixture[]) {
-  if (!eventId) return null;
-  return (
-    fixtures.find(
-      (fixture) =>
-        fixture.event === eventId &&
-        (fixture.team_h === teamId || fixture.team_a === teamId),
-    ) ?? null
+function fixturesForTeam(
+  teamId: number,
+  eventId: number | null,
+  fixtures: Fixture[],
+) {
+  if (!eventId) return [];
+  return fixtures.filter(
+    (fixture) =>
+      fixture.event === eventId &&
+      (fixture.team_h === teamId || fixture.team_a === teamId),
   );
 }
 
@@ -377,6 +400,7 @@ function rankPlayers(
   fixtures: Fixture[],
   eventId: number | null,
   process: Map<string, TeamProcess>,
+  useExpectedNext = true,
 ): RankedPlayer[] {
   const teams = new Map(bootstrap.teams.map((team) => [team.id, team]));
   const positions = new Map(
@@ -386,59 +410,87 @@ function rankPlayers(
   return bootstrap.elements
     .map((player) => {
       const team = teams.get(player.team);
-      const fixture = fixtureForTeam(player.team, eventId, fixtures);
-      const isHome = fixture ? fixture.team_h === player.team : false;
-      const opponentId = fixture
-        ? isHome
-          ? fixture.team_a
-          : fixture.team_h
-        : null;
-      const opponentTeam = opponentId ? teams.get(opponentId) : null;
-      const teamProcess = team ? process.get(canonicalTeam(team.name)) : undefined;
-      const opponentProcess = opponentTeam
-        ? process.get(canonicalTeam(opponentTeam.name))
+      const teamFixtures = fixturesForTeam(player.team, eventId, fixtures);
+      const teamProcess = team
+        ? process.get(canonicalTeam(team.name))
         : undefined;
-
-      const difficulty = fixture
-        ? isHome
-          ? fixture.team_h_difficulty
-          : fixture.team_a_difficulty
-        : 3;
       const available = availability(player);
       const position = positions.get(player.element_type) ?? "—";
       const price = player.now_cost / 10;
       const ep = Math.max(0, num(player.ep_next));
       const form = Math.max(0, num(player.form));
+      const ppg = Math.max(0, num(player.points_per_game));
       const xgi90 = Math.max(0, xgiPer90(player));
 
-      const attackMatchup = clamp(
-        Math.sqrt(
-          (teamProcess?.attackIndex ?? 1) /
-            (opponentProcess?.defenceIndex ?? 1),
-        ),
-        0.82,
-        1.20,
-      );
-      const defenceMatchup = clamp(
-        Math.sqrt(
-          (teamProcess?.defenceIndex ?? 1) /
-            (opponentProcess?.attackIndex ?? 1),
-        ),
-        0.82,
-        1.20,
-      );
-      const processFactor =
-        position === "GKP" || position === "DEF"
+      const matchupFactors = teamFixtures.map((fixture) => {
+        const isHome = fixture.team_h === player.team;
+        const opponentId = isHome ? fixture.team_a : fixture.team_h;
+        const opponentTeam = teams.get(opponentId);
+        const opponentProcess = opponentTeam
+          ? process.get(canonicalTeam(opponentTeam.name))
+          : undefined;
+        const attackMatchup = clamp(
+          Math.sqrt(
+            (teamProcess?.attackIndex ?? 1) /
+              (opponentProcess?.defenceIndex ?? 1),
+          ),
+          0.82,
+          1.20,
+        );
+        const defenceMatchup = clamp(
+          Math.sqrt(
+            (teamProcess?.defenceIndex ?? 1) /
+              (opponentProcess?.attackIndex ?? 1),
+          ),
+          0.82,
+          1.20,
+        );
+        return position === "GKP" || position === "DEF"
           ? defenceMatchup
           : attackMatchup;
+      });
+
+      const processFactor = matchupFactors.length
+        ? matchupFactors.reduce((sum, value) => sum + value, 0) /
+          matchupFactors.length
+        : 0.72;
       const processBoost = processFactor - 1;
 
-      // Official FPL expected points remain the anchor. Footy's process layer
-      // is deliberately a modest modifier to avoid double-counting FDR.
-      const officialBase = ep * 0.78 + form * 0.16 + xgi90 * 0.60;
+      const difficultyValues = teamFixtures.map((fixture) =>
+        fixture.team_h === player.team
+          ? fixture.team_h_difficulty
+          : fixture.team_a_difficulty,
+      );
+      const difficulty = difficultyValues.length
+        ? difficultyValues.reduce((sum, value) => sum + value, 0) /
+          difficultyValues.length
+        : 5;
+
+      const opponent = teamFixtures
+        .map((fixture) => {
+          const opponentId =
+            fixture.team_h === player.team
+              ? fixture.team_a
+              : fixture.team_h;
+          return teams.get(opponentId)?.short_name ?? "—";
+        })
+        .join(" + ");
+
+      const officialBase = useExpectedNext
+        ? ep * 0.68 + form * 0.16 + ppg * 0.10 + xgi90 * 0.60
+        : form * 0.34 + ppg * 0.46 + xgi90 * 0.85;
+
+      const fixtureMultiplier =
+        teamFixtures.length === 0
+          ? 0
+          : teamFixtures.length === 1
+            ? 1
+            : 1 + 0.72 * (teamFixtures.length - 1);
+
       const score =
         officialBase *
         (1 + processBoost * 0.32) *
+        fixtureMultiplier *
         clamp(available / 100, 0, 1);
 
       return {
@@ -448,22 +500,177 @@ function rankPlayers(
         position,
         price,
         form,
-        expectedNext: ep,
+        expectedNext: useExpectedNext ? ep : score,
         assistantScore: score,
         fixtureDifficulty: difficulty,
         availability: available,
         xgiPer90: xgi90,
         selectedBy: num(player.selected_by_percent),
-        transfersNet: player.transfers_in_event - player.transfers_out_event,
+        transfersNet:
+          player.transfers_in_event - player.transfers_out_event,
         valueScore: price > 0 ? score / price : 0,
         processBoost,
         teamAttackIndex: teamProcess?.attackIndex ?? 1,
         teamDefenceIndex: teamProcess?.defenceIndex ?? 1,
-        opponent: opponentTeam?.short_name ?? null,
+        opponent: opponent || null,
+        fixtureCount: teamFixtures.length,
       } satisfies RankedPlayer;
     })
     .filter((player) => player.availability > 0)
     .sort((a, b) => b.assistantScore - a.assistantScore);
+}
+
+function buildFuturePlan(
+  bootstrap: Bootstrap,
+  fixtures: Fixture[],
+  process: Map<string, TeamProcess>,
+  nextEvent: FplEvent | null,
+) {
+  if (!nextEvent) {
+    return {
+      futurePlan: [] as FutureGameweekPlan[],
+      chipRadar: [] as ChipSignal[],
+    };
+  }
+
+  const upcomingEvents = bootstrap.events
+    .filter((event) => event.id >= nextEvent.id && !event.finished)
+    .sort((a, b) => a.id - b.id)
+    .slice(0, 5);
+
+  const teamById = new Map(bootstrap.teams.map((team) => [team.id, team]));
+
+  const futurePlan = upcomingEvents.map((event) => {
+    const ranked = rankPlayers(
+      bootstrap,
+      fixtures,
+      event.id,
+      process,
+      false,
+    );
+    const eligible = ranked.filter(
+      (player) => player.availability >= 75 && player.fixtureCount > 0,
+    );
+    const counts = new Map<number, number>();
+    for (const fixture of fixtures.filter((item) => item.event === event.id)) {
+      counts.set(fixture.team_h, (counts.get(fixture.team_h) ?? 0) + 1);
+      counts.set(fixture.team_a, (counts.get(fixture.team_a) ?? 0) + 1);
+    }
+
+    const doubleTeams = bootstrap.teams
+      .filter((team) => (counts.get(team.id) ?? 0) > 1)
+      .map((team) => team.short_name);
+    const blankTeams = bootstrap.teams
+      .filter((team) => (counts.get(team.id) ?? 0) === 0)
+      .map((team) => team.short_name);
+
+    return {
+      eventId: event.id,
+      name: event.name,
+      deadline: event.deadline_time,
+      captain: eligible[0] ?? null,
+      viceCaptain: eligible[1] ?? null,
+      topTransfers: eligible.slice(0, 4),
+      doubleTeams,
+      blankTeams,
+    } satisfies FutureGameweekPlan;
+  });
+
+  const tripleCandidate = [...futurePlan]
+    .filter((plan) => plan.captain)
+    .sort(
+      (a, b) =>
+        (b.captain?.assistantScore ?? 0) -
+        (a.captain?.assistantScore ?? 0),
+    )[0];
+
+  const freeHitCandidate = [...futurePlan]
+    .sort(
+      (a, b) =>
+        b.blankTeams.length + b.doubleTeams.length * 1.5 -
+        (a.blankTeams.length + a.doubleTeams.length * 1.5),
+    )[0];
+
+  const benchBoostCandidate = [...futurePlan]
+    .sort((a, b) => b.doubleTeams.length - a.doubleTeams.length)[0];
+
+  const teamRunScores = bootstrap.teams.map((team) => {
+    const eventScores = upcomingEvents.map((event) => {
+      const fixturesForEvent = fixturesForTeam(team.id, event.id, fixtures);
+      if (!fixturesForEvent.length) return 0;
+      return fixturesForEvent.reduce((sum, fixture) => {
+        const opponentId =
+          fixture.team_h === team.id ? fixture.team_a : fixture.team_h;
+        const opponent = teamById.get(opponentId);
+        const ownProcess = process.get(canonicalTeam(team.name));
+        const oppProcess = opponent
+          ? process.get(canonicalTeam(opponent.name))
+          : undefined;
+        return (
+          sum +
+          Math.sqrt(
+            (ownProcess?.attackIndex ?? 1) /
+              (oppProcess?.defenceIndex ?? 1),
+          )
+        );
+      }, 0);
+    });
+    return {
+      team: team.short_name,
+      total: eventScores.reduce((sum, value) => sum + value, 0),
+    };
+  }).sort((a,b)=>b.total-a.total);
+
+  const chipRadar: ChipSignal[] = [
+    {
+      chip: "TRIPLE CAPTAIN",
+      status:
+        tripleCandidate?.captain?.fixtureCount &&
+        tripleCandidate.captain.fixtureCount > 1
+          ? "STRONG"
+          : (tripleCandidate?.captain?.assistantScore ?? 0) >= 6
+            ? "WATCH"
+            : "HOLD",
+      eventName: tripleCandidate?.name ?? null,
+      reason: tripleCandidate?.captain
+        ? `${tripleCandidate.captain.name} leads the five-Gameweek captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}.`
+        : "No standout captain window yet.",
+    },
+    {
+      chip: "BENCH BOOST",
+      status:
+        (benchBoostCandidate?.doubleTeams.length ?? 0) >= 4
+          ? "STRONG"
+          : (benchBoostCandidate?.doubleTeams.length ?? 0) >= 2
+            ? "WATCH"
+            : "HOLD",
+      eventName: benchBoostCandidate?.name ?? null,
+      reason: benchBoostCandidate
+        ? `${benchBoostCandidate.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s). Bench Boost becomes more attractive as doubles accumulate.`
+        : "No obvious Bench Boost window yet.",
+    },
+    {
+      chip: "FREE HIT",
+      status:
+        (freeHitCandidate?.blankTeams.length ?? 0) >= 6
+          ? "STRONG"
+          : (freeHitCandidate?.blankTeams.length ?? 0) >= 3
+            ? "WATCH"
+            : "HOLD",
+      eventName: freeHitCandidate?.name ?? null,
+      reason: freeHitCandidate
+        ? `${freeHitCandidate.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) on the current schedule.`
+        : "No major blank/double disruption in the next five Gameweeks.",
+    },
+    {
+      chip: "WILDCARD",
+      status: "WATCH",
+      eventName: futurePlan[0]?.name ?? null,
+      reason: `Use the next five-Gameweek fixture swing rather than one bad week. Current strongest attacking runs include ${teamRunScores.slice(0,3).map((item)=>item.team).join(", ") || "no clear cluster yet"}.`,
+    },
+  ];
+
+  return { futurePlan, chipRadar };
 }
 
 async function analyseTeam(
@@ -575,10 +782,18 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
       teamError: null,
       baseError,
       dataRetrievedAt,
+      futurePlan: [],
+      chipRadar: [],
     };
   }
 
   const { current, next } = currentAndNext(bootstrap.events);
+  const { futurePlan, chipRadar } = buildFuturePlan(
+    bootstrap,
+    fixtures,
+    process,
+    next,
+  );
   const ranked = rankPlayers(
     bootstrap,
     fixtures,
@@ -624,5 +839,7 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     teamError,
     baseError,
     dataRetrievedAt,
+    futurePlan,
+    chipRadar,
   };
 }
