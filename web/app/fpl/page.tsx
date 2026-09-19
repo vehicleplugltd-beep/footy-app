@@ -210,10 +210,10 @@ export default async function FplPage({
         <div className="section-head">
           <div>
             <span className="eyebrow">Plan ahead</span>
-            <h2>Next 5 Gameweeks</h2>
+            <h2>Next 8 Gameweeks</h2>
           </div>
           <p>
-            Future captaincy and fixture windows using current player form,
+            Future captaincy, transfer and fixture windows using current player form,
             Footy team process and scheduled opponents.
           </p>
         </div>
@@ -275,6 +275,13 @@ export default async function FplPage({
             A planning signal, not an automatic command. Double/blank fixtures
             can change as the schedule is updated.
           </p>
+        </div>
+
+        <div className="chip-rule-banner">
+          <strong>2026/27 chip rules:</strong> you get a Wildcard, Free Hit,
+          Triple Captain and Bench Boost in each half of the season. The first
+          set expires at the Gameweek 19 deadline; the second set is available
+          from Gameweek 20. Only one chip can be played in a Gameweek.
         </div>
 
         <div className="chip-grid">
