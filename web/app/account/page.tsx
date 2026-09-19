@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-import { decimalToFractional, fractionalToDecimal } from "@/lib/odds";
+import { decimalToFractional, fractionalToDecimal, minimumTakeToFractional } from "@/lib/odds";
 
 type Profile = {
   user_id: string;
