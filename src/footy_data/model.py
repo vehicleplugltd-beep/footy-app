@@ -62,3 +62,26 @@ def minimum_take_price(
         raise ValueError("uncertainty_haircut must be in [0, 1).")
     conservative_p = probability * (1 - uncertainty_haircut)
     return (1 + target_ev) / conservative_p
+
+
+def calibrate_expected_goals(
+    xg: ExpectedGoals,
+    beta: float = 1.0,
+    home_scale: float = 1.0,
+    away_scale: float = 1.0,
+) -> ExpectedGoals:
+    """
+    Apply a transparent power calibration to model scoring intensities.
+
+    Parameters should be fitted on historical outcomes without bookmaker
+    prices, then frozen before out-of-sample evaluation.
+    """
+    if beta <= 0:
+        raise ValueError("beta must be positive.")
+    if home_scale <= 0 or away_scale <= 0:
+        raise ValueError("lambda scales must be positive.")
+
+    return ExpectedGoals(
+        home=float(home_scale * (xg.home ** beta)),
+        away=float(away_scale * (xg.away ** beta)),
+    )
