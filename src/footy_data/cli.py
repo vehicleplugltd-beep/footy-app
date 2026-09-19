@@ -209,6 +209,82 @@ def command_odds_import(args: argparse.Namespace) -> None:
     }, indent=2))
 
 
+
+def command_football_data_odds_ingest(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    footy = reader.historical_match_team_metrics()
+    if footy.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    footy = footy[footy["league"] == args.league].copy()
+    if args.season:
+        wanted = {str(s) for s in args.season}
+        footy = footy[footy["season"].astype(str).isin(wanted)].copy()
+    if footy.empty:
+        raise RuntimeError("No Footy rows match the requested odds scope.")
+
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=args.season,
+    )
+    external = source.football_data_matches()
+
+    specs = [
+        ("Market Average", "snapshot", ("AvgH", "AvgD", "AvgA")),
+        ("Market Average", "close", ("AvgCH", "AvgCD", "AvgCA")),
+        ("Market Maximum", "snapshot", ("MaxH", "MaxD", "MaxA")),
+        ("Market Maximum", "close", ("MaxCH", "MaxCD", "MaxCA")),
+        ("Bet365", "snapshot", ("B365H", "B365D", "B365A")),
+        ("Bet365", "close", ("B365CH", "B365CD", "B365CA")),
+        ("William Hill", "snapshot", ("WHH", "WHD", "WHA")),
+    ]
+
+    writer = SupabaseRESTWriter()
+    reports = []
+    total_rows = 0
+
+    for bookmaker, price_kind, columns in specs:
+        if not set(columns).issubset(external.columns):
+            continue
+
+        prices, report = normalise_1x2_prices(
+            external=external,
+            footy_metrics=footy,
+            bookmaker=bookmaker,
+            source="football-data.co.uk",
+            price_kind=price_kind,
+            date_col="date",
+            home_team_col="home_team",
+            away_team_col="away_team",
+            home_odds_col=columns[0],
+            draw_odds_col=columns[1],
+            away_odds_col=columns[2],
+        )
+
+        if report.match_rate < args.min_match_rate:
+            raise RuntimeError(
+                f"{bookmaker} {price_kind} reconciliation below threshold: "
+                + json.dumps(report.__dict__)
+            )
+
+        writer.upsert_bookmaker_prices(frame_records(prices))
+        total_rows += len(prices)
+        reports.append({
+            "bookmaker": bookmaker,
+            "price_kind": price_kind,
+            **report.__dict__,
+        })
+
+    if not reports:
+        raise RuntimeError("Football-Data supplied no supported 1X2 price columns.")
+
+    print(json.dumps({
+        "status": "ok",
+        "price_rows_upserted": total_rows,
+        "datasets": reports,
+    }, indent=2))
+
+
 def command_value_backtest(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     predictions = reader.historical_predictions(args.model_version)
@@ -478,6 +554,27 @@ def main() -> None:
         default=0.95,
     )
 
+
+    football_data_odds = sub.add_parser(
+        "football-data-odds-ingest",
+        help="Fetch and ingest Football-Data.co.uk historical 1X2 prices",
+    )
+    football_data_odds.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
+    football_data_odds.add_argument(
+        "--season",
+        action="append",
+        required=True,
+        help="Football-Data season identifier, e.g. 2223.",
+    )
+    football_data_odds.add_argument(
+        "--min-match-rate",
+        type=float,
+        default=0.95,
+    )
+
     value_backtest = sub.add_parser(
         "value-backtest",
         help="Backtest stored Footy probabilities against imported 1X2 prices",
@@ -533,6 +630,8 @@ def main() -> None:
         command_external_elo_import(args)
     elif args.command == "odds-import":
         command_odds_import(args)
+    elif args.command == "football-data-odds-ingest":
+        command_football_data_odds_ingest(args)
     elif args.command == "value-backtest":
         command_value_backtest(args)
     elif args.command == "calibrate":
