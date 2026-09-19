@@ -8,10 +8,12 @@ import type {
 
 const MODEL_VERSION = "v7-r16-p50-v20";
 
+const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
+
 function config() {
-  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  if (!key) return null;
   return { url, key };
 }
 
