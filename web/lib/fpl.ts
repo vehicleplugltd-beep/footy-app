@@ -536,7 +536,7 @@ function buildFuturePlan(
   const upcomingEvents = bootstrap.events
     .filter((event) => event.id >= nextEvent.id && !event.finished)
     .sort((a, b) => a.id - b.id)
-    .slice(0, 5);
+    .slice(0, 8);
 
   const teamById = new Map(bootstrap.teams.map((team) => [team.id, team]));
 
