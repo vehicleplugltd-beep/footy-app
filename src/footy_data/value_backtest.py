@@ -128,3 +128,116 @@ def assess_1x2_history(
             )
 
     return pd.DataFrame(rows)
+
+
+def summarize_qualified_1x2(
+    assessed: pd.DataFrame,
+    outcomes: pd.DataFrame,
+) -> tuple[dict, pd.DataFrame]:
+    """
+    Settle qualifying historical 1X2 selections.
+
+    If more than one selection clears the take-price threshold in the same
+    match, keep only the largest raw-EV edge. This prevents correlated
+    multi-selection stacking from overstating the backtest.
+    """
+    required_assessed = {
+        "match_id", "selection", "decimal_odds", "raw_ev",
+        "probability_edge", "qualifies", "market_overround",
+    }
+    missing = required_assessed - set(assessed.columns)
+    if missing:
+        raise ValueError(f"Assessed frame missing: {sorted(missing)}")
+
+    required_outcomes = {"match_id", "home_goals", "away_goals"}
+    missing = required_outcomes - set(outcomes.columns)
+    if missing:
+        raise ValueError(f"Outcome frame missing: {sorted(missing)}")
+
+    bets = assessed[assessed["qualifies"]].copy()
+    if bets.empty:
+        return {
+            "bets": 0,
+            "strike_rate": None,
+            "average_odds": None,
+            "roi": None,
+            "average_raw_ev": None,
+            "average_probability_edge": None,
+            "average_market_overround": None,
+            "by_selection": {},
+            "by_edge_bucket": {},
+        }, bets
+
+    bets = (
+        bets.sort_values(
+            ["match_id", "raw_ev"],
+            ascending=[True, False],
+        )
+        .drop_duplicates("match_id", keep="first")
+    )
+    bets = bets.merge(
+        outcomes[["match_id", "home_goals", "away_goals"]],
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+
+    def won(row) -> int:
+        if row["selection"] == "home":
+            return int(row["home_goals"] > row["away_goals"])
+        if row["selection"] == "draw":
+            return int(row["home_goals"] == row["away_goals"])
+        if row["selection"] == "away":
+            return int(row["home_goals"] < row["away_goals"])
+        raise ValueError(f"Unknown 1X2 selection: {row['selection']}")
+
+    bets["won"] = bets.apply(won, axis=1)
+    bets["profit"] = (
+        bets["won"] * (bets["decimal_odds"] - 1.0)
+        - (1 - bets["won"])
+    )
+
+    bets["edge_bucket"] = pd.cut(
+        bets["raw_ev"],
+        bins=[-float("inf"), 0.05, 0.10, 0.15, float("inf")],
+        labels=["<5%", "5-10%", "10-15%", "15%+"],
+        right=False,
+    )
+
+    def group_summary(group: pd.DataFrame) -> dict:
+        return {
+            "bets": int(len(group)),
+            "strike_rate": float(group["won"].mean()),
+            "average_odds": float(group["decimal_odds"].mean()),
+            "roi": float(group["profit"].mean()),
+            "average_raw_ev": float(group["raw_ev"].mean()),
+            "average_probability_edge": float(
+                group["probability_edge"].mean()
+            ),
+        }
+
+    by_selection = {
+        str(name): group_summary(group)
+        for name, group in bets.groupby("selection", observed=True)
+    }
+    by_edge_bucket = {
+        str(name): group_summary(group)
+        for name, group in bets.groupby("edge_bucket", observed=True)
+    }
+
+    summary = {
+        "bets": int(len(bets)),
+        "strike_rate": float(bets["won"].mean()),
+        "average_odds": float(bets["decimal_odds"].mean()),
+        "roi": float(bets["profit"].mean()),
+        "average_raw_ev": float(bets["raw_ev"].mean()),
+        "average_probability_edge": float(
+            bets["probability_edge"].mean()
+        ),
+        "average_market_overround": float(
+            bets["market_overround"].mean()
+        ),
+        "by_selection": by_selection,
+        "by_edge_bucket": by_edge_bucket,
+    }
+    return summary, bets
