@@ -435,6 +435,9 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         lambda_beta=args.lambda_beta,
         home_lambda_scale=args.home_lambda_scale,
         away_lambda_scale=args.away_lambda_scale,
+        process_span=args.process_span,
+        process_prior_weight=args.process_prior_weight,
+        venue_split_weight=args.venue_split_weight,
     )
     if predictions.empty:
         raise RuntimeError("Upcoming fixtures produced no model predictions.")
@@ -837,6 +840,24 @@ def main() -> None:
         type=float,
         default=1.0,
         help="Multiplicative away expected-goal calibration.",
+    )
+    calibrate.add_argument(
+        "--process-span",
+        type=int,
+        default=8,
+        help="EWM span for recent process form.",
+    )
+    calibrate.add_argument(
+        "--process-prior-weight",
+        type=float,
+        default=0.35,
+        help="Weight on expanding team prior versus recent process.",
+    )
+    calibrate.add_argument(
+        "--venue-split-weight",
+        type=float,
+        default=0.35,
+        help="Weight on home/away split process versus overall process.",
     )
 
     args = parser.parse_args()
