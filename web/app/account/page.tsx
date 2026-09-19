@@ -155,7 +155,7 @@ export default function AccountPage() {
       return;
     }
 
-    if (data.session) {
+    if (data.session && data.user) {
       await supabase
         .from("footy_profiles")
         .update({
@@ -163,7 +163,7 @@ export default function AccountPage() {
           terms_accepted_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("user_id", data.user?.id);
+        .eq("user_id", data.user.id);
       setMessage("Account created.");
       await refresh();
       return;
