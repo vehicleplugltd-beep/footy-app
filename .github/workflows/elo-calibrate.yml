@@ -1,0 +1,41 @@
+name: elo-calibrate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/elo-calibrate.yml"
+
+jobs:
+  elo-calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Ingest historical Club Elo
+        run: |
+          footy-data clubelo-ingest \
+            --league "ENG-Premier League" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --season "2526"
+      - name: Calibrate Elo model
+        run: |
+          footy-data calibrate \
+            --league "ENG-Premier League" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --season "2526" \
+            --model-version "baseline-v2-elo" \
+            --use-elo
