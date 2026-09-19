@@ -170,7 +170,12 @@ def build_walk_forward_predictions(
         away_attack_xg = _process_value(away, "xg")
         away_defence_xg = _process_value(away, "xga")
 
-        if process_mode == "npxg_blend":
+        if process_mode == "schedule_adjusted":
+            home_attack = _process_value(home, "xg_sched")
+            home_defence = _process_value(home, "xga_sched")
+            away_attack = _process_value(away, "xg_sched")
+            away_defence = _process_value(away, "xga_sched")
+        elif process_mode == "npxg_blend":
             home_attack_np = _process_value(home, "npxg")
             home_defence_np = _process_value(home, "npxga")
             away_attack_np = _process_value(away, "npxg")
