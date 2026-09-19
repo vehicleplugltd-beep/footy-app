@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BettingAgeGate } from "@/components/age-gate";
 import { BankrollCalculator, PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
@@ -39,6 +40,7 @@ export default async function Home() {
 
   return (
     <main>
+      <BettingAgeGate />
       <nav className="nav shell">
         <div className="brand">
           <span className="brand-mark">F</span>
@@ -46,7 +48,8 @@ export default async function Home() {
         </div>
         <div className="nav-right">
           <Link className="nav-fpl-link" href="/fpl">Free FPL Assistant</Link>
-          <a className="nav-pro-link" href="#price-checker">Betting tools</a>
+          <Link className="nav-pro-link" href="/pro">Footy Pro</Link>
+          <Link className="nav-pro-link" href="/account">Account</Link>
           <span className="live-dot" />
           <StatusPill status={status} />
         </div>
