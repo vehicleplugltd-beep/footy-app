@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import requests
 
 
-BASE = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
+BASE = "https://raw.githubusercontent.com/hudl/open-data/master/data"
 
 
 @dataclass
