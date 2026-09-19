@@ -7,7 +7,7 @@ from .features import (
     add_home_away_process,
     add_schedule_adjusted_process,
 )
-from .model import market_probabilities
+from .model import market_probabilities, calibrate_expected_goals
 from .xg_engine import TeamProcess, LeagueEnvironment, estimate_match_xg
 
 
@@ -101,6 +101,9 @@ def build_walk_forward_predictions(
     use_elo: bool = False,
     process_mode: str = "xg",
     npxg_weight: float = 0.70,
+    lambda_beta: float = 1.0,
+    home_lambda_scale: float = 1.0,
+    away_lambda_scale: float = 1.0,
 ) -> pd.DataFrame:
     """
     Produce historical pre-match predictions with strict temporal ordering.
@@ -260,7 +263,13 @@ def build_walk_forward_predictions(
             ),
             use_elo=bool(elo_available),
         )
-        probs = market_probabilities(estimate.expected_goals)
+        calibrated_xg = calibrate_expected_goals(
+            estimate.expected_goals,
+            beta=lambda_beta,
+            home_scale=home_lambda_scale,
+            away_scale=away_lambda_scale,
+        )
+        probs = market_probabilities(calibrated_xg)
 
         hg = int(home["goals"])
         ag = int(away["goals"])
@@ -274,8 +283,8 @@ def build_walk_forward_predictions(
             "away_team": away["team"],
             "home_goals": hg,
             "away_goals": ag,
-            "model_home_xg": estimate.expected_goals.home,
-            "model_away_xg": estimate.expected_goals.away,
+            "model_home_xg": calibrated_xg.home,
+            "model_away_xg": calibrated_xg.away,
             "uncertainty_haircut": estimate.uncertainty_haircut,
             "home_elo": float(home_elo) if elo_available else None,
             "away_elo": float(away_elo) if elo_available else None,
