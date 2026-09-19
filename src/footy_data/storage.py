@@ -30,6 +30,12 @@ TEAM_RATING_FIELDS = {
     "team", "rating_type", "rating_value", "rating_date", "source",
 }
 
+MODEL_OUTPUT_FIELDS = {
+    "match_id", "model_version", "home_xg", "away_xg",
+    "market", "selection", "model_probability", "fair_odds",
+    "uncertainty_haircut", "minimum_take_price",
+}
+
 HISTORICAL_PREDICTION_FIELDS = {
     "match_id", "model_version",
     "model_home_xg", "model_away_xg",
@@ -160,6 +166,29 @@ class SupabaseRESTWriter:
             "match_id,model_version",
             HISTORICAL_PREDICTION_FIELDS,
         )
+
+    def insert_model_outputs(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        payload = [
+            _project_row(row, MODEL_OUTPUT_FIELDS)
+            for row in rows
+        ]
+        if not payload:
+            return
+        response = requests.post(
+            f"{self.url}/rest/v1/footy_model_outputs",
+            headers={
+                "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
 
     def upsert_bookmaker_prices(
         self,
@@ -332,6 +361,24 @@ class SupabaseRESTReader:
         if rows.empty:
             return rows
         return rows[rows["model_version"] == model_version].copy()
+
+    def model_outputs(
+        self,
+        model_version: str | None = None,
+    ) -> pd.DataFrame:
+        rows = pd.DataFrame(self._get_all(
+            "footy_model_outputs",
+            (
+                "id,match_id,model_version,home_xg,away_xg,market,"
+                "selection,model_probability,fair_odds,"
+                "uncertainty_haircut,minimum_take_price,created_at"
+            ),
+        ))
+        if rows.empty or model_version is None:
+            return rows
+        return rows[
+            rows["model_version"].astype(str) == str(model_version)
+        ].copy()
 
     def bookmaker_prices(
         self,
