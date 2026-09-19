@@ -8,11 +8,11 @@ const SUPABASE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   "sb_publishable_w9bbRaugaYY2CnyO3DMd9g_LrU0xVcY";
 
-let browserClient: ReturnType<typeof createClient> | null = null;
+let browserClient: ReturnType<typeof createClient<any>> | null = null;
 
 export function getSupabaseBrowser() {
   if (!browserClient) {
-    browserClient = createClient(
+    browserClient = createClient<any>(
       SUPABASE_URL,
       SUPABASE_PUBLISHABLE_KEY,
       {
