@@ -3,13 +3,24 @@ from __future__ import annotations
 import argparse
 import json
 
+import pandas as pd
+
 from .sources.soccerdata_source import SoccerDataSource
 from .normalizers.understat import (
     normalise_understat,
     normalise_understat_matches,
 )
 from .quality import assess_match_team_metrics
-from .storage import SupabaseRESTWriter, frame_records, MATCH_FIELDS, MATCH_TEAM_METRIC_FIELDS
+from .storage import (
+    SupabaseRESTWriter,
+    SupabaseRESTReader,
+    frame_records,
+    MATCH_FIELDS,
+    MATCH_TEAM_METRIC_FIELDS,
+    insert_backtest_run,
+)
+from .walk_forward import build_walk_forward_predictions
+from .backtest import binary_metrics, multiclass_log_loss, calibration_records
 
 
 def command_sources() -> None:
@@ -76,6 +87,104 @@ def command_understat_ingest(args: argparse.Namespace) -> None:
     }, indent=2))
 
 
+def command_calibrate(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    frame = reader.historical_match_team_metrics()
+    if frame.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    frame = frame[frame["league"] == args.league].copy()
+    if args.season:
+        wanted = {str(s) for s in args.season}
+        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
+
+    if frame.empty:
+        raise RuntimeError("No historical rows match the requested calibration scope.")
+
+    predictions = build_walk_forward_predictions(
+        frame,
+        min_team_matches=args.min_team_matches,
+    )
+    if predictions.empty:
+        raise RuntimeError("Walk-forward calibration produced no predictions.")
+
+    home_brier, home_log = binary_metrics(
+        predictions["home_win_probability"],
+        predictions["home_win_actual"],
+    )
+    over_brier, over_log = binary_metrics(
+        predictions["over_2_5_probability"],
+        predictions["over_2_5_actual"],
+    )
+    btts_brier, btts_log = binary_metrics(
+        predictions["btts_yes_probability"],
+        predictions["btts_yes_actual"],
+    )
+
+    actual_1x2 = pd.Series(
+        [
+            "home" if hg > ag else "away" if hg < ag else "draw"
+            for hg, ag in zip(
+                predictions["home_goals"],
+                predictions["away_goals"],
+            )
+        ],
+        index=predictions.index,
+    )
+
+    one_x_two_log = multiclass_log_loss(
+        pd.DataFrame({
+            "home": predictions["home_win_probability"],
+            "draw": predictions["draw_probability"],
+            "away": predictions["away_win_probability"],
+        }),
+        actual_1x2,
+    )
+
+    seasons = sorted(predictions["season"].astype(str).unique().tolist())
+    calibration = {
+        "home_win": calibration_records(
+            predictions["home_win_probability"],
+            predictions["home_win_actual"],
+        ),
+        "over_2_5": calibration_records(
+            predictions["over_2_5_probability"],
+            predictions["over_2_5_actual"],
+        ),
+        "btts_yes": calibration_records(
+            predictions["btts_yes_probability"],
+            predictions["btts_yes_actual"],
+        ),
+    }
+
+    result = {
+        "model_version": args.model_version,
+        "league": args.league,
+        "seasons": seasons,
+        "prediction_rows": int(len(predictions)),
+        "home_win_brier": home_brier,
+        "home_win_log_loss": home_log,
+        "over_2_5_brier": over_brier,
+        "over_2_5_log_loss": over_log,
+        "btts_brier": btts_brier,
+        "btts_log_loss": btts_log,
+        "result_1x2_log_loss": one_x_two_log,
+        "calibration": calibration,
+    }
+
+    writer = SupabaseRESTWriter()
+    insert_backtest_run(writer, result)
+
+    printable = dict(result)
+    printable["calibration"] = {
+        key: [
+            row for row in rows if row.get("bets", 0) > 0
+        ]
+        for key, rows in calibration.items()
+    }
+    print(json.dumps(printable, indent=2))
+
+
 def _add_understat_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--league", action="append", required=True)
     parser.add_argument("--season", action="append", required=True)
@@ -100,6 +209,29 @@ def main() -> None:
     )
     _add_understat_args(ingest)
 
+    calibrate = sub.add_parser(
+        "calibrate",
+        help="Run walk-forward probability calibration from stored history",
+    )
+    calibrate.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
+    calibrate.add_argument(
+        "--season",
+        action="append",
+        help="Stored season identifier, e.g. 2223. Repeat for multiple seasons.",
+    )
+    calibrate.add_argument(
+        "--model-version",
+        default="baseline-v1",
+    )
+    calibrate.add_argument(
+        "--min-team-matches",
+        type=int,
+        default=5,
+    )
+
     args = parser.parse_args()
     if args.command == "sources":
         command_sources()
@@ -107,6 +239,8 @@ def main() -> None:
         command_understat(args)
     elif args.command == "understat-ingest":
         command_understat_ingest(args)
+    elif args.command == "calibrate":
+        command_calibrate(args)
 
 
 if __name__ == "__main__":
