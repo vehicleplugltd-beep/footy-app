@@ -27,6 +27,7 @@ from .elo import ratings_for_match_dates
 from .external_elo import ratings_from_match_dataset
 from .odds_import import normalise_1x2_prices
 from .value_backtest import assess_1x2_history, summarize_qualified_1x2
+from .diagnostics import upcoming_process_diagnostics
 from .upcoming import (
     normalise_upcoming_fixtures,
     build_upcoming_predictions,
@@ -360,6 +361,40 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     print(json.dumps(printable, indent=2))
 
 
+def command_diagnose_upcoming(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    history = reader.historical_match_team_metrics()
+    history = history[history["league"] == args.league].copy()
+    if history.empty:
+        raise RuntimeError("No historical Footy data found for league.")
+
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season],
+    )
+    schedule = source.understat_schedule()
+    fixtures = normalise_upcoming_fixtures(
+        schedule,
+        horizon_days=args.horizon_days,
+    )
+
+    diagnostics = []
+    for row in fixtures.to_dict(orient="records"):
+        diagnostics.append({
+            "match_id": row["match_id"],
+            "match_date": str(row["match_date"]),
+            "home_team": row["home_team"],
+            "away_team": row["away_team"],
+            "process": upcoming_process_diagnostics(history, row),
+        })
+
+    print(json.dumps({
+        "status": "ok",
+        "fixtures": len(diagnostics),
+        "diagnostics": diagnostics,
+    }, indent=2, default=str))
+
+
 def command_predict_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     history = reader.historical_match_team_metrics()
@@ -683,6 +718,21 @@ def main() -> None:
     value_backtest.add_argument("--source")
     value_backtest.add_argument("--target-ev", type=float, default=0.02)
 
+    diagnose_upcoming = sub.add_parser(
+        "diagnose-upcoming",
+        help="Print pre-match process diagnostics for upcoming fixtures",
+    )
+    diagnose_upcoming.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
+    diagnose_upcoming.add_argument("--season", required=True)
+    diagnose_upcoming.add_argument(
+        "--horizon-days",
+        type=int,
+        default=10,
+    )
+
     predict_upcoming = sub.add_parser(
         "predict-upcoming",
         help="Price upcoming Understat fixtures from stored Footy history",
@@ -806,6 +856,8 @@ def main() -> None:
         command_football_data_odds_ingest(args)
     elif args.command == "value-backtest":
         command_value_backtest(args)
+    elif args.command == "diagnose-upcoming":
+        command_diagnose_upcoming(args)
     elif args.command == "predict-upcoming":
         command_predict_upcoming(args)
     elif args.command == "calibrate":
