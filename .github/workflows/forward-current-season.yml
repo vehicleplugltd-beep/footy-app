@@ -29,6 +29,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e .
       - name: Refresh current Premier League process data
+        continue-on-error: true
         run: |
           footy-data understat-ingest \
             --league "ENG-Premier League" \
@@ -50,3 +51,23 @@ jobs:
             --lambda-beta 1.05 \
             --home-lambda-scale 0.985953318340048 \
             --away-lambda-scale 1.12646161962879
+
+      - name: Price upcoming fixtures with v7
+        run: |
+          footy-data predict-upcoming \
+            --league "ENG-Premier League" \
+            --season "2026" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
+            --model-version "v7-r16-p50-v20" \
+            --horizon-days 10 \
+            --target-ev 0.02 \
+            --lambda-beta 1.0 \
+            --home-lambda-scale 1.0 \
+            --away-lambda-scale 1.0 \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20
