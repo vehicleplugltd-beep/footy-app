@@ -127,6 +127,29 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="shell quick-scan" aria-label="Footy quick scan">
+        <div>
+          <span>Fixtures priced</span>
+          <strong>{board.length}</strong>
+          <small>upcoming modelled matches</small>
+        </div>
+        <div>
+          <span>Odds format</span>
+          <strong>Fractional</strong>
+          <small>UK-friendly throughout</small>
+        </div>
+        <div>
+          <span>1X2 model</span>
+          <strong>{status}</strong>
+          <small>{validation?.sample_size?.toLocaleString("en-GB") ?? "—"} historical predictions</small>
+        </div>
+        <div>
+          <span>Fastest action</span>
+          <strong>Check a price</strong>
+          <small>enter 7/4, 6/5, EVS etc.</small>
+        </div>
+      </section>
+
       <section className="shell product-promise">
         <article>
           <span className="promise-number">01</span>
@@ -169,7 +192,11 @@ export default async function Home() {
             <span className="eyebrow">Upcoming</span>
             <h2>Today&apos;s pricing board</h2>
           </div>
-          <p>Independent v7 fair prices · latest prediction per fixture · London time</p>
+          <div className="board-legend">
+            <span><b>Fair</b> model price</span>
+            <span><b>Take</b> minimum interesting price</span>
+            <span>Fractional odds · London time</span>
+          </div>
         </div>
 
         <div className="match-list">
