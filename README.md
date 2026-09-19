@@ -117,7 +117,7 @@ Provider-specific raw data is normalised into one row per team per match. Every
 normalised observation records its source and retrieval timestamp. Team-name
 fuzzy matching is suggestion-only: ambiguous clubs must be resolved explicitly.
 
-The SQL starter schema is in `sql/schema.sql`.
+The SQL schema is in `sql/schema.sql`. In the shared Supabase project, Footy is isolated into `footy_*` tables so existing VehiclePlug tables are untouched.
 
 ## Repository layout
 
@@ -140,11 +140,26 @@ docs/
 
 ## Next build stage
 
-1. Persist normalised history in PostgreSQL/Supabase.
-2. Pull several historical seasons.
+1. Add GitHub Actions secrets for the server-side Supabase writer and run the first historical ingestion.
+2. Pull several historical seasons into the isolated `footy_*` tables.
 3. Join historical bookmaker prices.
 4. Run strictly time-split out-of-sample backtests.
 5. Calibrate league scoring environments and uncertainty haircuts.
 6. Add lineup/injury/context inputs.
 7. Build a daily match scanner that checks market prices only after the
    football probability model is frozen.
+
+
+## Supabase ingestion
+
+The repository includes a manual GitHub Actions workflow:
+`.github/workflows/ingest-understat.yml`.
+
+It requires two GitHub repository secrets:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+The service-role key is server-side only and must never be committed or exposed
+to a browser/client application. Footy tables are RLS-enabled and client roles
+have no direct access by default.
