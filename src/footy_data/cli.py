@@ -734,6 +734,11 @@ def main() -> None:
     )
     diagnose_upcoming.add_argument("--season", required=True)
     diagnose_upcoming.add_argument(
+        "--history-season",
+        action="append",
+        help="Stored Footy season used as diagnostic history.",
+    )
+    diagnose_upcoming.add_argument(
         "--horizon-days",
         type=int,
         default=10,
@@ -751,6 +756,11 @@ def main() -> None:
         "--season",
         required=True,
         help="soccerdata/Understat season identifier, e.g. 2026.",
+    )
+    predict_upcoming.add_argument(
+        "--history-season",
+        action="append",
+        help="Stored Footy season used as model history. Repeat as needed.",
     )
     predict_upcoming.add_argument(
         "--model-version",
