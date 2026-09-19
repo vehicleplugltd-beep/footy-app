@@ -22,6 +22,7 @@ from .storage import (
 from .walk_forward import build_walk_forward_predictions
 from .backtest import binary_metrics, multiclass_log_loss, calibration_records
 from .elo import ratings_for_match_dates
+from .external_elo import ratings_from_match_dataset
 
 
 def command_sources() -> None:
@@ -119,6 +120,42 @@ def command_clubelo_ingest(args: argparse.Namespace) -> None:
         "teams": int(ratings["team"].nunique()),
         "first_rating_date": str(ratings["rating_date"].min()),
         "last_rating_date": str(ratings["rating_date"].max()),
+    }, indent=2))
+
+
+def command_external_elo_import(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    frame = reader.historical_match_team_metrics()
+    if frame.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    frame = frame[frame["league"] == args.league].copy()
+    if args.season:
+        wanted = {str(s) for s in args.season}
+        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
+    if frame.empty:
+        raise RuntimeError("No Footy rows match the requested external Elo scope.")
+
+    external = pd.read_csv(args.csv)
+    ratings, report = ratings_from_match_dataset(
+        external,
+        frame,
+        division=args.division,
+        source=args.source,
+    )
+    if report["match_rate"] < args.min_match_rate:
+        raise RuntimeError(
+            "External Elo reconciliation below threshold: "
+            + json.dumps(report)
+        )
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_team_ratings(frame_records(ratings))
+
+    print(json.dumps({
+        "status": "ok",
+        **report,
+        "source": args.source,
     }, indent=2))
 
 
@@ -261,6 +298,24 @@ def main() -> None:
         help="Stored season identifier, e.g. 2223. Repeat for multiple seasons.",
     )
 
+    external_elo = sub.add_parser(
+        "external-elo-import",
+        help="Import licensed pre-match Elo values from a local CSV",
+    )
+    external_elo.add_argument("--csv", required=True)
+    external_elo.add_argument("--league", default="ENG-Premier League")
+    external_elo.add_argument("--division", default="E0")
+    external_elo.add_argument("--season", action="append")
+    external_elo.add_argument(
+        "--source",
+        default="xgabora-club-football-match-data",
+    )
+    external_elo.add_argument(
+        "--min-match-rate",
+        type=float,
+        default=0.95,
+    )
+
     calibrate = sub.add_parser(
         "calibrate",
         help="Run walk-forward probability calibration from stored history",
@@ -298,6 +353,8 @@ def main() -> None:
         command_understat_ingest(args)
     elif args.command == "clubelo-ingest":
         command_clubelo_ingest(args)
+    elif args.command == "external-elo-import":
+        command_external_elo_import(args)
     elif args.command == "calibrate":
         command_calibrate(args)
 
