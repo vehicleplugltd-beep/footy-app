@@ -19,5 +19,8 @@ dependencies = [
 research = ["socceraction>=1.5"]
 dev = ["pytest>=8"]
 
+[project.scripts]
+footy-data = "footy_data.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
