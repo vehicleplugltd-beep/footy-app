@@ -110,3 +110,45 @@ def closing_line_value(
     bet = pd.to_numeric(bet_odds, errors="raise")
     close = pd.to_numeric(closing_odds, errors="raise")
     return bet / close - 1.0
+
+
+def multiclass_log_loss(
+    probabilities: pd.DataFrame,
+    actual: pd.Series,
+    classes: tuple[str, ...] = ("home", "draw", "away"),
+) -> float:
+    """
+    Multiclass log loss for mutually exclusive outcomes.
+
+    probabilities must contain one column per class and each row should sum
+    to one. actual contains the matching class labels.
+    """
+    missing = set(classes) - set(probabilities.columns)
+    if missing:
+        raise ValueError(f"Probability frame missing classes: {sorted(missing)}")
+
+    p = probabilities.loc[:, list(classes)].astype(float).clip(1e-9, 1.0)
+    row_sums = p.sum(axis=1)
+    p = p.div(row_sums, axis=0)
+
+    labels = actual.astype(str)
+    if not labels.isin(classes).all():
+        bad = sorted(set(labels) - set(classes))
+        raise ValueError(f"Unexpected actual classes: {bad}")
+
+    chosen = pd.Series(
+        [p.loc[idx, label] for idx, label in labels.items()],
+        index=labels.index,
+        dtype=float,
+    )
+    return float((-chosen.map(math.log)).mean())
+
+
+def calibration_records(
+    probability: pd.Series,
+    outcome: pd.Series,
+    bins: int = 10,
+) -> list[dict]:
+    table = calibration_table(probability, outcome, bins=bins).copy()
+    table["bin"] = table["bin"].astype(str)
+    return table.to_dict(orient="records")
