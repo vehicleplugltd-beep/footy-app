@@ -365,8 +365,13 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     history = reader.historical_match_team_metrics()
     history = history[history["league"] == args.league].copy()
+    if args.history_season:
+        wanted_history = {str(s) for s in args.history_season}
+        history = history[
+            history["season"].astype(str).isin(wanted_history)
+        ].copy()
     if history.empty:
-        raise RuntimeError("No historical Footy data found for league.")
+        raise RuntimeError("No historical Footy data found for league/history scope.")
 
     source = SoccerDataSource(
         leagues=[args.league],
@@ -402,8 +407,13 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         raise RuntimeError("No historical Footy data found in Supabase.")
 
     history = history[history["league"] == args.league].copy()
+    if args.history_season:
+        wanted_history = {str(s) for s in args.history_season}
+        history = history[
+            history["season"].astype(str).isin(wanted_history)
+        ].copy()
     if history.empty:
-        raise RuntimeError("No historical rows match the requested league.")
+        raise RuntimeError("No historical rows match the requested league/history scope.")
 
     source = SoccerDataSource(
         leagues=[args.league],
