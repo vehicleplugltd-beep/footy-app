@@ -233,3 +233,27 @@ revoke all on table public.footy_value_backtest_runs from public, anon, authenti
 grant select, insert, update, delete on table public.footy_value_backtest_runs to service_role;
 revoke all on sequence public.footy_value_backtest_runs_id_seq from public, anon, authenticated;
 grant usage, select on sequence public.footy_value_backtest_runs_id_seq to service_role;
+
+
+create table if not exists public.footy_model_market_validation (
+  model_version text not null,
+  market text not null,
+  status text not null check (
+    status in ('APPROVED','WATCH','RESEARCH','PASS')
+  ),
+  sample_size integer not null check (sample_size >= 0),
+  model_log_loss double precision,
+  benchmark_log_loss double precision,
+  close_roi double precision,
+  clv_proxy double precision,
+  bookmaker_reference text,
+  notes text,
+  evaluated_at timestamptz not null default now(),
+  primary key (model_version, market)
+);
+
+alter table public.footy_model_market_validation enable row level security;
+revoke all on table public.footy_model_market_validation
+  from public, anon, authenticated;
+grant select, insert, update, delete
+  on table public.footy_model_market_validation to service_role;
