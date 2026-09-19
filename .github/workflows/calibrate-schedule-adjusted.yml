@@ -6,6 +6,9 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/calibrate-schedule-adjusted.yml"
+      - "src/footy_data/features.py"
+      - "src/footy_data/walk_forward.py"
+      - "src/footy_data/xg_engine.py"
 
 jobs:
   calibrate:
