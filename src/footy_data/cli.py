@@ -377,6 +377,9 @@ def command_calibrate(args: argparse.Namespace) -> None:
         use_elo=args.use_elo,
         process_mode=args.process_mode,
         npxg_weight=args.npxg_weight,
+        lambda_beta=args.lambda_beta,
+        home_lambda_scale=args.home_lambda_scale,
+        away_lambda_scale=args.away_lambda_scale,
     )
     if predictions.empty:
         raise RuntimeError("Walk-forward calibration produced no predictions.")
@@ -636,6 +639,24 @@ def main() -> None:
         type=float,
         default=0.70,
         help="npxG weight when process-mode is npxg_blend.",
+    )
+    calibrate.add_argument(
+        "--lambda-beta",
+        type=float,
+        default=1.0,
+        help="Power calibration applied to expected-goal intensities.",
+    )
+    calibrate.add_argument(
+        "--home-lambda-scale",
+        type=float,
+        default=1.0,
+        help="Multiplicative home expected-goal calibration.",
+    )
+    calibrate.add_argument(
+        "--away-lambda-scale",
+        type=float,
+        default=1.0,
+        help="Multiplicative away expected-goal calibration.",
     )
 
     args = parser.parse_args()
