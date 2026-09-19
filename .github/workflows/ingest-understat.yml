@@ -16,6 +16,10 @@ on:
         required: true
         type: boolean
         default: true
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/ingest-understat.yml"
 
 jobs:
   ingest:
@@ -32,9 +36,16 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e .
       - name: Ingest Understat
+        shell: bash
         run: |
-          ARGS=(understat-ingest --league "${{ inputs.league }}" --season "${{ inputs.season }}")
-          if [ "${{ inputs.with_shots }}" = "true" ]; then
+          LEAGUE="${{ inputs.league || 'ENG-Premier League' }}"
+          SEASON="${{ inputs.season || '2026' }}"
+          WITH_SHOTS="${{ inputs.with_shots }}"
+
+          ARGS=(understat-ingest --league "$LEAGUE" --season "$SEASON")
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$WITH_SHOTS" = "true" ]; then
             ARGS+=(--with-shots)
           fi
+
           footy-data "${ARGS[@]}"
