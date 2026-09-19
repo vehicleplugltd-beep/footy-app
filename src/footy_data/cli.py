@@ -375,6 +375,8 @@ def command_calibrate(args: argparse.Namespace) -> None:
         frame,
         min_team_matches=args.min_team_matches,
         use_elo=args.use_elo,
+        process_mode=args.process_mode,
+        npxg_weight=args.npxg_weight,
     )
     if predictions.empty:
         raise RuntimeError("Walk-forward calibration produced no predictions.")
@@ -622,6 +624,18 @@ def main() -> None:
         "--use-elo",
         action="store_true",
         help="Use stored Club Elo ratings as a mild matchup modifier.",
+    )
+    calibrate.add_argument(
+        "--process-mode",
+        choices=["xg", "npxg_blend"],
+        default="xg",
+        help="Team-strength process used before pricing.",
+    )
+    calibrate.add_argument(
+        "--npxg-weight",
+        type=float,
+        default=0.70,
+        help="npxG weight when process-mode is npxg_blend.",
     )
 
     args = parser.parse_args()
