@@ -150,6 +150,10 @@ export default async function FplPage({
         </form>
       </section>
 
+      {hub.baseError ? (
+        <div className="shell warning">{hub.baseError}</div>
+      ) : null}
+
       {hub.teamError ? (
         <div className="shell warning">{hub.teamError}</div>
       ) : null}
@@ -201,6 +205,93 @@ export default async function FplPage({
           </div>
         </section>
       ) : null}
+
+      <section className="shell section">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Plan ahead</span>
+            <h2>Next 5 Gameweeks</h2>
+          </div>
+          <p>
+            Future captaincy and fixture windows using current player form,
+            Footy team process and scheduled opponents.
+          </p>
+        </div>
+
+        <div className="gw-planner">
+          {hub.futurePlan.map((plan) => (
+            <article className="gw-card" key={plan.eventId}>
+              <div className="gw-card-head">
+                <div>
+                  <span className="eyebrow">{plan.name}</span>
+                  <strong>{deadline(plan.deadline)}</strong>
+                </div>
+                {plan.doubleTeams.length ? (
+                  <span className="gw-tag">
+                    {plan.doubleTeams.length} double
+                  </span>
+                ) : plan.blankTeams.length ? (
+                  <span className="gw-tag muted-tag">
+                    {plan.blankTeams.length} blank
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="gw-captain">
+                <span>Captain</span>
+                <strong>{plan.captain?.name ?? "—"}</strong>
+                <small>
+                  {plan.captain
+                    ? `${plan.captain.team} · ${plan.captain.opponent ?? "fixture TBC"} · score ${plan.captain.assistantScore.toFixed(2)}`
+                    : "No active fixture"}
+                </small>
+              </div>
+
+              <div className="gw-captain secondary">
+                <span>Vice</span>
+                <strong>{plan.viceCaptain?.name ?? "—"}</strong>
+              </div>
+
+              <div className="gw-transfer-list">
+                <span>Top forward targets</span>
+                {plan.topTransfers.slice(0, 3).map((player) => (
+                  <small key={player.id}>
+                    {player.name} · {player.team} · {player.assistantScore.toFixed(2)}
+                  </small>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="shell section">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Chip strategy</span>
+            <h2>Chip radar</h2>
+          </div>
+          <p>
+            A planning signal, not an automatic command. Double/blank fixtures
+            can change as the schedule is updated.
+          </p>
+        </div>
+
+        <div className="chip-grid">
+          {hub.chipRadar.map((signal) => (
+            <article className="chip-card" key={signal.chip}>
+              <div className="chip-top">
+                <span>{signal.chip}</span>
+                <strong className={`chip-status chip-${signal.status.toLowerCase()}`}>
+                  {signal.status}
+                </strong>
+              </div>
+              <h3>{signal.eventName ?? "No window yet"}</h3>
+              <p>{signal.reason}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="shell section fpl-grid">
         <PlayerTable
