@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
 from .markets import SettlementWeights
+from .validation import gate_verdict
 
 
 @dataclass(frozen=True)
@@ -13,6 +15,8 @@ class MarketAssessment:
     minimum_take_price: float
     expected_value: float
     verdict: str
+    raw_verdict: str | None = None
+    validation_status: str | None = None
 
 
 def assess_market(
@@ -36,5 +40,32 @@ def assess_market(
     else:
         verdict = "PASS"
     return MarketAssessment(
-        market, selection, current_odds, fair, take, ev, verdict
+        market=market,
+        selection=selection,
+        current_odds=current_odds,
+        fair_odds=fair,
+        minimum_take_price=take,
+        expected_value=ev,
+        verdict=verdict,
+        raw_verdict=verdict,
+    )
+
+
+def apply_model_validation(
+    assessment: MarketAssessment,
+    validation_status: str,
+) -> MarketAssessment:
+    """
+    Apply the model-market production gate to a raw price assessment.
+
+    The statistical price calculation remains visible in raw_verdict, while
+    verdict is the production-safe decision after historical validation.
+    """
+    raw = assessment.raw_verdict or assessment.verdict
+    gated = gate_verdict(raw, validation_status)
+    return replace(
+        assessment,
+        verdict=gated,
+        raw_verdict=raw,
+        validation_status=validation_status,
     )
