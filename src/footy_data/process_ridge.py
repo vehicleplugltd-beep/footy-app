@@ -259,16 +259,21 @@ def holdout_match_predictions(
     holdout["predicted_xg"] = predict_ridge_xg(fit, holdout)
 
     home = holdout[holdout["home_away"] == "H"][
-        ["match_id", "match_date", "season", "team", "predicted_xg"]
+        [
+            "match_id", "match_date", "season", "team", "predicted_xg",
+            "team_matches_before",
+        ]
     ].rename(columns={
         "team": "home_team",
         "predicted_xg": "model_home_xg",
+        "team_matches_before": "home_matches_before",
     })
     away = holdout[holdout["home_away"] == "A"][
-        ["match_id", "team", "predicted_xg"]
+        ["match_id", "team", "predicted_xg", "team_matches_before"]
     ].rename(columns={
         "team": "away_team",
         "predicted_xg": "model_away_xg",
+        "team_matches_before": "away_matches_before",
     })
     matches = home.merge(
         away,
@@ -285,6 +290,14 @@ def holdout_match_predictions(
                 away=float(row.model_away_xg),
             )
         )
+        n = max(
+            min(
+                int(row.home_matches_before),
+                int(row.away_matches_before),
+            ),
+            1,
+        )
+        uncertainty = min(0.18, 0.06 * np.sqrt(16 / n))
         records.append({
             "match_id": str(row.match_id),
             "match_date": row.match_date,
@@ -293,6 +306,7 @@ def holdout_match_predictions(
             "away_team": row.away_team,
             "model_home_xg": float(row.model_home_xg),
             "model_away_xg": float(row.model_away_xg),
+            "uncertainty_haircut": float(uncertainty),
             "home_win_probability": probs["home_win"],
             "draw_probability": probs["draw"],
             "away_win_probability": probs["away_win"],
