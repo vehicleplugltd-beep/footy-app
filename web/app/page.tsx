@@ -3,7 +3,7 @@ import { BettingAgeGate } from "@/components/age-gate";
 import { PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
-import { decimalToFractional } from "@/lib/odds";
+import { decimalToFractional, minimumTakeToFractional } from "@/lib/odds";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +70,7 @@ export default async function Home() {
                   fixture: `${match.home_team} v ${match.away_team}`,
                   selection: selection.displaySelection,
                   fair: decimalToFractional(selection.fair_odds),
-                  take: decimalToFractional(selection.minimum_take_price),
+                  take: minimumTakeToFractional(selection.minimum_take_price),
                 })),
               ), ...board.flatMap((match) =>
                 match.selections.map((selection) => ({
@@ -78,7 +78,7 @@ export default async function Home() {
                   fixture: `${match.home_team} v ${match.away_team}`,
                   selection: selection.displaySelection,
                   fair: decimalToFractional(selection.fair_odds),
-                  take: decimalToFractional(selection.minimum_take_price),
+                  take: minimumTakeToFractional(selection.minimum_take_price),
                 })),
               )].map((item) => (
                 <span className="ticker-item" key={item.key}>
@@ -233,7 +233,7 @@ export default async function Home() {
                         <div>
                           <dt>Take at</dt>
                           <dd>
-                            {decimalToFractional(selection.minimum_take_price)}+
+                            {minimumTakeToFractional(selection.minimum_take_price)}+
                           </dd>
                         </div>
                       </dl>
