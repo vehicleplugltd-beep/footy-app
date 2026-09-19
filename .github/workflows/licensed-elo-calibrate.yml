@@ -1,0 +1,56 @@
+name: licensed-elo-calibrate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/licensed-elo-calibrate.yml"
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Download MIT-licensed Elo dataset
+        run: |
+          curl -L --fail --retry 3 \
+            "https://raw.githubusercontent.com/xgabora/Club-Football-Match-Data/main/data/Matches.csv" \
+            -o /tmp/Matches.csv
+      - name: Import direct ClubElo-era ratings
+        run: |
+          footy-data external-elo-import \
+            --csv /tmp/Matches.csv \
+            --league "ENG-Premier League" \
+            --division "E0" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --source "xgabora-club-football-match-data" \
+            --min-match-rate 0.95
+      - name: Re-run v1 on identical three-season sample
+        run: |
+          footy-data calibrate \
+            --league "ENG-Premier League" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --model-version "baseline-v1-3s"
+      - name: Run v2 with Elo
+        run: |
+          footy-data calibrate \
+            --league "ENG-Premier League" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --model-version "baseline-v2-elo-3s" \
+            --use-elo
