@@ -342,9 +342,12 @@ function availability(player: FplPlayer) {
 }
 
 function xgiPer90(player: FplPlayer) {
-  return player.minutes > 0
-    ? (num(player.expected_goal_involvements) * 90) / player.minutes
-    : 0;
+  if (player.minutes <= 0) return 0;
+  const raw = (num(player.expected_goal_involvements) * 90) / player.minutes;
+  // Per-90 rates are unstable in tiny samples. Shrink toward zero until
+  // roughly four full matches of minutes and cap extreme early-season rates.
+  const reliability = clamp(player.minutes / 360, 0, 1);
+  return clamp(raw, 0, 1.2) * reliability;
 }
 
 function rankPlayers(
@@ -410,7 +413,7 @@ function rankPlayers(
 
       // Official FPL expected points remain the anchor. Footy's process layer
       // is deliberately a modest modifier to avoid double-counting FDR.
-      const officialBase = ep * 0.74 + form * 0.18 + xgi90 * 1.05;
+      const officialBase = ep * 0.78 + form * 0.16 + xgi90 * 0.60;
       const score =
         officialBase *
         (1 + processBoost * 0.32) *
