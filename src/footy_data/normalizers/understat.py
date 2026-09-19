@@ -35,6 +35,34 @@ def _shot_summary(shots: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def normalise_understat_matches(
+    team_match_stats: pd.DataFrame,
+    retrieved_at: str | None = None,
+) -> pd.DataFrame:
+    required = {
+        "league", "season", "game", "date", "home_team", "away_team"
+    }
+    missing = required - set(team_match_stats.columns)
+    if missing:
+        raise ValueError(
+            f"Understat team-match frame missing columns: {sorted(missing)}"
+        )
+
+    stamp = retrieved_at or datetime.now(timezone.utc).isoformat()
+    out = pd.DataFrame({
+        "match_id": team_match_stats["game"].astype(str),
+        "league": team_match_stats["league"],
+        "season": team_match_stats["season"].astype(str),
+        "kickoff_at": team_match_stats["date"],
+        "home_team": team_match_stats["home_team"],
+        "away_team": team_match_stats["away_team"],
+        "status": "finished",
+        "source": "understat",
+        "retrieved_at": stamp,
+    })
+    return out.drop_duplicates(subset=["match_id"])
+
+
 def normalise_understat(
     team_match_stats: pd.DataFrame,
     shots: pd.DataFrame | None = None,
@@ -46,8 +74,7 @@ def normalise_understat(
     Required verified upstream fields:
       league, season, game, date, home_team, away_team,
       home_goals, away_goals, home_xg, away_xg,
-      home_np_xg, away_np_xg, home_ppda, away_ppda,
-      home_deep_completions, away_deep_completions.
+      home_np_xg, away_np_xg.
     """
     required = {
         "league", "season", "game", "date",
