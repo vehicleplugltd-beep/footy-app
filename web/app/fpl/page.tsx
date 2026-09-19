@@ -87,12 +87,11 @@ export default async function FplPage({
   return (
     <main>
       <nav className="nav shell">
-        <Link className="brand brand-link" href="/">
+        <Link className="brand brand-link" href="/fpl">
           <span className="brand-mark">F</span>
-          <span>Footy</span>
+          <span>Footy FPL</span>
         </Link>
         <div className="nav-links">
-          <Link href="/">Betting tools</Link>
           <span className="status status-approved">FREE FPL</span>
         </div>
       </nav>
