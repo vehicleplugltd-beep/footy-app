@@ -241,3 +241,183 @@ def summarize_qualified_1x2(
         "by_edge_bucket": by_edge_bucket,
     }
     return summary, bets
+
+
+
+@dataclass(frozen=True)
+class DeviggedTwoWay:
+    first: float
+    second: float
+    overround: float
+
+
+def devig_two_way(first_odds: float, second_odds: float) -> DeviggedTwoWay:
+    odds = [float(first_odds), float(second_odds)]
+    if any(o <= 1.0 for o in odds):
+        raise ValueError("Decimal odds must both be greater than 1.")
+
+    raw = [1.0 / o for o in odds]
+    total = sum(raw)
+    return DeviggedTwoWay(
+        first=raw[0] / total,
+        second=raw[1] / total,
+        overround=total - 1.0,
+    )
+
+
+def assess_total_2_5_history(
+    predictions: pd.DataFrame,
+    prices: pd.DataFrame,
+    target_ev: float = 0.02,
+) -> pd.DataFrame:
+    required_pred = {
+        "match_id",
+        "over_2_5_probability",
+        "uncertainty_haircut",
+    }
+    missing = required_pred - set(predictions.columns)
+    if missing:
+        raise ValueError(f"Prediction frame missing: {sorted(missing)}")
+
+    required_price = {"match_id", "selection", "decimal_odds"}
+    missing = required_price - set(prices.columns)
+    if missing:
+        raise ValueError(f"Price frame missing: {sorted(missing)}")
+
+    price_pivot = prices.pivot_table(
+        index="match_id",
+        columns="selection",
+        values="decimal_odds",
+        aggfunc="first",
+    ).reset_index()
+    needed = {"over", "under"}
+    if not needed.issubset(price_pivot.columns):
+        raise ValueError("Each priced match needs over and under 2.5 odds.")
+
+    joined = predictions.merge(price_pivot, on="match_id", how="inner")
+    rows = []
+    for row in joined.itertuples(index=False):
+        market = devig_two_way(row.over, row.under)
+        over_p = float(row.over_2_5_probability)
+        mapping = [
+            ("over", over_p, float(row.over), market.first),
+            ("under", 1.0 - over_p, float(row.under), market.second),
+        ]
+        for selection, probability, odds, market_probability in mapping:
+            fair = 1.0 / probability
+            take = minimum_take_price(
+                probability,
+                float(row.uncertainty_haircut),
+                target_ev=target_ev,
+            )
+            rows.append({
+                "match_id": row.match_id,
+                "selection": selection,
+                "model_probability": probability,
+                "market_probability_devig": market_probability,
+                "probability_edge": probability - market_probability,
+                "fair_odds": fair,
+                "decimal_odds": odds,
+                "raw_ev": probability * odds - 1.0,
+                "minimum_take_price": take,
+                "qualifies": bool(odds >= take),
+                "market_overround": market.overround,
+            })
+    return pd.DataFrame(rows)
+
+
+def summarize_qualified_total_2_5(
+    assessed: pd.DataFrame,
+    outcomes: pd.DataFrame,
+) -> tuple[dict, pd.DataFrame]:
+    required_assessed = {
+        "match_id", "selection", "decimal_odds", "raw_ev",
+        "probability_edge", "qualifies", "market_overround",
+    }
+    missing = required_assessed - set(assessed.columns)
+    if missing:
+        raise ValueError(f"Assessed frame missing: {sorted(missing)}")
+
+    required_outcomes = {"match_id", "home_goals", "away_goals"}
+    missing = required_outcomes - set(outcomes.columns)
+    if missing:
+        raise ValueError(f"Outcome frame missing: {sorted(missing)}")
+
+    bets = assessed[assessed["qualifies"]].copy()
+    if bets.empty:
+        return {
+            "bets": 0,
+            "strike_rate": None,
+            "average_odds": None,
+            "roi": None,
+            "average_raw_ev": None,
+            "average_probability_edge": None,
+            "average_market_overround": None,
+            "by_selection": {},
+            "by_edge_bucket": {},
+        }, bets
+
+    bets = (
+        bets.sort_values(
+            ["match_id", "raw_ev"],
+            ascending=[True, False],
+        )
+        .drop_duplicates("match_id", keep="first")
+    )
+    bets = bets.merge(
+        outcomes[["match_id", "home_goals", "away_goals"]],
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    bets["actual_over"] = (
+        bets["home_goals"] + bets["away_goals"] >= 3
+    ).astype(int)
+    bets["won"] = (
+        ((bets["selection"] == "over") & (bets["actual_over"] == 1))
+        | ((bets["selection"] == "under") & (bets["actual_over"] == 0))
+    ).astype(int)
+    bets["profit"] = (
+        bets["won"] * (bets["decimal_odds"] - 1.0)
+        - (1 - bets["won"])
+    )
+    bets["edge_bucket"] = pd.cut(
+        bets["raw_ev"],
+        bins=[-float("inf"), 0.05, 0.10, 0.15, float("inf")],
+        labels=["<5%", "5-10%", "10-15%", "15%+"],
+        right=False,
+    )
+
+    def group_summary(group: pd.DataFrame) -> dict:
+        return {
+            "bets": int(len(group)),
+            "strike_rate": float(group["won"].mean()),
+            "average_odds": float(group["decimal_odds"].mean()),
+            "roi": float(group["profit"].mean()),
+            "average_raw_ev": float(group["raw_ev"].mean()),
+            "average_probability_edge": float(
+                group["probability_edge"].mean()
+            ),
+        }
+
+    return {
+        "bets": int(len(bets)),
+        "strike_rate": float(bets["won"].mean()),
+        "average_odds": float(bets["decimal_odds"].mean()),
+        "roi": float(bets["profit"].mean()),
+        "average_raw_ev": float(bets["raw_ev"].mean()),
+        "average_probability_edge": float(
+            bets["probability_edge"].mean()
+        ),
+        "average_market_overround": float(
+            bets["market_overround"].mean()
+        ),
+        "by_selection": {
+            str(name): group_summary(group)
+            for name, group in bets.groupby("selection", observed=True)
+        },
+        "by_edge_bucket": {
+            str(name): group_summary(group)
+            for name, group in bets.groupby("edge_bucket", observed=True)
+        },
+    }, bets
