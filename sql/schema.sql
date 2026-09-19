@@ -138,3 +138,27 @@ grant usage, select on sequence public.footy_match_team_metrics_id_seq to servic
 grant usage, select on sequence public.footy_team_ratings_id_seq to service_role;
 grant usage, select on sequence public.footy_bookmaker_prices_id_seq to service_role;
 grant usage, select on sequence public.footy_model_outputs_id_seq to service_role;
+
+
+create table if not exists public.footy_backtest_runs (
+  id bigint generated always as identity primary key,
+  model_version text not null,
+  league text not null,
+  seasons text[] not null,
+  prediction_rows integer not null check (prediction_rows >= 0),
+  home_win_brier double precision,
+  home_win_log_loss double precision,
+  over_2_5_brier double precision,
+  over_2_5_log_loss double precision,
+  btts_brier double precision,
+  btts_log_loss double precision,
+  result_1x2_log_loss double precision,
+  calibration jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.footy_backtest_runs enable row level security;
+revoke all on table public.footy_backtest_runs from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_backtest_runs to service_role;
+revoke all on sequence public.footy_backtest_runs_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.footy_backtest_runs_id_seq to service_role;
