@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .features import add_rolling_process, add_home_away_process
+from .features import (
+    add_rolling_process,
+    add_home_away_process,
+    add_schedule_adjusted_process,
+)
 from .model import market_probabilities
 from .xg_engine import TeamProcess, LeagueEnvironment, estimate_match_xg
 
@@ -117,8 +121,10 @@ def build_walk_forward_predictions(
             "Walk-forward input missing columns: " + ", ".join(sorted(missing))
         )
 
-    if process_mode not in {"xg", "npxg_blend"}:
-        raise ValueError("process_mode must be 'xg' or 'npxg_blend'.")
+    if process_mode not in {"xg", "npxg_blend", "schedule_adjusted"}:
+        raise ValueError(
+            "process_mode must be xg, npxg_blend, or schedule_adjusted."
+        )
     if not 0 <= npxg_weight <= 1:
         raise ValueError("npxg_weight must be in [0, 1].")
     if process_mode == "npxg_blend":
@@ -133,6 +139,15 @@ def build_walk_forward_predictions(
     frame["match_date"] = pd.to_datetime(frame["match_date"], utc=True)
     frame = add_rolling_process(frame)
     frame = add_home_away_process(frame)
+    if process_mode == "schedule_adjusted":
+        frame = add_schedule_adjusted_process(
+            frame,
+            league_xg_prior=prior_goals_per_team_match,
+            league_npxg_prior=max(
+                prior_goals_per_team_match - 0.10,
+                0.5,
+            ),
+        )
 
     rows = []
     for match_id, match in frame.groupby("match_id", sort=False):
@@ -186,7 +201,7 @@ def build_walk_forward_predictions(
                 (1 - npxg_weight) * away_defence_xg
                 + npxg_weight * away_defence_np
             )
-        else:
+        elif process_mode == "xg":
             home_attack = home_attack_xg
             home_defence = home_defence_xg
             away_attack = away_attack_xg
