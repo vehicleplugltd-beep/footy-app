@@ -1013,7 +1013,7 @@ def main() -> None:
     )
     predict_upcoming.add_argument(
         "--model-version",
-        default="baseline-v6-schedule-calibrated",
+        default="v7-r16-p50-v20",
     )
     predict_upcoming.add_argument(
         "--horizon-days",
@@ -1033,27 +1033,27 @@ def main() -> None:
     predict_upcoming.add_argument(
         "--lambda-beta",
         type=float,
-        default=1.05,
+        default=1.0,
     )
     predict_upcoming.add_argument(
         "--home-lambda-scale",
         type=float,
-        default=0.985953318340048,
+        default=1.0,
     )
     predict_upcoming.add_argument(
         "--away-lambda-scale",
         type=float,
-        default=1.12646161962879,
+        default=1.0,
     )
     predict_upcoming.add_argument(
         "--process-span",
         type=int,
-        default=8,
+        default=16,
     )
     predict_upcoming.add_argument(
         "--process-prior-weight",
         type=float,
-        default=0.35,
+        default=0.50,
     )
     predict_upcoming.add_argument(
         "--venue-split-weight",
