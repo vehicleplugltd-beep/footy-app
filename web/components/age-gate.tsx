@@ -19,11 +19,10 @@ export function BettingAgeGate() {
   return (
     <div className="age-gate-backdrop" role="dialog" aria-modal="true">
       <div className="age-gate-card">
-        <span className="eyebrow">18+ betting area</span>
+        <span className="eyebrow">18+ betting-information area</span>
         <h2>Confirm you are 18 or over</h2>
         <p>
-          Footy betting tools are for adults only. Betting involves risk and
-          there is no guarantee of profit.
+          Footy&apos;s betting-information tools are for adults only. We provide analysis and tips; we do not accept or place bets.
         </p>
         <button
           type="button"
