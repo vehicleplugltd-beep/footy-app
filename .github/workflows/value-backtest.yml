@@ -1,0 +1,71 @@
+name: value-backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/value-backtest.yml"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Market Average close
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "Market Average" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --target-ev 0.02
+      - name: Bet365 close
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "Bet365" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --target-ev 0.02
+      - name: Market Maximum close
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "Market Maximum" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --target-ev 0.02
+      - name: Market Average snapshot
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "Market Average" \
+            --price-kind snapshot \
+            --source football-data.co.uk \
+            --target-ev 0.02
+      - name: Bet365 snapshot
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "Bet365" \
+            --price-kind snapshot \
+            --source football-data.co.uk \
+            --target-ev 0.02
+      - name: William Hill snapshot
+        run: |
+          footy-data value-backtest \
+            --model-version baseline-v1 \
+            --bookmaker "William Hill" \
+            --price-kind snapshot \
+            --source football-data.co.uk \
+            --target-ev 0.02
