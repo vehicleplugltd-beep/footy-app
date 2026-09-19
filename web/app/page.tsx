@@ -3,6 +3,7 @@ import { BettingAgeGate } from "@/components/age-gate";
 import { PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
+import { decimalToFractional } from "@/lib/odds";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,43 @@ export default async function Home() {
         </div>
       </nav>
 
+      {board.length ? (
+        <div className="market-ticker" aria-label="Footy rolling price ticker">
+          <div className="ticker-label">
+            <span className="live-dot" />
+            FOOTY PRICES
+          </div>
+          <div className="ticker-viewport">
+            <div className="ticker-track">
+              {[...board.flatMap((match) =>
+                match.selections.map((selection) => ({
+                  key: `${match.match_id}:${selection.selection}`,
+                  fixture: `${match.home_team} v ${match.away_team}`,
+                  selection: selection.displaySelection,
+                  fair: decimalToFractional(selection.fair_odds),
+                  take: decimalToFractional(selection.minimum_take_price),
+                })),
+              ), ...board.flatMap((match) =>
+                match.selections.map((selection) => ({
+                  key: `copy:${match.match_id}:${selection.selection}`,
+                  fixture: `${match.home_team} v ${match.away_team}`,
+                  selection: selection.displaySelection,
+                  fair: decimalToFractional(selection.fair_odds),
+                  take: decimalToFractional(selection.minimum_take_price),
+                })),
+              )].map((item) => (
+                <span className="ticker-item" key={item.key}>
+                  <strong>{item.fixture}</strong>
+                  <b>{item.selection}</b>
+                  <span>Fair {item.fair}</span>
+                  <span className="ticker-take">Take {item.take}+</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className="hero shell betting-hero">
         <div>
           <span className="eyebrow">Betting intelligence for serious punters</span>
@@ -64,9 +102,9 @@ export default async function Home() {
             beating the price.
           </h1>
           <p>
-            Footy is built to help punters find mispriced odds, demand a better
-            entry price, stake with discipline and track whether the edge is
-            actually holding up over time.
+            Footy is built to help punters find mispriced odds, know the price
+            worth waiting for, and see whether a model edge is backed by
+            historical evidence.
           </p>
           <div className="hero-actions">
             <a className="primary-cta" href="#price-checker">Check a price</a>
@@ -98,7 +136,7 @@ export default async function Home() {
         <article>
           <span className="promise-number">02</span>
           <h3>Know your price</h3>
-          <p>Fair odds and a stricter Minimum Take Price tell you exactly when to bet and when to pass.</p>
+          <p>Fair odds and a stricter Minimum Take Price tell you when a quoted price is genuinely interesting and when to pass.</p>
         </article>
         <article>
           <span className="promise-number">03</span>
@@ -120,9 +158,9 @@ export default async function Home() {
       ) : null}
 
       <div className="shell notice">
-        <strong>Footy Pro is in live beta.</strong> Today you can use the fair-price
-        board, Minimum Take Price checker and bankroll guardrail. Live bookmaker
-        line-shopping, alerts and automatic bet tracking are the next paid features.
+        <strong>Footy Pro is in live beta.</strong> Today you can use fractional
+        fair prices, Minimum Take Price, the price checker and model-validation
+        evidence. Live bookmaker line-shopping and automatic price alerts are next.
       </div>
 
       <section className="shell section">
@@ -163,12 +201,12 @@ export default async function Home() {
                       <dl>
                         <div>
                           <dt>Fair</dt>
-                          <dd>{selection.fair_odds.toFixed(2)}</dd>
+                          <dd>{decimalToFractional(selection.fair_odds)}</dd>
                         </div>
                         <div>
                           <dt>Take at</dt>
                           <dd>
-                            {selection.minimum_take_price.toFixed(2)}+
+                            {decimalToFractional(selection.minimum_take_price)}+
                           </dd>
                         </div>
                       </dl>
@@ -265,17 +303,17 @@ export default async function Home() {
           <span className="eyebrow">Footy Pro</span>
           <h2>Built for punters who care about long-run profit.</h2>
           <p>
-            The paid product is heading toward a full betting terminal: live
-            bookmaker prices, best-price shopping, value alerts, bet tracking,
-            CLV, bankroll history and only historically validated betting feeds.
+            The paid product is heading toward a clean betting-information
+            terminal: live bookmaker prices, best-price shopping, value alerts,
+            saved tip watchlists, closing-line analysis and validated tip feeds.
           </p>
         </div>
         <div className="pro-feature-grid">
-          <span>Live +EV scanner</span>
+          <span>Live value scanner</span>
           <span>William Hill + best market</span>
           <span>Price alerts</span>
           <span>Saved tip watchlist</span>
-          <span>CLV dashboard</span>
+          <span>Closing-price dashboard</span>
           <span>Model performance history</span>
         </div>
       </section>
