@@ -19,11 +19,14 @@ from .storage import (
     MATCH_TEAM_METRIC_FIELDS,
     HISTORICAL_PREDICTION_FIELDS,
     insert_backtest_run,
+    insert_value_backtest_run,
 )
 from .walk_forward import build_walk_forward_predictions
 from .backtest import binary_metrics, multiclass_log_loss, calibration_records
 from .elo import ratings_for_match_dates
 from .external_elo import ratings_from_match_dataset
+from .odds_import import normalise_1x2_prices
+from .value_backtest import assess_1x2_history, summarize_qualified_1x2
 
 
 def command_sources() -> None:
@@ -158,6 +161,115 @@ def command_external_elo_import(args: argparse.Namespace) -> None:
         **report,
         "source": args.source,
     }, indent=2))
+
+
+def command_odds_import(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    frame = reader.historical_match_team_metrics()
+    if frame.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    frame = frame[frame["league"] == args.league].copy()
+    if args.season:
+        wanted = {str(s) for s in args.season}
+        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
+    if frame.empty:
+        raise RuntimeError("No Footy rows match the requested odds scope.")
+
+    external = pd.read_csv(args.csv)
+    prices, report = normalise_1x2_prices(
+        external=external,
+        footy_metrics=frame,
+        bookmaker=args.bookmaker,
+        source=args.source,
+        price_kind=args.price_kind,
+        date_col=args.date_col,
+        home_team_col=args.home_team_col,
+        away_team_col=args.away_team_col,
+        home_odds_col=args.home_odds_col,
+        draw_odds_col=args.draw_odds_col,
+        away_odds_col=args.away_odds_col,
+    )
+
+    if report.match_rate < args.min_match_rate:
+        raise RuntimeError(
+            "Odds reconciliation below threshold: "
+            + json.dumps(report.__dict__)
+        )
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_bookmaker_prices(frame_records(prices))
+
+    print(json.dumps({
+        "status": "ok",
+        **report.__dict__,
+        "bookmaker": args.bookmaker,
+        "price_kind": args.price_kind,
+        "source": args.source,
+    }, indent=2))
+
+
+def command_value_backtest(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    predictions = reader.historical_predictions(args.model_version)
+    if predictions.empty:
+        raise RuntimeError(
+            f"No stored predictions for model version {args.model_version}."
+        )
+
+    prices = reader.bookmaker_prices(
+        bookmaker=args.bookmaker,
+        price_kind=args.price_kind,
+        source=args.source,
+        market="1X2",
+    )
+    if prices.empty:
+        raise RuntimeError("No matching historical bookmaker prices found.")
+
+    assessed = assess_1x2_history(
+        predictions,
+        prices,
+        target_ev=args.target_ev,
+    )
+
+    history = reader.historical_match_team_metrics()
+    home = (
+        history[history["home_away"] == "H"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "home_goals"})
+    )
+    away = (
+        history[history["home_away"] == "A"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "away_goals"})
+    )
+    outcomes = home.merge(
+        away,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+
+    summary, bets = summarize_qualified_1x2(
+        assessed,
+        outcomes,
+    )
+
+    result = {
+        "model_version": args.model_version,
+        "bookmaker": args.bookmaker,
+        "price_kind": args.price_kind,
+        "source": args.source,
+        "market": "1X2",
+        "target_ev": args.target_ev,
+        **summary,
+    }
+    writer = SupabaseRESTWriter()
+    insert_value_backtest_run(writer, result)
+
+    printable = dict(result)
+    printable["settled_bets"] = int(len(bets))
+    print(json.dumps(printable, indent=2))
 
 
 def command_calibrate(args: argparse.Namespace) -> None:
@@ -340,6 +452,46 @@ def main() -> None:
         default=0.95,
     )
 
+    odds_import = sub.add_parser(
+        "odds-import",
+        help="Import a licensed local historical 1X2 odds CSV",
+    )
+    odds_import.add_argument("--csv", required=True)
+    odds_import.add_argument("--league", default="ENG-Premier League")
+    odds_import.add_argument("--season", action="append")
+    odds_import.add_argument("--bookmaker", required=True)
+    odds_import.add_argument("--source", required=True)
+    odds_import.add_argument(
+        "--price-kind",
+        choices=["open", "close", "snapshot"],
+        required=True,
+    )
+    odds_import.add_argument("--date-col", default="Date")
+    odds_import.add_argument("--home-team-col", default="HomeTeam")
+    odds_import.add_argument("--away-team-col", default="AwayTeam")
+    odds_import.add_argument("--home-odds-col")
+    odds_import.add_argument("--draw-odds-col")
+    odds_import.add_argument("--away-odds-col")
+    odds_import.add_argument(
+        "--min-match-rate",
+        type=float,
+        default=0.95,
+    )
+
+    value_backtest = sub.add_parser(
+        "value-backtest",
+        help="Backtest stored Footy probabilities against imported 1X2 prices",
+    )
+    value_backtest.add_argument("--model-version", required=True)
+    value_backtest.add_argument("--bookmaker", required=True)
+    value_backtest.add_argument(
+        "--price-kind",
+        choices=["open", "close", "snapshot"],
+        required=True,
+    )
+    value_backtest.add_argument("--source")
+    value_backtest.add_argument("--target-ev", type=float, default=0.02)
+
     calibrate = sub.add_parser(
         "calibrate",
         help="Run walk-forward probability calibration from stored history",
@@ -379,6 +531,10 @@ def main() -> None:
         command_clubelo_ingest(args)
     elif args.command == "external-elo-import":
         command_external_elo_import(args)
+    elif args.command == "odds-import":
+        command_odds_import(args)
+    elif args.command == "value-backtest":
+        command_value_backtest(args)
     elif args.command == "calibrate":
         command_calibrate(args)
 
