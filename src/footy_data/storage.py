@@ -123,11 +123,11 @@ class SupabaseRESTWriter:
         response.raise_for_status()
 
     def upsert_matches(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        self._upsert("matches", rows, "match_id", MATCH_FIELDS)
+        self._upsert("footy_matches", rows, "match_id", MATCH_FIELDS)
 
     def upsert_match_team_metrics(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self._upsert(
-            "match_team_metrics",
+            "footy_match_team_metrics",
             rows,
             "match_id,team,source",
             MATCH_TEAM_METRIC_FIELDS,
@@ -135,7 +135,7 @@ class SupabaseRESTWriter:
 
     def upsert_team_ratings(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self._upsert(
-            "team_ratings",
+            "footy_team_ratings",
             rows,
             "team,rating_type,rating_date,source",
             TEAM_RATING_FIELDS,
@@ -151,7 +151,7 @@ class SupabaseRESTWriter:
             return
 
         response = requests.post(
-            f"{self.url}/rest/v1/bookmaker_prices",
+            f"{self.url}/rest/v1/footy_bookmaker_prices",
             headers={
                 "apikey": self.key,
                 "Authorization": f"Bearer {self.key}",
