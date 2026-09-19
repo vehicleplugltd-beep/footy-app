@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BettingAgeGate } from "@/components/age-gate";
-import { BankrollCalculator, PriceChecker } from "@/components/tools";
+import { PriceChecker } from "@/components/tools";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
 
@@ -102,13 +102,13 @@ export default async function Home() {
         </article>
         <article>
           <span className="promise-number">03</span>
-          <h3>Protect the bankroll</h3>
-          <p>Validation gates and capped Kelly staking stop a good idea becoming a reckless stake.</p>
+          <h3>Filter the noise</h3>
+          <p>Validation gates stop a large-looking raw edge being presented as a tip before the evidence supports it.</p>
         </article>
         <article>
           <span className="promise-number">04</span>
-          <h3>Prove the profit</h3>
-          <p>ROI and closing-line performance decide whether an edge survives—not screenshots or winning streaks.</p>
+          <h3>Prove the edge</h3>
+          <p>Historical tip performance and closing-line movement decide whether an edge survives—not screenshots or winning streaks.</p>
         </article>
       </section>
 
@@ -198,13 +198,19 @@ export default async function Home() {
         </div>
 
         <div className="panel">
-          <span className="eyebrow">Tool 02 · Stake properly</span>
-          <h2>Turn edge into disciplined staking</h2>
+          <span className="eyebrow">Tool 02 · Read the signal</span>
+          <h2>Know what Footy is actually telling you</h2>
           <p className="muted">
-            Quarter-Kelly sizing with a 1.5% bankroll cap. If a model-market
-            pair has not earned approval, the production stake stays at £0.
+            Footy is an information service. An APPROVED value tip means the
+            model price, market price and historical validation all clear our
+            threshold. WATCH means the idea is interesting but not strong
+            enough to promote. PASS means the price is not good enough.
           </p>
-          <BankrollCalculator validationStatus={status} />
+          <div className="signal-guide">
+            <div><strong>VALUE TIP</strong><span>Historically approved information signal.</span></div>
+            <div><strong>WATCH</strong><span>Interesting price or concept; evidence is not strong enough yet.</span></div>
+            <div><strong>PASS</strong><span>No sufficient value after uncertainty and validation.</span></div>
+          </div>
         </div>
       </section>
 
@@ -268,15 +274,15 @@ export default async function Home() {
           <span>Live +EV scanner</span>
           <span>William Hill + best market</span>
           <span>Price alerts</span>
-          <span>Bet tracker</span>
+          <span>Saved tip watchlist</span>
           <span>CLV dashboard</span>
-          <span>Bankroll analytics</span>
+          <span>Model performance history</span>
         </div>
       </section>
 
       <footer className="shell footer">
         <p>
-          <strong>Footy is decision support, not a profit guarantee.</strong>
+          <strong>Footy provides betting information and analytics, not wagering services.</strong>
           {" "}Betting involves risk and historical edge can disappear. 18+ only.
         </p>
         <p>
