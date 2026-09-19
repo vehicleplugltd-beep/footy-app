@@ -1,0 +1,50 @@
+name: value-backtest-totals
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["ingest-football-data-odds"]
+    types: [completed]
+
+jobs:
+  backtest:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: v8 Bet365 close Over Under 2.5
+        run: |
+          footy-data value-backtest \
+            --model-version "v8-process-ridge-a10-holdout" \
+            --bookmaker "Bet365" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --market "TOTAL_2.5" \
+            --target-ev 0.02
+      - name: v8 Market Average close Over Under 2.5
+        run: |
+          footy-data value-backtest \
+            --model-version "v8-process-ridge-a10-holdout" \
+            --bookmaker "Market Average" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --market "TOTAL_2.5" \
+            --target-ev 0.02
+      - name: v8 Market Maximum close Over Under 2.5
+        run: |
+          footy-data value-backtest \
+            --model-version "v8-process-ridge-a10-holdout" \
+            --bookmaker "Market Maximum" \
+            --price-kind close \
+            --source football-data.co.uk \
+            --market "TOTAL_2.5" \
+            --target-ev 0.02
