@@ -91,6 +91,19 @@ create table if not exists public.footy_bookmaker_prices (
 create index if not exists idx_footy_prices_match_market
   on public.footy_bookmaker_prices(match_id, market, selection, captured_at desc);
 
+drop index if exists public.uq_footy_price_snapshot;
+create unique index uq_footy_price_snapshot
+  on public.footy_bookmaker_prices(
+    match_id,
+    bookmaker,
+    market,
+    selection,
+    coalesce(line, -9999.0),
+    price_kind,
+    source,
+    captured_at
+  );
+
 create table if not exists public.footy_model_outputs (
   id bigint generated always as identity primary key,
   match_id text not null references public.footy_matches(match_id) on delete cascade,
