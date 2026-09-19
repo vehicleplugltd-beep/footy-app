@@ -72,12 +72,16 @@ create table if not exists public.footy_team_ratings (
 
 create table if not exists public.footy_bookmaker_prices (
   id bigint generated always as identity primary key,
+  price_key text not null unique,
   match_id text not null references public.footy_matches(match_id) on delete cascade,
   bookmaker text not null,
   market text not null,
   selection text not null,
   line double precision,
   decimal_odds double precision not null check (decimal_odds > 1.0),
+  price_kind text not null default 'snapshot'
+    check (price_kind in ('open', 'close', 'snapshot')),
+  source text not null default 'manual',
   captured_at timestamptz not null default now()
 );
 
@@ -162,3 +166,70 @@ revoke all on table public.footy_backtest_runs from public, anon, authenticated;
 grant select, insert, update, delete on table public.footy_backtest_runs to service_role;
 revoke all on sequence public.footy_backtest_runs_id_seq from public, anon, authenticated;
 grant usage, select on sequence public.footy_backtest_runs_id_seq to service_role;
+
+
+create table if not exists public.footy_historical_predictions (
+  id bigint generated always as identity primary key,
+  match_id text not null references public.footy_matches(match_id) on delete cascade,
+  model_version text not null,
+  model_home_xg double precision not null check (model_home_xg >= 0),
+  model_away_xg double precision not null check (model_away_xg >= 0),
+  uncertainty_haircut double precision not null check (
+    uncertainty_haircut >= 0 and uncertainty_haircut < 1
+  ),
+  home_win_probability double precision not null check (
+    home_win_probability >= 0 and home_win_probability <= 1
+  ),
+  draw_probability double precision not null check (
+    draw_probability >= 0 and draw_probability <= 1
+  ),
+  away_win_probability double precision not null check (
+    away_win_probability >= 0 and away_win_probability <= 1
+  ),
+  over_2_5_probability double precision not null check (
+    over_2_5_probability >= 0 and over_2_5_probability <= 1
+  ),
+  btts_yes_probability double precision not null check (
+    btts_yes_probability >= 0 and btts_yes_probability <= 1
+  ),
+  home_elo double precision,
+  away_elo double precision,
+  created_at timestamptz not null default now(),
+  unique (match_id, model_version)
+);
+
+create index if not exists idx_footy_hist_pred_model
+  on public.footy_historical_predictions(model_version, match_id);
+
+alter table public.footy_historical_predictions enable row level security;
+revoke all on table public.footy_historical_predictions from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_historical_predictions to service_role;
+revoke all on sequence public.footy_historical_predictions_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.footy_historical_predictions_id_seq to service_role;
+
+
+create table if not exists public.footy_value_backtest_runs (
+  id bigint generated always as identity primary key,
+  model_version text not null,
+  bookmaker text not null,
+  price_kind text not null,
+  source text,
+  market text not null default '1X2',
+  target_ev double precision not null,
+  bets integer not null check (bets >= 0),
+  strike_rate double precision,
+  average_odds double precision,
+  roi double precision,
+  average_raw_ev double precision,
+  average_probability_edge double precision,
+  average_market_overround double precision,
+  by_selection jsonb,
+  by_edge_bucket jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.footy_value_backtest_runs enable row level security;
+revoke all on table public.footy_value_backtest_runs from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_value_backtest_runs to service_role;
+revoke all on sequence public.footy_value_backtest_runs_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.footy_value_backtest_runs_id_seq to service_role;
