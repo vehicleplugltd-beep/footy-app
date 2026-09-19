@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from footy_data.value_backtest import summarize_qualified_1x2
 
@@ -34,4 +35,4 @@ def test_value_summary_keeps_one_qualifying_selection_per_match():
     assert summary["bets"] == 1
     assert len(bets) == 1
     assert bets.iloc[0]["selection"] == "home"
-    assert summary["roi"] == 1.2
+    assert summary["roi"] == pytest.approx(1.2)
