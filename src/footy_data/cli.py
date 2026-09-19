@@ -21,6 +21,7 @@ from .storage import (
 )
 from .walk_forward import build_walk_forward_predictions
 from .backtest import binary_metrics, multiclass_log_loss, calibration_records
+from .elo import ratings_for_match_dates
 
 
 def command_sources() -> None:
@@ -87,9 +88,45 @@ def command_understat_ingest(args: argparse.Namespace) -> None:
     }, indent=2))
 
 
-def command_calibrate(args: argparse.Namespace) -> None:
+def command_clubelo_ingest(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics()
+    if frame.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    frame = frame[frame["league"] == args.league].copy()
+    if args.season:
+        wanted = {str(s) for s in args.season}
+        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
+
+    if frame.empty:
+        raise RuntimeError("No rows match the requested Club Elo scope.")
+
+    source = SoccerDataSource(leagues=[], seasons=[])
+    ratings = ratings_for_match_dates(
+        frame[["team", "match_date"]],
+        source.clubelo(),
+    )
+    if ratings.empty:
+        raise RuntimeError("Club Elo produced no ratings.")
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_team_ratings(frame_records(ratings))
+
+    print(json.dumps({
+        "status": "ok",
+        "ratings_upserted": len(ratings),
+        "teams": int(ratings["team"].nunique()),
+        "first_rating_date": str(ratings["rating_date"].min()),
+        "last_rating_date": str(ratings["rating_date"].max()),
+    }, indent=2))
+
+
+def command_calibrate(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    frame = reader.historical_match_team_metrics(
+        include_ratings=args.use_elo,
+    )
     if frame.empty:
         raise RuntimeError("No historical Footy data found in Supabase.")
 
@@ -104,6 +141,7 @@ def command_calibrate(args: argparse.Namespace) -> None:
     predictions = build_walk_forward_predictions(
         frame,
         min_team_matches=args.min_team_matches,
+        use_elo=args.use_elo,
     )
     if predictions.empty:
         raise RuntimeError("Walk-forward calibration produced no predictions.")
@@ -209,6 +247,20 @@ def main() -> None:
     )
     _add_understat_args(ingest)
 
+    clubelo = sub.add_parser(
+        "clubelo-ingest",
+        help="Fetch historical Club Elo ratings for stored Footy fixtures",
+    )
+    clubelo.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
+    clubelo.add_argument(
+        "--season",
+        action="append",
+        help="Stored season identifier, e.g. 2223. Repeat for multiple seasons.",
+    )
+
     calibrate = sub.add_parser(
         "calibrate",
         help="Run walk-forward probability calibration from stored history",
@@ -231,6 +283,11 @@ def main() -> None:
         type=int,
         default=5,
     )
+    calibrate.add_argument(
+        "--use-elo",
+        action="store_true",
+        help="Use stored Club Elo ratings as a mild matchup modifier.",
+    )
 
     args = parser.parse_args()
     if args.command == "sources":
@@ -239,6 +296,8 @@ def main() -> None:
         command_understat(args)
     elif args.command == "understat-ingest":
         command_understat_ingest(args)
+    elif args.command == "clubelo-ingest":
+        command_clubelo_ingest(args)
     elif args.command == "calibrate":
         command_calibrate(args)
 
