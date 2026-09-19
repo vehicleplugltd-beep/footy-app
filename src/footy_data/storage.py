@@ -161,27 +161,23 @@ class SupabaseRESTWriter:
             HISTORICAL_PREDICTION_FIELDS,
         )
 
-    def insert_bookmaker_prices(self, rows: Iterable[Mapping[str, Any]]) -> None:
+    def upsert_bookmaker_prices(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
         allowed = {
-            "match_id", "bookmaker", "market", "selection",
-            "line", "decimal_odds", "captured_at",
+            "price_key", "match_id", "bookmaker", "market", "selection",
+            "line", "decimal_odds", "price_kind", "source", "captured_at",
         }
-        payload = [_project_row(row, allowed) for row in rows]
-        if not payload:
-            return
-
-        response = requests.post(
-            f"{self.url}/rest/v1/footy_bookmaker_prices",
-            headers={
-                "apikey": self.key,
-                "Authorization": f"Bearer {self.key}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json=payload,
-            timeout=self.timeout,
+        self._upsert(
+            "footy_bookmaker_prices",
+            rows,
+            "price_key",
+            allowed,
         )
-        response.raise_for_status()
+
+    def insert_bookmaker_prices(self, rows: Iterable[Mapping[str, Any]]) -> None:
+        self.upsert_bookmaker_prices(rows)
 
 
 class SupabaseRESTReader:
@@ -305,6 +301,40 @@ class SupabaseRESTReader:
             how="left",
         )
         return frame
+
+    def historical_predictions(
+        self,
+        model_version: str,
+    ) -> pd.DataFrame:
+        rows = pd.DataFrame(self._get_all(
+            "footy_historical_predictions",
+            "match_id,model_version,model_home_xg,model_away_xg,uncertainty_haircut,home_win_probability,draw_probability,away_win_probability,over_2_5_probability,btts_yes_probability,home_elo,away_elo",
+        ))
+        if rows.empty:
+            return rows
+        return rows[rows["model_version"] == model_version].copy()
+
+    def bookmaker_prices(
+        self,
+        bookmaker: str,
+        price_kind: str,
+        source: str | None = None,
+        market: str = "1X2",
+    ) -> pd.DataFrame:
+        rows = pd.DataFrame(self._get_all(
+            "footy_bookmaker_prices",
+            "price_key,match_id,bookmaker,market,selection,line,decimal_odds,price_kind,source,captured_at",
+        ))
+        if rows.empty:
+            return rows
+        rows = rows[
+            (rows["bookmaker"] == bookmaker)
+            & (rows["price_kind"] == price_kind)
+            & (rows["market"] == market)
+        ].copy()
+        if source is not None:
+            rows = rows[rows["source"] == source].copy()
+        return rows
 
 
 def insert_backtest_run(
