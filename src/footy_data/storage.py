@@ -162,3 +162,91 @@ class SupabaseRESTWriter:
             timeout=self.timeout,
         )
         response.raise_for_status()
+
+
+class SupabaseRESTReader:
+    """Server-side reader using the same service-role credentials."""
+
+    def __init__(
+        self,
+        url: str | None = None,
+        service_role_key: str | None = None,
+        timeout: int = 30,
+        page_size: int = 1000,
+    ):
+        self.url = (url or os.getenv("SUPABASE_URL", "")).rstrip("/")
+        self.key = service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        self.timeout = timeout
+        self.page_size = page_size
+        if not self.url:
+            raise ValueError("SUPABASE_URL is required.")
+        if not self.key:
+            raise ValueError("SUPABASE_SERVICE_ROLE_KEY is required.")
+
+    def _get_all(self, table: str, select: str = "*") -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        start = 0
+        while True:
+            end = start + self.page_size - 1
+            response = requests.get(
+                f"{self.url}/rest/v1/{table}",
+                params={"select": select},
+                headers={
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {self.key}",
+                    "Range": f"{start}-{end}",
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            batch = response.json()
+            rows.extend(batch)
+            if len(batch) < self.page_size:
+                break
+            start += self.page_size
+        return rows
+
+    def historical_match_team_metrics(self) -> pd.DataFrame:
+        matches = pd.DataFrame(self._get_all(
+            "footy_matches",
+            "match_id,league,season,kickoff_at,home_team,away_team",
+        ))
+        metrics = pd.DataFrame(self._get_all(
+            "footy_match_team_metrics",
+            "match_id,team,opponent,home_away,goals,goals_conceded,xg,npxg,xga,npxga,ppda,deep_completions,source,retrieved_at",
+        ))
+        if matches.empty or metrics.empty:
+            return pd.DataFrame()
+
+        matches = matches.rename(columns={"kickoff_at": "match_date"})
+        return metrics.merge(
+            matches[["match_id", "league", "season", "match_date"]],
+            on="match_id",
+            how="inner",
+        )
+
+
+def insert_backtest_run(
+    writer: SupabaseRESTWriter,
+    row: Mapping[str, Any],
+) -> None:
+    allowed = {
+        "model_version", "league", "seasons", "prediction_rows",
+        "home_win_brier", "home_win_log_loss",
+        "over_2_5_brier", "over_2_5_log_loss",
+        "btts_brier", "btts_log_loss", "result_1x2_log_loss",
+        "calibration",
+    }
+    payload = [_project_row(row, allowed)]
+    response = requests.post(
+        f"{writer.url}/rest/v1/footy_backtest_runs",
+        headers={
+            "apikey": writer.key,
+            "Authorization": f"Bearer {writer.key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        json=payload,
+        timeout=writer.timeout,
+    )
+    response.raise_for_status()
