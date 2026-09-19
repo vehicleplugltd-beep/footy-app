@@ -27,6 +27,11 @@ from .elo import ratings_for_match_dates
 from .external_elo import ratings_from_match_dataset
 from .odds_import import normalise_1x2_prices
 from .value_backtest import assess_1x2_history, summarize_qualified_1x2
+from .upcoming import (
+    normalise_upcoming_fixtures,
+    build_upcoming_predictions,
+    model_output_records,
+)
 
 
 def command_sources() -> None:
@@ -355,6 +360,83 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     print(json.dumps(printable, indent=2))
 
 
+def command_predict_upcoming(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    history = reader.historical_match_team_metrics()
+    if history.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    history = history[history["league"] == args.league].copy()
+    if history.empty:
+        raise RuntimeError("No historical rows match the requested league.")
+
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season],
+    )
+    schedule = source.understat_schedule()
+    fixtures = normalise_upcoming_fixtures(
+        schedule,
+        horizon_days=args.horizon_days,
+    )
+
+    if fixtures.empty:
+        print(json.dumps({
+            "status": "ok",
+            "fixtures": 0,
+            "predictions": 0,
+            "message": "No upcoming fixtures in requested horizon.",
+        }, indent=2))
+        return
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_matches(frame_records(fixtures, MATCH_FIELDS))
+
+    predictions = build_upcoming_predictions(
+        history=history,
+        fixtures=fixtures,
+        model_version=args.model_version,
+        min_team_matches=args.min_team_matches,
+        lambda_beta=args.lambda_beta,
+        home_lambda_scale=args.home_lambda_scale,
+        away_lambda_scale=args.away_lambda_scale,
+    )
+    if predictions.empty:
+        raise RuntimeError("Upcoming fixtures produced no model predictions.")
+
+    outputs = model_output_records(
+        predictions,
+        target_ev=args.target_ev,
+    )
+    writer.insert_model_outputs(outputs)
+
+    validation = reader.model_market_validation(args.model_version)
+    status = "RESEARCH"
+    if not validation.empty:
+        row = validation[validation["market"] == "1X2"]
+        if not row.empty:
+            status = str(row.iloc[0]["status"])
+
+    preview = predictions[
+        [
+            "match_id", "match_date", "home_team", "away_team",
+            "home_xg", "away_xg",
+            "home_win_probability", "draw_probability",
+            "away_win_probability",
+        ]
+    ].to_dict(orient="records")
+
+    print(json.dumps({
+        "status": "ok",
+        "model_version": args.model_version,
+        "validation_status": status,
+        "fixtures": int(len(fixtures)),
+        "predictions": int(len(predictions)),
+        "model_output_rows": int(len(outputs)),
+        "preview": preview,
+    }, indent=2, default=str))
+
+
 def command_calibrate(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics(
@@ -601,6 +683,54 @@ def main() -> None:
     value_backtest.add_argument("--source")
     value_backtest.add_argument("--target-ev", type=float, default=0.02)
 
+    predict_upcoming = sub.add_parser(
+        "predict-upcoming",
+        help="Price upcoming Understat fixtures from stored Footy history",
+    )
+    predict_upcoming.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
+    predict_upcoming.add_argument(
+        "--season",
+        required=True,
+        help="soccerdata/Understat season identifier, e.g. 2026.",
+    )
+    predict_upcoming.add_argument(
+        "--model-version",
+        default="baseline-v6-schedule-calibrated",
+    )
+    predict_upcoming.add_argument(
+        "--horizon-days",
+        type=int,
+        default=10,
+    )
+    predict_upcoming.add_argument(
+        "--min-team-matches",
+        type=int,
+        default=5,
+    )
+    predict_upcoming.add_argument(
+        "--target-ev",
+        type=float,
+        default=0.02,
+    )
+    predict_upcoming.add_argument(
+        "--lambda-beta",
+        type=float,
+        default=1.05,
+    )
+    predict_upcoming.add_argument(
+        "--home-lambda-scale",
+        type=float,
+        default=0.985953318340048,
+    )
+    predict_upcoming.add_argument(
+        "--away-lambda-scale",
+        type=float,
+        default=1.12646161962879,
+    )
+
     calibrate = sub.add_parser(
         "calibrate",
         help="Run walk-forward probability calibration from stored history",
@@ -676,6 +806,8 @@ def main() -> None:
         command_football_data_odds_ingest(args)
     elif args.command == "value-backtest":
         command_value_backtest(args)
+    elif args.command == "predict-upcoming":
+        command_predict_upcoming(args)
     elif args.command == "calibrate":
         command_calibrate(args)
 
