@@ -28,6 +28,7 @@ from .external_elo import ratings_from_match_dataset
 from .odds_import import normalise_1x2_prices
 from .value_backtest import assess_1x2_history, summarize_qualified_1x2
 from .diagnostics import upcoming_process_diagnostics
+from .process_ridge import build_process_feature_rows, holdout_match_predictions
 from .upcoming import (
     normalise_upcoming_fixtures,
     build_upcoming_predictions,
@@ -485,6 +486,173 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     }, indent=2, default=str))
 
 
+
+def command_research_process_ridge(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    frame = reader.historical_match_team_metrics()
+    if frame.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+
+    frame = frame[frame["league"] == args.league].copy()
+    wanted = {
+        *[str(s) for s in args.train_season],
+        *[str(s) for s in args.holdout_season],
+    }
+    frame = frame[frame["season"].astype(str).isin(wanted)].copy()
+    if frame.empty:
+        raise RuntimeError("No rows match the process-ridge research scope.")
+
+    feature_rows = build_process_feature_rows(
+        frame,
+        process_span=args.process_span,
+        process_prior_weight=args.process_prior_weight,
+        venue_split_weight=args.venue_split_weight,
+        min_team_matches=args.min_team_matches,
+    )
+    fit, predictions = holdout_match_predictions(
+        feature_rows,
+        train_seasons={str(s) for s in args.train_season},
+        holdout_seasons={str(s) for s in args.holdout_season},
+        alpha=args.alpha,
+    )
+    if predictions.empty:
+        raise RuntimeError("Process ridge produced no holdout predictions.")
+
+    home = (
+        frame[frame["home_away"] == "H"]
+        [["match_id", "goals", "xg"]]
+        .rename(columns={"goals": "home_goals", "xg": "actual_home_xg"})
+    )
+    away = (
+        frame[frame["home_away"] == "A"]
+        [["match_id", "goals", "xg"]]
+        .rename(columns={"goals": "away_goals", "xg": "actual_away_xg"})
+    )
+    outcomes = home.merge(away, on="match_id", how="inner", validate="one_to_one")
+    scored = predictions.merge(
+        outcomes,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+
+    scored["home_win_actual"] = (
+        scored["home_goals"] > scored["away_goals"]
+    ).astype(int)
+    scored["draw_actual"] = (
+        scored["home_goals"] == scored["away_goals"]
+    ).astype(int)
+    scored["away_win_actual"] = (
+        scored["home_goals"] < scored["away_goals"]
+    ).astype(int)
+    scored["over_2_5_actual"] = (
+        scored["home_goals"] + scored["away_goals"] >= 3
+    ).astype(int)
+    scored["btts_yes_actual"] = (
+        (scored["home_goals"] > 0) & (scored["away_goals"] > 0)
+    ).astype(int)
+
+    home_brier, home_log = binary_metrics(
+        scored["home_win_probability"],
+        scored["home_win_actual"],
+    )
+    over_brier, over_log = binary_metrics(
+        scored["over_2_5_probability"],
+        scored["over_2_5_actual"],
+    )
+    btts_brier, btts_log = binary_metrics(
+        scored["btts_yes_probability"],
+        scored["btts_yes_actual"],
+    )
+    actual_1x2 = pd.Series(
+        [
+            "home" if hg > ag else "away" if hg < ag else "draw"
+            for hg, ag in zip(scored["home_goals"], scored["away_goals"])
+        ],
+        index=scored.index,
+    )
+    one_x_two_log = multiclass_log_loss(
+        pd.DataFrame({
+            "home": scored["home_win_probability"],
+            "draw": scored["draw_probability"],
+            "away": scored["away_win_probability"],
+        }),
+        actual_1x2,
+    )
+
+    coefficient_map = {
+        "intercept": float(fit.coefficients[0]),
+        **{
+            name: float(value)
+            for name, value in zip(
+                fit.feature_columns,
+                fit.coefficients[1:],
+            )
+        },
+    }
+    research = {
+        "train_seasons": sorted({str(s) for s in args.train_season}),
+        "holdout_seasons": sorted({str(s) for s in args.holdout_season}),
+        "alpha": float(args.alpha),
+        "training_team_rows": int(
+            feature_rows["season"].astype(str).isin(args.train_season).sum()
+        ),
+        "holdout_team_rows": int(
+            feature_rows["season"].astype(str).isin(args.holdout_season).sum()
+        ),
+        "home_xg_mae": float(
+            (scored["model_home_xg"] - scored["actual_home_xg"]).abs().mean()
+        ),
+        "away_xg_mae": float(
+            (scored["model_away_xg"] - scored["actual_away_xg"]).abs().mean()
+        ),
+        "coefficients": coefficient_map,
+    }
+
+    result = {
+        "model_version": args.model_version,
+        "league": args.league,
+        "seasons": sorted({str(s) for s in args.holdout_season}),
+        "prediction_rows": int(len(scored)),
+        "home_win_brier": home_brier,
+        "home_win_log_loss": home_log,
+        "over_2_5_brier": over_brier,
+        "over_2_5_log_loss": over_log,
+        "btts_brier": btts_brier,
+        "btts_log_loss": btts_log,
+        "result_1x2_log_loss": one_x_two_log,
+        "calibration": {"process_ridge_research": research},
+    }
+
+    store = scored[
+        [
+            "match_id",
+            "model_home_xg",
+            "model_away_xg",
+            "uncertainty_haircut",
+            "home_win_probability",
+            "draw_probability",
+            "away_win_probability",
+            "over_2_5_probability",
+            "btts_yes_probability",
+        ]
+    ].copy()
+    store["home_elo"] = None
+    store["away_elo"] = None
+    store["model_version"] = args.model_version
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_historical_predictions(
+        frame_records(store, HISTORICAL_PREDICTION_FIELDS)
+    )
+    insert_backtest_run(writer, result)
+
+    print(json.dumps({
+        "status": "ok",
+        **result,
+    }, indent=2, default=str))
+
+
 def command_calibrate(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics(
@@ -822,6 +990,24 @@ def main() -> None:
         default=0.35,
     )
 
+
+    process_ridge = sub.add_parser(
+        "research-process-ridge",
+        help="Fit process-only ridge xG on training seasons and score holdout seasons",
+    )
+    process_ridge.add_argument("--league", default="ENG-Premier League")
+    process_ridge.add_argument("--train-season", action="append", required=True)
+    process_ridge.add_argument("--holdout-season", action="append", required=True)
+    process_ridge.add_argument(
+        "--model-version",
+        default="v8-process-ridge-a10-holdout",
+    )
+    process_ridge.add_argument("--alpha", type=float, default=10.0)
+    process_ridge.add_argument("--min-team-matches", type=int, default=5)
+    process_ridge.add_argument("--process-span", type=int, default=16)
+    process_ridge.add_argument("--process-prior-weight", type=float, default=0.50)
+    process_ridge.add_argument("--venue-split-weight", type=float, default=0.20)
+
     calibrate = sub.add_parser(
         "calibrate",
         help="Run walk-forward probability calibration from stored history",
@@ -919,6 +1105,8 @@ def main() -> None:
         command_diagnose_upcoming(args)
     elif args.command == "predict-upcoming":
         command_predict_upcoming(args)
+    elif args.command == "research-process-ridge":
+        command_research_process_ridge(args)
     elif args.command == "calibrate":
         command_calibrate(args)
 
