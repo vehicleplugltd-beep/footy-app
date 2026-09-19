@@ -46,35 +46,67 @@ export default async function Home() {
         </div>
         <div className="nav-right">
           <Link className="nav-fpl-link" href="/fpl">Free FPL Assistant</Link>
+          <a className="nav-pro-link" href="#price-checker">Betting tools</a>
           <span className="live-dot" />
-          Model board
           <StatusPill status={status} />
         </div>
       </nav>
 
-      <section className="hero shell">
+      <section className="hero shell betting-hero">
         <div>
-          <span className="eyebrow">Football price intelligence</span>
+          <span className="eyebrow">Betting intelligence for serious punters</span>
           <h1>
-            Stop asking who wins.
+            Beat the bookies by
             <br />
-            Ask whether the price is good enough.
+            beating the price.
           </h1>
           <p>
-            Footy turns underlying football process into probabilities,
-            fair odds and minimum take prices—then refuses to promote
-            unvalidated edges.
+            Footy is built to help punters find mispriced odds, demand a better
+            entry price, stake with discipline and track whether the edge is
+            actually holding up over time.
           </p>
+          <div className="hero-actions">
+            <a className="primary-cta" href="#price-checker">Check a price</a>
+            <Link className="secondary-cta" href="/fpl">Use Free FPL Assistant</Link>
+          </div>
         </div>
 
-        <div className="hero-card">
-          <span className="eyebrow">Current production state</span>
-          <strong>{status}</strong>
+        <div className="hero-card betting-positioning">
+          <span className="eyebrow">The Footy rule</span>
+          <strong>Price first.</strong>
           <p>
-            {validation?.notes ??
-              "Validation evidence is still being accumulated."}
+            A team can be likely to win and still be a bad bet. Footy models the
+            football first, sets a fair price, adds an uncertainty margin, then
+            compares that with the bookmaker.
           </p>
+          <div className="hero-proof">
+            <span>Current 1X2 model</span>
+            <StatusPill status={status} />
+          </div>
         </div>
+      </section>
+
+      <section className="shell product-promise">
+        <article>
+          <span className="promise-number">01</span>
+          <h3>Find the edge</h3>
+          <p>Independent probabilities built from underlying football process—not odds-led narratives.</p>
+        </article>
+        <article>
+          <span className="promise-number">02</span>
+          <h3>Know your price</h3>
+          <p>Fair odds and a stricter Minimum Take Price tell you exactly when to bet and when to pass.</p>
+        </article>
+        <article>
+          <span className="promise-number">03</span>
+          <h3>Protect the bankroll</h3>
+          <p>Validation gates and capped Kelly staking stop a good idea becoming a reckless stake.</p>
+        </article>
+        <article>
+          <span className="promise-number">04</span>
+          <h3>Prove the profit</h3>
+          <p>ROI and closing-line performance decide whether an edge survives—not screenshots or winning streaks.</p>
+        </article>
       </section>
 
       {!configured ? (
@@ -85,18 +117,18 @@ export default async function Home() {
       ) : null}
 
       <div className="shell notice">
-        <strong>Live bookmaker feed not connected yet.</strong> The board
-        shows Footy&apos;s independent fair prices and minimum take prices.
-        Use the price checker with odds from your bookmaker.
+        <strong>Footy Pro is in live beta.</strong> Today you can use the fair-price
+        board, Minimum Take Price checker and bankroll guardrail. Live bookmaker
+        line-shopping, alerts and automatic bet tracking are the next paid features.
       </div>
 
       <section className="shell section">
         <div className="section-head">
           <div>
             <span className="eyebrow">Upcoming</span>
-            <h2>Model board</h2>
+            <h2>Today&apos;s pricing board</h2>
           </div>
-          <p>v7 result model · latest prediction per fixture · London time</p>
+          <p>Independent v7 fair prices · latest prediction per fixture · London time</p>
         </div>
 
         <div className="match-list">
@@ -150,24 +182,24 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="shell section split">
+      <section className="shell section split" id="price-checker">
         <div className="panel">
-          <span className="eyebrow">Tool 01</span>
-          <h2>Price checker</h2>
+          <span className="eyebrow">Tool 01 · Find value</span>
+          <h2>Is the bookmaker price good enough?</h2>
           <p className="muted">
-            Enter the odds you can actually get. Footy compares them with
-            fair price and minimum take price, then applies the validation
-            gate.
+            Enter the odds you can actually get. Footy compares them with our
+            fair price and Minimum Take Price, calculates the raw EV, then applies
+            the historical validation gate before calling it actionable.
           </p>
           <PriceChecker board={board} validationStatus={status} />
         </div>
 
         <div className="panel">
-          <span className="eyebrow">Tool 02</span>
-          <h2>Bankroll guardrail</h2>
+          <span className="eyebrow">Tool 02 · Stake properly</span>
+          <h2>Turn edge into disciplined staking</h2>
           <p className="muted">
-            Quarter-Kelly sizing with a 1.5% bankroll cap. Unapproved
-            markets automatically return a £0 production stake.
+            Quarter-Kelly sizing with a 1.5% bankroll cap. If a model-market
+            pair has not earned approval, the production stake stays at £0.
           </p>
           <BankrollCalculator validationStatus={status} />
         </div>
@@ -177,7 +209,7 @@ export default async function Home() {
         <div className="section-head">
           <div>
             <span className="eyebrow">Evidence</span>
-            <h2>Why the gate matters</h2>
+            <h2>Show me the evidence</h2>
           </div>
         </div>
 
@@ -216,6 +248,26 @@ export default async function Home() {
               {homeRule?.status ?? "—"}
             </small>
           </div>
+        </div>
+      </section>
+
+      <section className="shell section pro-roadmap">
+        <div className="pro-roadmap-copy">
+          <span className="eyebrow">Footy Pro</span>
+          <h2>Built for punters who care about long-run profit.</h2>
+          <p>
+            The paid product is heading toward a full betting terminal: live
+            bookmaker prices, best-price shopping, value alerts, bet tracking,
+            CLV, bankroll history and only historically validated betting feeds.
+          </p>
+        </div>
+        <div className="pro-feature-grid">
+          <span>Live +EV scanner</span>
+          <span>William Hill + best market</span>
+          <span>Price alerts</span>
+          <span>Bet tracker</span>
+          <span>CLV dashboard</span>
+          <span>Bankroll analytics</span>
         </div>
       </section>
 
