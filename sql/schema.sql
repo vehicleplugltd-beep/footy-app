@@ -306,3 +306,17 @@ revoke all on table public.footy_strategy_rules
   from public, anon, authenticated;
 grant select, insert, update, delete
   on table public.footy_strategy_rules to service_role;
+
+
+create table if not exists public.footy_fpl_snapshots (
+  snapshot_key text primary key,
+  payload jsonb not null,
+  source text not null default 'fantasy.premierleague.com',
+  retrieved_at timestamptz not null default now()
+);
+
+alter table public.footy_fpl_snapshots enable row level security;
+revoke all on table public.footy_fpl_snapshots
+  from public, anon, authenticated;
+grant select, insert, update, delete
+  on table public.footy_fpl_snapshots to service_role;
