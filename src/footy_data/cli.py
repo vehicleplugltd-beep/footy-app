@@ -17,6 +17,7 @@ from .storage import (
     frame_records,
     MATCH_FIELDS,
     MATCH_TEAM_METRIC_FIELDS,
+    HISTORICAL_PREDICTION_FIELDS,
     insert_backtest_run,
 )
 from .walk_forward import build_walk_forward_predictions
@@ -248,6 +249,29 @@ def command_calibrate(args: argparse.Namespace) -> None:
     }
 
     writer = SupabaseRESTWriter()
+
+    prediction_store = predictions[
+        [
+            "match_id",
+            "model_home_xg",
+            "model_away_xg",
+            "uncertainty_haircut",
+            "home_win_probability",
+            "draw_probability",
+            "away_win_probability",
+            "over_2_5_probability",
+            "btts_yes_probability",
+            "home_elo",
+            "away_elo",
+        ]
+    ].copy()
+    prediction_store["model_version"] = args.model_version
+    writer.upsert_historical_predictions(
+        frame_records(
+            prediction_store,
+            HISTORICAL_PREDICTION_FIELDS,
+        )
+    )
     insert_backtest_run(writer, result)
 
     printable = dict(result)
