@@ -257,3 +257,33 @@ revoke all on table public.footy_model_market_validation
   from public, anon, authenticated;
 grant select, insert, update, delete
   on table public.footy_model_market_validation to service_role;
+
+
+create table if not exists public.footy_strategy_rules (
+  strategy_id text primary key,
+  model_version text not null,
+  market text not null,
+  selection text not null,
+  status text not null check (
+    status in ('APPROVED','WATCH','RESEARCH','PASS')
+  ),
+  target_ev double precision not null default 0.02,
+  min_probability_edge double precision,
+  min_model_probability double precision,
+  max_decimal_odds double precision,
+  min_raw_ev double precision,
+  training_seasons text[],
+  holdout_seasons text[],
+  training_bets integer,
+  training_roi double precision,
+  holdout_bets integer,
+  holdout_roi double precision,
+  notes text,
+  evaluated_at timestamptz not null default now()
+);
+
+alter table public.footy_strategy_rules enable row level security;
+revoke all on table public.footy_strategy_rules
+  from public, anon, authenticated;
+grant select, insert, update, delete
+  on table public.footy_strategy_rules to service_role;
