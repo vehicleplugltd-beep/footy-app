@@ -104,6 +104,9 @@ def build_walk_forward_predictions(
     lambda_beta: float = 1.0,
     home_lambda_scale: float = 1.0,
     away_lambda_scale: float = 1.0,
+    process_span: int = 8,
+    process_prior_weight: float = 0.35,
+    venue_split_weight: float = 0.35,
 ) -> pd.DataFrame:
     """
     Produce historical pre-match predictions with strict temporal ordering.
@@ -140,8 +143,16 @@ def build_walk_forward_predictions(
 
     frame = match_team_metrics.copy()
     frame["match_date"] = pd.to_datetime(frame["match_date"], utc=True)
-    frame = add_rolling_process(frame)
-    frame = add_home_away_process(frame)
+    frame = add_rolling_process(
+        frame,
+        span=process_span,
+        prior_weight=process_prior_weight,
+    )
+    frame = add_home_away_process(
+        frame,
+        span=process_span,
+        split_weight=venue_split_weight,
+    )
     if process_mode == "schedule_adjusted":
         frame = add_schedule_adjusted_process(
             frame,
@@ -150,6 +161,9 @@ def build_walk_forward_predictions(
                 prior_goals_per_team_match - 0.10,
                 0.5,
             ),
+            span=process_span,
+            prior_weight=process_prior_weight,
+            split_weight=venue_split_weight,
         )
 
     rows = []
