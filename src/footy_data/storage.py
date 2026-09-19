@@ -30,6 +30,15 @@ TEAM_RATING_FIELDS = {
     "team", "rating_type", "rating_value", "rating_date", "source",
 }
 
+HISTORICAL_PREDICTION_FIELDS = {
+    "match_id", "model_version",
+    "model_home_xg", "model_away_xg",
+    "uncertainty_haircut",
+    "home_win_probability", "draw_probability", "away_win_probability",
+    "over_2_5_probability", "btts_yes_probability",
+    "home_elo", "away_elo",
+}
+
 
 def _clean_value(value: Any):
     if value is None:
@@ -139,6 +148,17 @@ class SupabaseRESTWriter:
             rows,
             "team,rating_type,rating_date,source",
             TEAM_RATING_FIELDS,
+        )
+
+    def upsert_historical_predictions(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._upsert(
+            "footy_historical_predictions",
+            rows,
+            "match_id,model_version",
+            HISTORICAL_PREDICTION_FIELDS,
         )
 
     def insert_bookmaker_prices(self, rows: Iterable[Mapping[str, Any]]) -> None:
