@@ -28,4 +28,9 @@ jobs:
           footy-data diagnose-upcoming \
             --league "ENG-Premier League" \
             --season "2026" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
             --horizon-days 3
