@@ -111,6 +111,9 @@ def build_upcoming_predictions(
     lambda_beta: float = 1.05,
     home_lambda_scale: float = 0.985953318340048,
     away_lambda_scale: float = 1.12646161962879,
+    process_span: int = 8,
+    process_prior_weight: float = 0.35,
+    venue_split_weight: float = 0.35,
 ) -> pd.DataFrame:
     if fixtures.empty:
         return pd.DataFrame()
@@ -143,8 +146,16 @@ def build_upcoming_predictions(
             ignore_index=True,
             sort=False,
         )
-        combined = add_rolling_process(combined)
-        combined = add_home_away_process(combined)
+        combined = add_rolling_process(
+            combined,
+            span=process_span,
+            prior_weight=process_prior_weight,
+        )
+        combined = add_home_away_process(
+            combined,
+            span=process_span,
+            split_weight=venue_split_weight,
+        )
         combined = add_schedule_adjusted_process(
             combined,
             league_xg_prior=prior_goals_per_team_match,
@@ -152,6 +163,9 @@ def build_upcoming_predictions(
                 prior_goals_per_team_match - 0.10,
                 0.5,
             ),
+            span=process_span,
+            prior_weight=process_prior_weight,
+            split_weight=venue_split_weight,
         )
 
         current = combined[
