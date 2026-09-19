@@ -7,9 +7,9 @@ import pandas as pd
 PROCESS_METRICS = (
     "xg", "xga", "npxg", "npxga",
     "goals", "goals_conceded",
-    "shots", "shots_on_target", "shots_in_box",
+    "shots", "shots_on_target", "shots_conceded", "sot_conceded", "shots_in_box",
     "big_chances", "big_chances_conceded",
-    "box_touches", "xa", "key_passes", "set_piece_xg",
+    "box_touches", "xa", "key_passes", "set_piece_xg", "set_piece_xga",
     "possession", "ppda", "field_tilt", "deep_completions",
 )
 
