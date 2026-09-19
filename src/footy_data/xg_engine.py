@@ -20,6 +20,7 @@ class LeagueEnvironment:
     goals_per_team_match: float = 1.35
     home_advantage_ratio: float = 1.10
     mean_elo: float = 1500.0
+    strength_baseline: float | None = None
 
 
 @dataclass(frozen=True)
@@ -40,10 +41,17 @@ def estimate_match_xg(
     use_elo: bool = True,
 ) -> XGEstimate:
     league = env.goals_per_team_match
-    home_attack_strength = _safe(home.attack_xg) / league
-    away_defence_weakness = _safe(away.defence_xga) / league
-    away_attack_strength = _safe(away.attack_xg) / league
-    home_defence_weakness = _safe(home.defence_xga) / league
+    strength_baseline = (
+        env.strength_baseline
+        if env.strength_baseline is not None
+        else league
+    )
+    strength_baseline = _safe(strength_baseline)
+
+    home_attack_strength = _safe(home.attack_xg) / strength_baseline
+    away_defence_weakness = _safe(away.defence_xga) / strength_baseline
+    away_attack_strength = _safe(away.attack_xg) / strength_baseline
+    home_defence_weakness = _safe(home.defence_xga) / strength_baseline
 
     home_lambda = league * home_attack_strength * away_defence_weakness
     away_lambda = league * away_attack_strength * home_defence_weakness
@@ -72,6 +80,7 @@ def estimate_match_xg(
             "away_attack_strength": away_attack_strength,
             "home_defence_weakness": home_defence_weakness,
             "home_advantage_ratio": env.home_advantage_ratio,
+            "strength_baseline": strength_baseline,
             "elo_home_factor": elo_home_factor,
             "sample_size_used": float(n),
         },
