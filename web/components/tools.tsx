@@ -58,15 +58,15 @@ export function PriceChecker({
     !selected || !(price > 1)
       ? "ENTER PRICE"
       : price >= selected.minimum_take_price
-        ? "RAW BET"
+        ? "RAW VALUE"
         : price >= selected.fair_odds
           ? "RAW WATCH"
           : "RAW PASS";
 
   const productionVerdict =
-    rawPriceVerdict === "RAW BET"
+    rawPriceVerdict === "RAW VALUE"
       ? validationStatus === "APPROVED"
-        ? "BET"
+        ? "VALUE TIP"
         : validationStatus === "PASS"
           ? "PASS"
           : "WATCH"
@@ -126,7 +126,7 @@ export function PriceChecker({
       </div>
 
       <div className="verdict-row">
-        <span className="eyebrow">Production verdict</span>
+        <span className="eyebrow">Footy tip status</span>
         <strong
           className={`verdict verdict-${productionVerdict
             .toLowerCase()
@@ -136,8 +136,8 @@ export function PriceChecker({
         </strong>
         <small>
           {validationStatus === "APPROVED"
-            ? "Historically approved market-model pair."
-            : `Model validation is ${validationStatus}; raw BET signals cannot be promoted yet.`}
+            ? "Historically approved information signal."
+            : `Model validation is ${validationStatus}; raw value signals remain informational until approved.`}
         </small>
       </div>
     </div>
