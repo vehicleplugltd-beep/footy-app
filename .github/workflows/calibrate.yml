@@ -28,4 +28,5 @@ jobs:
             --season "2223" \
             --season "2324" \
             --season "2425" \
+            --season "2526" \
             --model-version "baseline-v1"
