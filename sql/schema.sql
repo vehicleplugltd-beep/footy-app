@@ -103,6 +103,9 @@ create table if not exists public.footy_model_outputs (
   created_at timestamptz not null default now()
 );
 
+create index if not exists idx_footy_model_outputs_match
+  on public.footy_model_outputs(match_id);
+
 alter table public.footy_data_sources enable row level security;
 alter table public.footy_matches enable row level security;
 alter table public.footy_match_team_metrics enable row level security;
