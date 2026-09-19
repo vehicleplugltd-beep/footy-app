@@ -1,0 +1,36 @@
+name: research-process-ridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/research-process-ridge.yml"
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Fit early seasons and score untouched holdout
+        run: |
+          footy-data research-process-ridge \
+            --league "ENG-Premier League" \
+            --train-season "2223" \
+            --train-season "2324" \
+            --holdout-season "2425" \
+            --holdout-season "2526" \
+            --model-version "v8-process-ridge-a10-holdout" \
+            --alpha 10 \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20
