@@ -39,6 +39,7 @@ from .upcoming import (
     build_upcoming_predictions,
     model_output_records,
 )
+from .results_ledger import refresh_results_ledger
 
 
 def command_sources() -> None:
@@ -553,6 +554,18 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
 
 
 
+def command_results_refresh(args: argparse.Namespace) -> None:
+    result = refresh_results_ledger(model_version=args.model_version)
+    print(json.dumps({
+        "status": "ok",
+        "model_version": args.model_version,
+        "published": result.published,
+        "settled": result.settled,
+        "open_calls": result.open_calls,
+    }, indent=2))
+
+
+
 def command_research_process_ridge(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics()
@@ -1062,6 +1075,15 @@ def main() -> None:
     )
 
 
+    results_refresh = sub.add_parser(
+        "results-refresh",
+        help="Freeze upcoming public model calls and settle completed results",
+    )
+    results_refresh.add_argument(
+        "--model-version",
+        default="v7-r16-p50-v20",
+    )
+
     process_ridge = sub.add_parser(
         "research-process-ridge",
         help="Fit process-only ridge xG on training seasons and score holdout seasons",
@@ -1176,6 +1198,8 @@ def main() -> None:
         command_diagnose_upcoming(args)
     elif args.command == "predict-upcoming":
         command_predict_upcoming(args)
+    elif args.command == "results-refresh":
+        command_results_refresh(args)
     elif args.command == "research-process-ridge":
         command_research_process_ridge(args)
     elif args.command == "calibrate":
