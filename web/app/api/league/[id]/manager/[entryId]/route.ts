@@ -1126,6 +1126,7 @@ function buildCounterPlay(
     out: RankedPlayer,
     incoming: RankedPlayer,
   ) => {
+    if (!squad.some((player) => player.id === out.id)) return false;
     if (out.position !== incoming.position) return false;
     if (squad.some((player) => player.id === incoming.id)) return false;
     if (incoming.price > out.price + bank + 0.001) return false;
@@ -1192,12 +1193,17 @@ function buildCounterPlay(
             ? 1.45
             : 1.20;
     const bankPressure = freeTransfers >= 4 ? -0.35 : 0;
+    const paidSecondMoveIsPlausible =
+      freeTransfers === 1 &&
+      (style === "ATTACK" || activity === "AGGRESSIVE");
     const maxMoves =
       freeTransfers >= 3
         ? 2
         : freeTransfers >= 2 && (style === "ATTACK" || activity === "AGGRESSIVE")
           ? 2
-          : 1;
+          : paidSecondMoveIsPlausible
+            ? 2
+            : 1;
 
     for (let moveIndex = 0; moveIndex < maxMoves; moveIndex += 1) {
       const best = bestFutureTransfer(squad, bank, eventIndex);
@@ -1344,7 +1350,11 @@ function buildCounterPlay(
       const bankBefore = bank;
       let transfers: PathTransfer[] = [];
 
-      if (eventIndex === 0 && firstTransfer) {
+      if (
+        eventIndex === 0 &&
+        firstTransfer &&
+        transferIsLegal(squad, bank, firstTransfer.out, firstTransfer.in)
+      ) {
         const gain = weightedTransferGain(
           firstTransfer.out,
           firstTransfer.in,
