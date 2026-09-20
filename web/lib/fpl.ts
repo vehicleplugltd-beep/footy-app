@@ -880,17 +880,24 @@ async function footyPlayerProcesses() {
     if (Number.isFinite(code)) priorByCode.set(code, prior);
   }
 
-  const byPlayer = new Map<number, PlayerMetricRow[]>();
+  // Keep the modelling identity stable across FPL seasons. Season-scoped
+  // element ids can change; the Premier League player code is persistent.
+  const byPlayerCode = new Map<number, PlayerMetricRow[]>();
   for (const row of rows) {
-    const id = Number(row.player_id);
-    if (!Number.isFinite(id)) continue;
-    const group = byPlayer.get(id) ?? [];
+    const code = Number(row.player_code);
+    if (!Number.isFinite(code)) continue;
+    const group = byPlayerCode.get(code) ?? [];
     group.push(row);
-    byPlayer.set(id, group);
+    byPlayerCode.set(code, group);
   }
 
   const output = new Map<number, PlayerProcessEvidence>();
-  for (const [playerId, allRows] of byPlayer) {
+  const playerCodes = new Set<number>([
+    ...byPlayerCode.keys(),
+    ...priorByCode.keys(),
+  ]);
+  for (const playerCode of playerCodes) {
+    const allRows = byPlayerCode.get(playerCode) ?? [];
     const played = allRows.filter((row) => num(row.minutes) > 0);
     const leagueRows = played.filter(
       (row) => String(row.competition).toLowerCase() === "prem",
@@ -903,10 +910,7 @@ async function footyPlayerProcesses() {
     );
     const latestRow =
       played[played.length - 1] ?? allRows[allRows.length - 1];
-    const playerCode = Number(latestRow?.player_code);
-    const prior = Number.isFinite(playerCode)
-      ? priorByCode.get(playerCode) ?? null
-      : null;
+    const prior = priorByCode.get(playerCode) ?? null;
     const priorMinutes = prior ? Math.max(0, num(prior.minutes)) : 0;
     const currentTeam = latestRow?.team ?? null;
     const priorTeam = prior?.team ?? null;
@@ -1008,7 +1012,7 @@ async function footyPlayerProcesses() {
       0.96,
     );
 
-    output.set(playerId, {
+    output.set(playerCode, {
       premierLeagueMinutes,
       premierLeagueMatches: leagueRows.length,
       recentXgPer90: playerRate90(recent, "xg"),
@@ -2837,7 +2841,9 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     const score8 = average(horizon.slice(0, 8).map((item) => item.score));
     const bestWindow = bestRollingWindow(horizon, 3);
     const processRow = process.get(canonicalTeam(basePlayer.teamName));
-    const playerEvidence = playerProcesses.get(basePlayer.id) ?? null;
+    const stableCode = elementById.get(basePlayer.id)?.code ?? null;
+    const playerEvidence =
+      stableCode != null ? playerProcesses.get(stableCode) ?? null : null;
     const firstDifficulty = horizon[0]?.difficulty ?? 5;
 
     let status: ScoutPlayerProfile["status"] = "WATCH";
