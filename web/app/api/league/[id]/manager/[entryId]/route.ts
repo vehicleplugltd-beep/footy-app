@@ -79,6 +79,300 @@ async function latestLeagueSnapshots(leagueId: number): Promise<{
   };
 }
 
+type RecommendationReceipt = {
+  event: number;
+  generated_at: string;
+  battle_mode: string | null;
+  model_version: string | null;
+  captain_options: Array<{
+    id: number;
+    name: string;
+    team: string;
+    score: number;
+  }>;
+  transfer_options: Array<{
+    out: { id: number; name: string; team: string; score: number };
+    in: { id: number; name: string; team: string; score: number } | null;
+    reason: string;
+  }>;
+};
+
+type EventLiveSnapshot = {
+  snapshot_key: string;
+  payload: {
+    elements?: Array<{
+      id: number;
+      stats?: { total_points?: number };
+    }>;
+  };
+};
+
+async function decisionQualityHistory(
+  leagueId: number,
+  entryId: number,
+  currentEvent: { id: number; finished: boolean } | null,
+) {
+  const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) {
+    return {
+      status: "UNAVAILABLE",
+      tracked_from_event: 6,
+      completed: [],
+      summary: null,
+      caveat: "Decision receipts require the Footy server data connection.",
+    };
+  }
+
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  const [receiptResponse, picksResponse, liveResponse] = await Promise.all([
+    fetch(
+      `${url}/rest/v1/footy_fpl_recommendation_snapshots?select=event,generated_at,battle_mode,model_version,captain_options,transfer_options&league_id=eq.${leagueId}&entry_id=eq.${entryId}&is_pre_deadline=eq.true&order=event.asc,generated_at.desc`,
+      { headers, cache: "no-store" },
+    ),
+    fetch(
+      `${url}/rest/v1/footy_fpl_entry_snapshots?select=entry_id,event,picks,entry_history&league_id=eq.${leagueId}&entry_id=eq.${entryId}&order=event.asc`,
+      { headers, cache: "no-store" },
+    ),
+    fetch(
+      `${url}/rest/v1/footy_fpl_snapshots?select=snapshot_key,payload`,
+      { headers, cache: "no-store" },
+    ),
+  ]);
+
+  if (!receiptResponse.ok || !picksResponse.ok || !liveResponse.ok) {
+    return {
+      status: "UNAVAILABLE",
+      tracked_from_event: 6,
+      completed: [],
+      summary: null,
+      caveat: "One or more deadline-audit data sources are temporarily unavailable.",
+    };
+  }
+
+  const receipts = (await receiptResponse.json()) as RecommendationReceipt[];
+  const picks = (await picksResponse.json()) as EntrySnapshot[];
+  const liveSnapshots = (await liveResponse.json()) as EventLiveSnapshot[];
+
+  const latestReceiptByEvent = new Map<number, RecommendationReceipt>();
+  for (const receipt of receipts) {
+    if (!latestReceiptByEvent.has(Number(receipt.event))) {
+      latestReceiptByEvent.set(Number(receipt.event), receipt);
+    }
+  }
+  const pickByEvent = new Map(picks.map((snapshot) => [snapshot.event, snapshot]));
+  const liveByEvent = new Map<number, Map<number, number>>();
+  for (const snapshot of liveSnapshots) {
+    const match = snapshot.snapshot_key.match(/^event-live-(\d+)$/);
+    if (!match) continue;
+    const points = new Map<number, number>();
+    for (const element of snapshot.payload?.elements ?? []) {
+      points.set(Number(element.id), Number(element.stats?.total_points ?? 0));
+    }
+    liveByEvent.set(Number(match[1]), points);
+  }
+
+  const currentEventId = currentEvent?.id ?? 0;
+  const isCompleted = (event: number) =>
+    event < currentEventId ||
+    (event === currentEventId && Boolean(currentEvent?.finished));
+
+  const completed = [...latestReceiptByEvent.values()]
+    .filter((receipt) => isCompleted(Number(receipt.event)))
+    .map((receipt) => {
+      const event = Number(receipt.event);
+      const eventPicks = pickByEvent.get(event);
+      const priorPicks = pickByEvent.get(event - 1);
+      const points = liveByEvent.get(event);
+      if (!eventPicks || !points) return null;
+
+      const actualCaptainPick = (eventPicks.picks ?? []).find(
+        (pick) => pick.is_captain,
+      );
+      const topCaptain = receipt.captain_options?.[0] ?? null;
+      const actualCaptainOption = actualCaptainPick
+        ? receipt.captain_options?.find(
+            (option) => option.id === actualCaptainPick.element,
+          ) ?? null
+        : null;
+      const actualCaptainRawPoints = actualCaptainPick
+        ? points.get(actualCaptainPick.element) ?? 0
+        : null;
+      const topCaptainRawPoints = topCaptain
+        ? points.get(topCaptain.id) ?? 0
+        : null;
+      const expectedCaptainGap =
+        topCaptain && actualCaptainOption
+          ? Number(topCaptain.score ?? 0) - Number(actualCaptainOption.score ?? 0)
+          : null;
+
+      const captainProcess =
+        !actualCaptainPick || !topCaptain
+          ? "UNAVAILABLE"
+          : actualCaptainPick.element === topCaptain.id
+            ? "MODEL_ALIGNED"
+            : actualCaptainOption && (expectedCaptainGap ?? 99) <= 0.5
+              ? "CLOSE_CALL"
+              : actualCaptainOption
+                ? "OFF_MODEL"
+                : "NOT_IN_MODEL_SHORTLIST";
+
+      const currentIds = new Set((eventPicks.picks ?? []).map((pick) => pick.element));
+      const priorIds = new Set((priorPicks?.picks ?? []).map((pick) => pick.element));
+      const actualIn = priorPicks
+        ? [...currentIds].filter((id) => !priorIds.has(id))
+        : [];
+      const actualOut = priorPicks
+        ? [...priorIds].filter((id) => !currentIds.has(id))
+        : [];
+
+      const recommendedTransfers = receipt.transfer_options ?? [];
+      const topTransfer = recommendedTransfers[0] ?? null;
+      const alignedTransfer = topTransfer?.in
+        ? actualIn.includes(topTransfer.in.id) && actualOut.includes(topTransfer.out.id)
+        : false;
+      const anyRecommendedTransfer = recommendedTransfers.find(
+        (option) =>
+          option.in &&
+          actualIn.includes(option.in.id) &&
+          actualOut.includes(option.out.id),
+      );
+      const transferProcess =
+        !priorPicks
+          ? "NO_PRIOR_SQUAD_SNAPSHOT"
+          : actualIn.length === 0 && actualOut.length === 0
+            ? topTransfer
+              ? "BANKED_AGAINST_MODEL_MOVE"
+              : "MODEL_ALIGNED_HOLD"
+            : alignedTransfer
+              ? "MODEL_ALIGNED"
+              : anyRecommendedTransfer
+                ? "MODEL_SHORTLIST"
+                : "OFF_MODEL_OR_STRUCTURAL";
+
+      const topTransferActualDelta =
+        topTransfer?.in
+          ? (points.get(topTransfer.in.id) ?? 0) -
+            (points.get(topTransfer.out.id) ?? 0)
+          : null;
+      const topTransferExpectedDelta =
+        topTransfer?.in
+          ? Number(topTransfer.in.score ?? 0) -
+            Number(topTransfer.out.score ?? 0)
+          : null;
+
+      const hitCost = Number(
+        eventPicks.entry_history?.event_transfers_cost ?? 0,
+      );
+      const benchPoints = Number(
+        eventPicks.entry_history?.points_on_bench ?? 0,
+      );
+
+      return {
+        event,
+        generated_at: receipt.generated_at,
+        model_version: receipt.model_version,
+        battle_mode: receipt.battle_mode,
+        captain: {
+          process: captainProcess,
+          actual_player_id: actualCaptainPick?.element ?? null,
+          model_player_id: topCaptain?.id ?? null,
+          model_player_name: topCaptain?.name ?? null,
+          model_expected: topCaptain?.score ?? null,
+          actual_choice_expected: actualCaptainOption?.score ?? null,
+          expected_ev_gap: expectedCaptainGap,
+          actual_choice_points: actualCaptainRawPoints,
+          model_choice_points: topCaptainRawPoints,
+          actual_vs_model_expectation:
+            actualCaptainRawPoints != null && actualCaptainOption
+              ? actualCaptainRawPoints - Number(actualCaptainOption.score ?? 0)
+              : null,
+        },
+        transfers: {
+          process: transferProcess,
+          actual_in_ids: actualIn,
+          actual_out_ids: actualOut,
+          model_top: topTransfer,
+          model_expected_delta: topTransferExpectedDelta,
+          model_actual_delta: topTransferActualDelta,
+          hit_cost: hitCost,
+        },
+        bench_points: benchPoints,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  if (!completed.length) {
+    return {
+      status: "ACCUMULATING",
+      tracked_from_event:
+        receipts.length
+          ? Math.min(...receipts.map((receipt) => Number(receipt.event)))
+          : 6,
+      completed: [],
+      summary: null,
+      caveat:
+        "Footy only scores decision quality where a genuine pre-deadline recommendation receipt exists. Tracking started in GW6, so earlier Gameweeks are not reconstructed with hindsight.",
+    };
+  }
+
+  const alignedCaptains = completed.filter(
+    (item) =>
+      item.captain.process === "MODEL_ALIGNED" ||
+      item.captain.process === "CLOSE_CALL",
+  ).length;
+  const hitCost = completed.reduce(
+    (sum, item) => sum + item.transfers.hit_cost,
+    0,
+  );
+  const averageBench =
+    completed.reduce((sum, item) => sum + item.bench_points, 0) /
+    completed.length;
+  const negativeVariance = completed.filter(
+    (item) =>
+      item.captain.actual_vs_model_expectation != null &&
+      item.captain.actual_vs_model_expectation < -2,
+  ).length;
+
+  const observations: string[] = [];
+  if (hitCost >= 8) {
+    observations.push(
+      "Hit usage is material in the tracked sample. Audit whether the pre-deadline EV justified each cost rather than judging the hits by outcome alone.",
+    );
+  }
+  if (averageBench >= 8) {
+    observations.push(
+      "Bench-point leakage is elevated in the tracked sample; review whether too much playable value is being left outside the XI.",
+    );
+  }
+  if (negativeVariance > 0 && alignedCaptains > 0) {
+    observations.push(
+      "At least one process-aligned captain underperformed its pre-deadline expectation. Footy classifies that separately from a poor decision.",
+    );
+  }
+  if (!observations.length) {
+    observations.push(
+      "No repeated behavioural issue is established yet. Footy waits for a meaningful sample rather than assigning a bias label from one deadline.",
+    );
+  }
+
+  return {
+    status: "ACTIVE",
+    tracked_from_event: Math.min(...completed.map((item) => item.event)),
+    completed,
+    summary: {
+      deadlines: completed.length,
+      captain_process_alignment: alignedCaptains / completed.length,
+      total_hit_cost: hitCost,
+      average_bench_points: averageBench,
+      negative_variance_deadlines: negativeVariance,
+      observations,
+    },
+    caveat:
+      "Decision quality is judged from the latest stored pre-deadline model receipt for each event. Outcome variance is reported separately from process alignment.",
+  };
+}
+
 function buildLocalExposure(snapshots: EntrySnapshot[]) {
   const managers = Math.max(1, snapshots.length);
   const counts = new Map<
@@ -1064,7 +1358,7 @@ async function persistRecommendationSnapshot(
         deadline_time: next.deadline_time,
         generated_at: now.toISOString(),
         data_retrieved_at: analysis.dataRetrievedAt,
-        model_version: "league-edge-v2-resource",
+        model_version: "league-edge-v4-portfolio-counterplay",
         battle_mode: battleMode(manager, leader),
         captain_options: captainOptions.map((player) => ({
           id: player.id,
@@ -1217,6 +1511,11 @@ export async function GET(
       ),
       latestLeagueSnapshots(leagueId),
     ]);
+    const decisionQuality = await decisionQualityHistory(
+      leagueId,
+      managerEntryId,
+      analysis.currentEvent,
+    );
     const localExposure = buildLocalExposure(localSnapshotState.snapshots);
     const leagueStrategy = buildLeagueStrategy(
       managerStanding,
@@ -1362,6 +1661,7 @@ export async function GET(
       decision_path: decisionPath,
       portfolio_plan: portfolioPlan,
       counterplay: counterPlay,
+      decision_quality: decisionQuality,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {
