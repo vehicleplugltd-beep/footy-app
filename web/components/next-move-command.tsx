@@ -294,6 +294,17 @@ export function NextMoveCommand({
         <h2>{decisionSentence}</h2>
       </div>
 
+      <div className={`decision-watch watch-${readiness.toLowerCase().replaceAll(" ", "-")}`}>
+        <span>{readiness === "READY" ? "Ready to act" : "Before you act"}</span>
+        <strong>
+          {readiness === "WAIT FOR NEWS"
+            ? `${transfer?.in.name ?? "Recommended player"} is currently ${transferAvailability}% available. Recheck team news before the deadline.`
+            : readiness === "REFRESH BEFORE DEADLINE"
+              ? "The recommendation is using the latest saved FPL snapshot. Refresh close to the deadline before committing."
+              : "No current availability or data-freshness blocker is changing the call."}
+        </strong>
+      </div>
+
       <div className="minimal-actions-grid">
         <article>
           <span>TRANSFER</span>
@@ -395,10 +406,10 @@ export function NextMoveCommand({
           Test this move
         </Link>
         <Link
-          className="next-move-secondary"
+          className="minimal-detail-link"
           href={`/league/${leagueId}?team=${teamId}`}
         >
-          Full league detail
+          Full league detail →
         </Link>
         <small>
           {payload?.analysis?.freshness?.source === "LIVE_FPL"
