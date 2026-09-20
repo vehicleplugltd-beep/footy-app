@@ -9,6 +9,10 @@ type Player = {
   team: string;
   opponent: string | null;
   assistantScore: number;
+  processBoost?: number;
+  availability?: number;
+  form?: number;
+  xgiPer90?: number;
 };
 
 type Strategy = {
@@ -25,6 +29,8 @@ type Strategy = {
     in: Player;
     raw_gain: number;
     league_score: number;
+    rival_owns?: boolean;
+    process_adjustment?: number;
     rationale: string;
   }>;
 };
@@ -166,6 +172,27 @@ export function NextMoveCommand({
     strategy.rival_name ??
     (strategy.mode === "PROTECT" ? "the manager behind you" : "the manager above you");
 
+  const postureCopy =
+    strategy.mode === "PROTECT"
+      ? "protect your lead"
+      : strategy.mode === "CHASE"
+        ? "close the gap"
+        : "make up ground";
+
+  const resourceInstruction =
+    resources?.status === "ADVANTAGE"
+      ? "Preserve your resource edge."
+      : resources?.status === "THREAT"
+        ? "Avoid a speculative hit and keep flexibility."
+        : "Let the player edge drive the move.";
+
+  const decisionSentence = transfer
+    ? `To ${postureCopy} on ${target}, sell ${transfer.out.name} for ${transfer.in.name}${captain ? `, captain ${captain.player.name}` : ""}. ${resourceInstruction}`
+    : `To ${postureCopy} on ${target}, hold the transfer${captain ? ` and captain ${captain.player.name}` : ""}. ${resourceInstruction}`;
+
+  const transferProcess = transfer?.in.processBoost ?? 0;
+  const transferAvailability = transfer?.in.availability ?? 100;
+
   return (
     <section className="shell next-move-command" id="next-move">
       <div className="next-move-head">
@@ -176,6 +203,57 @@ export function NextMoveCommand({
         <div className={`next-move-mode mode-${strategy.mode.toLowerCase()}`}>
           {strategy.mode}
         </div>
+      </div>
+
+      <div className="decision-sentence">
+        <span>FOOTY SAYS</span>
+        <strong>{decisionSentence}</strong>
+      </div>
+
+      <div className="decision-proof-row">
+        <article>
+          <span>MODEL EDGE</span>
+          <strong>
+            {transfer ? `+${transfer.raw_gain.toFixed(1)}` : "HOLD"}
+          </strong>
+          <small>
+            {transfer
+              ? "Projected squad improvement"
+              : "No transfer clears the threshold"}
+          </small>
+        </article>
+        <article>
+          <span>UNDERLYING PROCESS</span>
+          <strong>
+            {transfer
+              ? `${transferProcess >= 0 ? "+" : ""}${(
+                  transferProcess * 100
+                ).toFixed(0)}%`
+              : "—"}
+          </strong>
+          <small>
+            {transfer
+              ? `${transfer.in.team} process adjustment · ${transferAvailability}% availability`
+              : "No move required"}
+          </small>
+        </article>
+        <article>
+          <span>RIVAL CONTEXT</span>
+          <strong>
+            {transfer
+              ? transfer.rival_owns
+                ? "COVER"
+                : "SEPARATE"
+              : resources?.status ?? "EVEN"}
+          </strong>
+          <small>
+            {transfer
+              ? transfer.rival_owns
+                ? `${target} already owns ${transfer.in.name}`
+                : `${transfer.in.name} creates separation from ${target}`
+              : "League resources decide the posture"}
+          </small>
+        </article>
       </div>
 
       <div className="next-move-main">
@@ -261,7 +339,7 @@ export function NextMoveCommand({
           className="next-move-secondary"
           href={`/league/${leagueId}?team=${teamId}`}
         >
-          See full rival analysis
+          Why Footy thinks this
         </Link>
         <small>
           {payload?.analysis?.freshness?.source === "LIVE_FPL"
