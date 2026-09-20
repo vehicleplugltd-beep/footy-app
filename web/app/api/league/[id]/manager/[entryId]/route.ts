@@ -976,8 +976,8 @@ function buildCounterPlay(
       : null,
     scenarios: rankedScenarios.slice(0, 7),
     recommended_scenario: rankedScenarios[0] ?? null,
-    local_exposure: localMatrix.slice(0, 30),
-    primary_threats: threatPlayers.slice(0, 12),
+    local_exposure: localMatrix,
+    primary_threats: threatPlayers,
     rival_vectors: rivalVectors,
     caveats: [
       "The 10,000-run simulator is a model distribution, not a guarantee of future results.",
