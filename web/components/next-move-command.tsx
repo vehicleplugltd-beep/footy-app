@@ -58,6 +58,11 @@ type Payload = {
   resource_advice?: ResourceAdvice | null;
   analysis?: {
     dataRetrievedAt?: string;
+    nextEvent?: {
+      id: number;
+      name: string;
+      deadline_time: string;
+    } | null;
     freshness?: {
       source?: "LIVE_FPL" | "CACHED_FALLBACK";
     };
@@ -210,6 +215,25 @@ export function NextMoveCommand({
         ? "REFRESH BEFORE DEADLINE"
         : "READY";
 
+  const nextEvent = payload?.analysis?.nextEvent;
+  const deadline = nextEvent?.deadline_time ? new Date(nextEvent.deadline_time) : null;
+  const deadlineLabel = deadline
+    ? deadline.toLocaleString([], {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const incomingXgi = transfer?.in.xgiPer90 ?? 0;
+  const outgoingXgi = transfer?.out.xgiPer90 ?? 0;
+  const incomingForm = transfer?.in.form ?? 0;
+  const outgoingForm = transfer?.out.form ?? 0;
+  const scoreDelta = transfer
+    ? transfer.in.assistantScore - transfer.out.assistantScore
+    : 0;
+
   const managerStanding = payload?.manager_standing;
   const rivalStanding = payload?.rival_standing;
   const rankLabel =
@@ -225,7 +249,10 @@ export function NextMoveCommand({
     <section className="shell next-move-command minimal-command" id="next-move">
       <div className="minimal-command-top">
         <div>
-          <span className="minimal-label">TODAY</span>
+          <span className="minimal-label">
+            {nextEvent?.name ?? "TODAY"}
+            {deadlineLabel ? ` · deadline ${deadlineLabel}` : ""}
+          </span>
           <strong>{leagueName ?? "Selected mini-league"}</strong>
         </div>
         <div className="next-move-statuses">
@@ -301,47 +328,62 @@ export function NextMoveCommand({
 
       <details className="minimal-why">
         <summary>Why this decision?</summary>
-        <div className="minimal-proof">
-          <article>
-            <span>MODEL</span>
+        <div className="minimal-evidence-list">
+          <div className="evidence-row">
+            <span>Model</span>
             <strong>
-              {transfer ? `+${transfer.raw_gain.toFixed(1)}` : "HOLD"}
+              {transfer
+                ? `${transfer.in.name} +${scoreDelta.toFixed(1)} vs ${transfer.out.name}`
+                : "Current squad still grades best"}
             </strong>
-            <p>
+            <small>
               {transfer
-                ? "Footy rates the incoming player as the stronger expected-output option."
-                : "The current squad grades better than the available transfer alternatives."}
-            </p>
-          </article>
-          <article>
-            <span>UNDERLYING DATA</span>
+                ? "The incoming player improves Footy's expected-output score."
+                : "No available replacement improves the model enough to justify using a transfer."}
+            </small>
+          </div>
+
+          <div className="evidence-row">
+            <span>Underlying</span>
             <strong>
               {transfer
-                ? `${transferProcess >= 0 ? "+" : ""}${(
+                ? `xGI/90 ${incomingXgi.toFixed(2)} vs ${outgoingXgi.toFixed(2)} · form ${incomingForm.toFixed(1)} vs ${outgoingForm.toFixed(1)}`
+                : "No strong underlying upgrade"}
+            </strong>
+            <small>
+              {transfer
+                ? `${transfer.in.team} process ${transferProcess >= 0 ? "+" : ""}${(
                     transferProcess * 100
-                  ).toFixed(0)}% process`
-                : "No forced move"}
-            </strong>
-            <p>
-              {transfer
-                ? `${transfer.in.team} process, fixture and ${transferAvailability}% availability support the call.`
-                : "No underlying-process signal is strong enough to justify a transfer."}
-            </p>
-          </article>
-          <article>
-            <span>MINI-LEAGUE</span>
+                  ).toFixed(0)}% · ${transfer.in.opponent ? `next vs ${transfer.in.opponent} · ` : ""}${transferAvailability}% availability`
+                : "The current alternatives do not create a strong enough process, fixture or player-level edge."}
+            </small>
+          </div>
+
+          <div className="evidence-row">
+            <span>League</span>
             <strong>
               {transfer
                 ? transfer.rival_owns
-                  ? "Cover"
-                  : "Separation"
+                  ? `Cover ${target}`
+                  : `Create separation from ${target}`
                 : resources?.status ?? "Even"}
             </strong>
-            <p>
-              {resources?.recommendation ??
-                "Footy adjusts strong player calls using rival ownership, chips and free-transfer flexibility."}
-            </p>
-          </article>
+            <small>
+              {resources
+                ? `Free-transfer edge ${resources.free_transfer_edge >= 0 ? "+" : ""}${resources.free_transfer_edge}. ${resources.recommendation}`
+                : "Footy uses rival ownership and resources only after the underlying player case is strong enough."}
+            </small>
+          </div>
+
+          <div className="evidence-row">
+            <span>Captain</span>
+            <strong>{captain?.player.name ?? "No change"}</strong>
+            <small>
+              {captain
+                ? `Footy score ${captain.player.assistantScore.toFixed(1)} · xGI/90 ${(captain.player.xgiPer90 ?? 0).toFixed(2)}${captain.player.opponent ? ` · vs ${captain.player.opponent}` : ""}`
+                : "No captain signal is currently strong enough to surface."}
+            </small>
+          </div>
         </div>
       </details>
 
