@@ -13,7 +13,12 @@ from .normalizers.understat import (
 )
 from .normalizers.fpl_core_insights import (
     normalise_fpl_core_matches,
+    normalise_fpl_core_player_match_stats,
     reconcile_fpl_core_to_footy,
+    reconcile_fpl_core_player_matches_to_footy,
+    supplement_fpl_core_team_rows_from_players,
+    enrich_fpl_core_team_rows_from_players,
+    normalise_fpl_core_player_priors,
 )
 from .sources.fpl_core_insights import FPLCoreInsightsSource
 from .verification import verify_provider_rows
@@ -24,6 +29,8 @@ from .storage import (
     frame_records,
     MATCH_FIELDS,
     MATCH_TEAM_METRIC_FIELDS,
+    PLAYER_MATCH_METRIC_FIELDS,
+    PLAYER_SEASON_PRIOR_FIELDS,
     HISTORICAL_PREDICTION_FIELDS,
     insert_backtest_run,
     insert_value_backtest_run,
@@ -61,6 +68,10 @@ def command_sources() -> None:
                 "use": "team xG/npxG, xGA/npxGA, PPDA, deep completions and shot aggregates",
             },
             {
+                "source": "FPL-Core-Insights",
+                "use": "verified team enrichment plus player-match xA/xGOT/chance creation, goalkeeper post-shot data and cup/Europe workload",
+            },
+            {
                 "source": "Football-Data.co.uk",
                 "use": "historical results and bookmaker prices for calibration/backtesting",
             },
@@ -73,7 +84,8 @@ def command_sources() -> None:
             "soccerdata / Sofascore",
             "soccerdata / FBref",
             "OpenFootball fixture/result cross-check",
-            "FPL-Core-Insights enrichment — verification-first",
+            "DataHub EPL stable Football-Data mirror / resilience layer",
+            "Kaggle FPL daily dumps — archive/fallback once an exact dataset is pinned",
         ],
         "research_or_partial_coverage": [
             "StatsBomb Open Data",
@@ -163,9 +175,20 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
     source = FPLCoreInsightsSource()
     matches = source.matches(args.gameweek)
     teams = source.teams(args.gameweek)
+    players = source.players(args.gameweek)
+    player_match_stats = source.player_match_stats(args.gameweek)
+
     normalized = normalise_fpl_core_matches(matches, teams)
     if normalized.empty:
         raise RuntimeError("FPL-Core-Insights returned no finished Premier League rows.")
+
+    player_metrics = normalise_fpl_core_player_match_stats(
+        player_match_stats,
+        players,
+        teams,
+        matches,
+        season=args.season,
+    )
 
     reader = SupabaseRESTReader()
     matches_scope = reader.season_matches(args.league, args.season)
@@ -202,6 +225,27 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
             f"{args.min_match_rate:.1%}"
         )
 
+    player_metrics, player_match_rate = (
+        reconcile_fpl_core_player_matches_to_footy(
+            player_metrics,
+            side_scope,
+        )
+    )
+    if player_match_rate < args.min_match_rate:
+        raise RuntimeError(
+            f"FPL-Core player reconciliation {player_match_rate:.1%} below "
+            f"{args.min_match_rate:.1%}"
+        )
+    reconciled = supplement_fpl_core_team_rows_from_players(
+        reconciled,
+        player_metrics,
+        side_scope,
+    )
+    reconciled = enrich_fpl_core_team_rows_from_players(
+        reconciled,
+        player_metrics,
+    )
+
     reference = reader.match_team_metrics_for_ids(
         reconciled["match_id"].dropna().astype(str).unique().tolist(),
         source="understat",
@@ -226,7 +270,21 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
         league=args.league,
         season=args.season,
         status=report.status,
-        report=report.as_dict(),
+        report={
+            **report.as_dict(),
+            "player_rows": int(len(player_metrics)),
+            "player_rows_linked_to_pl": int(
+                player_metrics["footy_match_id"].notna().sum()
+                if not player_metrics.empty
+                else 0
+            ),
+            "player_match_rate": player_match_rate,
+            "competitions": (
+                sorted(player_metrics["competition"].dropna().astype(str).unique().tolist())
+                if not player_metrics.empty
+                else []
+            ),
+        },
     )
 
     if report.status == "BLOCKED":
@@ -243,14 +301,103 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
         frame_records(reconciled, MATCH_TEAM_METRIC_FIELDS)
     )
 
+    if not player_metrics.empty:
+        player_metrics = player_metrics.copy()
+        player_metrics["verified"] = True
+        player_metrics["verification_status"] = player_metrics.apply(
+            lambda row: (
+                report.status
+                if (
+                    str(row.get("competition", "")).lower() == "prem"
+                    and pd.notna(row.get("footy_match_id"))
+                )
+                else "WARN"
+            ),
+            axis=1,
+        )
+        player_metrics["verified_at"] = stamp
+        writer.upsert_player_match_metrics(
+            frame_records(player_metrics, PLAYER_MATCH_METRIC_FIELDS)
+        )
+
     print(json.dumps({
         "status": report.status,
         "provider": "fpl-core-insights",
         "gameweek": args.gameweek,
         "rows_upserted": len(reconciled),
+        "player_rows_upserted": len(player_metrics),
+        "player_rows_linked_to_pl": int(
+            player_metrics["footy_match_id"].notna().sum()
+            if not player_metrics.empty
+            else 0
+        ),
+        "player_match_rate": player_match_rate,
         "verification": report.as_dict(),
     }, indent=2, default=str))
 
+
+def command_fpl_core_priors_ingest(args: argparse.Namespace) -> None:
+    source = FPLCoreInsightsSource(
+        season_folder=args.season_folder,
+    )
+    player_stats = source.season_player_stats(args.gameweek)
+    players = source.season_players(args.gameweek)
+    teams = source.season_teams(args.gameweek)
+
+    priors = normalise_fpl_core_player_priors(
+        player_stats,
+        players,
+        teams,
+        season=args.season,
+    )
+    if priors.empty:
+        raise RuntimeError("FPL-Core prior season produced no player rows.")
+
+    duplicate_codes = int(priors.duplicated(["player_code"]).sum())
+    negative_minutes = int(
+        (pd.to_numeric(priors["minutes"], errors="coerce") < 0).sum()
+    )
+    usable = priors[
+        pd.to_numeric(priors["minutes"], errors="coerce").fillna(0) >= 180
+    ].copy()
+    if duplicate_codes or negative_minutes:
+        raise RuntimeError(
+            "FPL-Core prior season failed identity/invariant checks: "
+            + json.dumps({
+                "duplicate_player_codes": duplicate_codes,
+                "negative_minutes": negative_minutes,
+            })
+        )
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_player_season_priors(
+        frame_records(priors, PLAYER_SEASON_PRIOR_FIELDS)
+    )
+    writer.insert_data_quality_run(
+        source="fpl-core-insights-player-priors",
+        league="ENG-Premier League",
+        season=args.season,
+        status="PASS",
+        report={
+            "season_folder": args.season_folder,
+            "final_gameweek": args.gameweek,
+            "rows": int(len(priors)),
+            "players_180_plus_minutes": int(len(usable)),
+            "duplicate_player_codes": duplicate_codes,
+            "negative_minutes": negative_minutes,
+            "identity_key": "player_code",
+            "rate_definition": "season totals divided by official FPL minutes",
+        },
+    )
+
+    print(json.dumps({
+        "status": "PASS",
+        "season": args.season,
+        "season_folder": args.season_folder,
+        "final_gameweek": args.gameweek,
+        "rows_upserted": len(priors),
+        "players_180_plus_minutes": len(usable),
+    }, indent=2))
 
 def command_clubelo_ingest(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
@@ -1043,6 +1190,14 @@ def main() -> None:
     fpl_core.add_argument("--season", default="2627")
     fpl_core.add_argument("--min-match-rate", type=float, default=0.92)
 
+    fpl_core_priors = sub.add_parser(
+        "fpl-core-priors-ingest",
+        help="Ingest completed-season Official-FPL player priors from FPL-Core",
+    )
+    fpl_core_priors.add_argument("--season-folder", required=True)
+    fpl_core_priors.add_argument("--season", required=True)
+    fpl_core_priors.add_argument("--gameweek", type=int, default=38)
+
     clubelo = sub.add_parser(
         "clubelo-ingest",
         help="Fetch historical Club Elo ratings for stored Footy fixtures",
@@ -1341,6 +1496,8 @@ def main() -> None:
         command_understat_ingest(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
+    elif args.command == "fpl-core-priors-ingest":
+        command_fpl_core_priors_ingest(args)
     elif args.command == "clubelo-ingest":
         command_clubelo_ingest(args)
     elif args.command == "external-elo-import":

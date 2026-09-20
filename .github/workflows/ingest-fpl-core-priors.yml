@@ -1,0 +1,37 @@
+name: Ingest FPL-Core player priors
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ingest-fpl-core-priors.yml"
+      - "src/footy_data/sources/fpl_core_insights.py"
+      - "src/footy_data/normalizers/fpl_core_insights.py"
+      - "src/footy_data/storage.py"
+      - "src/footy_data/cli.py"
+      - "sql/schema.sql"
+
+concurrency:
+  group: ingest-fpl-core-priors
+  cancel-in-progress: true
+
+jobs:
+  priors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+      - name: Ingest completed 2025/26 player priors
+        run: |
+          footy-data fpl-core-priors-ingest \
+            --season-folder "2025-2026" \
+            --season "2526"

@@ -113,7 +113,7 @@ export function FrontOffice({
           b.score6 - a.score6 ||
           b.player.assistantScore - a.player.assistantScore,
       )
-      .slice(0, 6);
+      .slice(0, 4);
   }, [data]);
 
   const watchlist = useMemo(() => {
@@ -124,7 +124,7 @@ export function FrontOffice({
           profile.status === "WATCH" ||
           profile.status === "FUTURE_TARGET",
       )
-      .slice(0, 6);
+      .slice(0, 4);
   }, [data]);
 
   const transfers = useMemo(() => {
@@ -139,9 +139,22 @@ export function FrontOffice({
       if (ids.has(profile.player.id)) continue;
       ids.add(profile.player.id);
       output.push(profile);
-      if (output.length === 6) break;
+      if (output.length === 4) break;
     }
     return output;
+  }, [data]);
+
+  const topDecision = useMemo(() => {
+    if (!data) return null;
+    return (
+      data.undervalued.find((item) => item.decisionConfidence !== "LOW") ??
+      data.picks.find(
+        (item) =>
+          item.status === "BUY_NOW" && item.decisionConfidence !== "LOW",
+      ) ??
+      data.picks[0] ??
+      null
+    );
   }, [data]);
 
   return (
@@ -255,6 +268,71 @@ export function FrontOffice({
                 : "Loading live data…"}
           </small>
         </div>
+
+        {data ? (
+          <>
+            <div className="hq-market-pulse">
+              <span>
+                <b>{data.undervalued.length}</b>
+                value flags
+              </span>
+              <span>
+                <b>{data.picks.filter((item) => item.decisionConfidence === "HIGH").length}</b>
+                high-confidence calls
+              </span>
+              <span>
+                <b>{data.freshness === "LIVE_FPL" ? "LIVE" : "CACHED"}</b>
+                FPL state
+              </span>
+            </div>
+
+            {topDecision ? (
+              <article className="hq-now-card">
+                <div className="hq-now-copy">
+                  <div className="hq-now-badges">
+                    <span>WHAT MATTERS NOW</span>
+                    <b className={`confidence-${topDecision.decisionConfidence.toLowerCase()}`}>
+                      {topDecision.decisionConfidence} CONFIDENCE
+                    </b>
+                  </div>
+                  <h3>
+                    {statusLabel(topDecision)} · {topDecision.player.name}
+                  </h3>
+                  <p>{topDecision.reasons[0] ?? "The combined model keeps this player at the front of the queue."}</p>
+                  <small>
+                    <b>Failure mode:</b>{" "}
+                    {topDecision.risks[0] ?? "Role, minutes or late team news can still move the call."}
+                  </small>
+                </div>
+                <div className="hq-now-signals">
+                  <div><span>EPA</span><strong>{topDecision.epa.epa >= 0 ? "+" : ""}{topDecision.epa.epa.toFixed(2)}</strong></div>
+                  <div>
+                    <span>{topDecision.player.position === "GKP" ? "Goals prevented/90" : "Reg xGI/90"}</span>
+                    <strong>
+                      {topDecision.player.position === "GKP"
+                        ? topDecision.evidence
+                          ? (topDecision.evidence.goalsPreventedPer90 >= 0 ? "+" : "") +
+                            topDecision.evidence.goalsPreventedPer90.toFixed(2)
+                          : "—"
+                        : (topDecision.evidence?.regressedXgiPer90 ?? topDecision.player.xgiPer90).toFixed(2)}
+                    </strong>
+                  </div>
+                  <div><span>6GW</span><strong>{topDecision.score6.toFixed(1)}</strong></div>
+                  <div><span>Window</span><strong>{topDecision.bestWindow.startName}</strong></div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeam(null);
+                    setSelectedPlayer(topDecision);
+                  }}
+                >
+                  Inspect decision →
+                </button>
+              </article>
+            ) : null}
+          </>
+        ) : null}
 
         {!data && !error ? (
           <div className="hq-loading">

@@ -26,7 +26,33 @@ MATCH_TEAM_METRIC_FIELDS = {
     "set_piece_xg", "set_piece_xga",
     "possession", "ppda", "field_tilt", "deep_completions",
     "crosses", "shots_inside_box", "xgot",
+    "final_third_passes", "opposition_half_passes", "territory_proxy",
+    "xgot_faced", "goals_prevented",
     "source", "retrieved_at", "verified", "verification_status", "verified_at",
+}
+
+PLAYER_MATCH_METRIC_FIELDS = {
+    "season", "gameweek", "competition", "provider_match_id",
+    "footy_match_id", "kickoff_at", "player_id", "player_code",
+    "player_name", "team", "opponent", "minutes", "goals", "assists",
+    "shots", "shots_on_target", "xg", "xa", "xgot",
+    "big_chances_missed", "touches", "box_touches", "chances_created",
+    "final_third_passes", "accurate_crosses", "interceptions",
+    "recoveries", "blocks", "clearances", "headed_clearances",
+    "duels_won", "duels_lost", "was_fouled", "fouls_committed",
+    "saves", "goals_conceded", "xgot_faced", "goals_prevented",
+    "sweeper_actions", "high_claims", "saves_inside_box",
+    "defensive_contributions", "source", "retrieved_at", "verified",
+    "verification_status", "verified_at",
+}
+
+PLAYER_SEASON_PRIOR_FIELDS = {
+    "season", "player_code", "player_id", "player_name", "position",
+    "team", "minutes", "starts", "total_points", "xg", "xa", "xgi",
+    "xg_per90", "xa_per90", "xgi_per90", "starts_per90",
+    "defensive_contributions", "defensive_contribution_per90",
+    "saves_per90", "source", "verified", "verification_status",
+    "retrieved_at",
 }
 
 TEAM_RATING_FIELDS = {
@@ -149,6 +175,28 @@ class SupabaseRESTWriter:
             rows,
             "match_id,team,source",
             MATCH_TEAM_METRIC_FIELDS,
+        )
+
+    def upsert_player_match_metrics(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._upsert(
+            "footy_player_match_metrics",
+            rows,
+            "provider_match_id,player_id,source",
+            PLAYER_MATCH_METRIC_FIELDS,
+        )
+
+    def upsert_player_season_priors(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._upsert(
+            "footy_player_season_priors",
+            rows,
+            "season,player_code,source",
+            PLAYER_SEASON_PRIOR_FIELDS,
         )
 
     def upsert_team_ratings(self, rows: Iterable[Mapping[str, Any]]) -> None:

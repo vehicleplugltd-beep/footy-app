@@ -7,6 +7,7 @@ type SnapshotRow = {
 type MatchRow = {
   match_id: string;
   kickoff_at: string;
+  status: string | null;
 };
 
 type MetricRow = Record<string, unknown> & {
@@ -29,6 +30,22 @@ type ManagerRow = {
   appointed_at: string;
   source: string;
   retrieved_at: string;
+};
+
+type PlayerMetricHealthRow = {
+  player_id: number;
+  competition: string;
+  kickoff_at: string | null;
+  retrieved_at: string | null;
+  verified: boolean;
+  verification_status: string | null;
+};
+
+type PlayerPriorHealthRow = {
+  player_code: number;
+  minutes: number | string | null;
+  retrieved_at: string | null;
+  verification_status: string | null;
 };
 
 export type DataHealthStatus =
@@ -105,11 +122,18 @@ function newest(values: Array<string | null | undefined>) {
   return times[0]?.value ?? null;
 }
 
-function percentage(rows: MetricRow[], key: string) {
+function canonicalCoverage(rows: MetricRow[], key: string) {
   if (!rows.length) return 0;
+  const identities = new Map<string, boolean>();
+  for (const row of rows) {
+    const identity = `${row.match_id}::${row.team}`;
+    const present = row[key] !== null && row[key] !== undefined;
+    identities.set(identity, (identities.get(identity) ?? false) || present);
+  }
+  if (!identities.size) return 0;
   return (
-    rows.filter((row) => row[key] !== null && row[key] !== undefined).length /
-    rows.length
+    [...identities.values()].filter(Boolean).length /
+    identities.size
   );
 }
 
@@ -126,6 +150,8 @@ const PROCESS_METRICS = [
   ["set_piece_xga", "Set-piece xGA", "Set-piece defensive mismatch"],
   ["ppda", "PPDA", "Pressing intensity"],
   ["deep_completions", "Deep completions", "Territory / final-third access"],
+  ["final_third_passes", "Final-third passes", "Territorial progression proxy"],
+  ["territory_proxy", "Territory proxy", "Opposition-half territorial share"],
   ["big_chances", "Big chances", "High-quality chance volume"],
   ["big_chances_conceded", "Big chances conceded", "Defensive high-quality chances"],
   ["box_touches", "Box touches", "Penalty-area occupation"],
@@ -133,22 +159,21 @@ const PROCESS_METRICS = [
   ["xa", "Expected assists", "Chance creation quality"],
   ["possession", "Possession", "Territorial control context"],
   ["field_tilt", "Field tilt", "Territorial dominance"],
-  ["xgot", "xGOT / post-shot xG", "Finishing and goalkeeper quality"],
+  ["xgot", "xGOT / post-shot xG", "Finishing quality"],
+  ["xgot_faced", "xGOT faced / post-shot xG", "Goalkeeper shot-stopping exposure"],
+  ["goals_prevented", "Goals prevented", "Goalkeeper over/under-performance"],
   ["crosses", "Crosses", "Wide-play matchup"],
-  ["entries", "Final-third / box entries", "Territorial progression"],
   ["transition_events", "Transition events", "Counterattack / rest-defence matchup"],
   ["defensive_errors", "Defensive errors", "Error-prone opponent targeting"],
-  ["psxg", "PSxG", "Goalkeeper shot-stopping"],
-  ["goals_prevented", "Goals prevented", "Goalkeeper over/under-performance"],
 ] as const;
 
 export async function getFootyDataHealth(): Promise<FootyDataHealth> {
-  const [snapshots, matches, leagues, managers] = await Promise.all([
+  const [snapshots, matches, leagues, managers, playerMetrics, playerPriors] = await Promise.all([
     rest<SnapshotRow>(
       "footy_fpl_snapshots?select=snapshot_key,retrieved_at,payload&order=retrieved_at.desc",
     ),
     rest<MatchRow>(
-      `footy_matches?select=match_id,kickoff_at&league=eq.ENG-Premier%20League&season=eq.${CURRENT_SEASON}&order=kickoff_at.asc`,
+      `footy_matches?select=match_id,kickoff_at,status&league=eq.ENG-Premier%20League&season=eq.${CURRENT_SEASON}&order=kickoff_at.asc`,
     ),
     rest<LeagueRow>(
       "footy_fpl_leagues?select=league_id,last_synced_at,last_deep_synced_at,sync_status",
@@ -156,12 +181,18 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
     rest<ManagerRow>(
       "footy_team_managers?select=team,manager_name,appointed_at,source,retrieved_at&league=eq.ENG-Premier%20League&active=eq.true",
     ),
+    rest<PlayerMetricHealthRow>(
+      `footy_player_match_metrics?select=player_id,competition,kickoff_at,retrieved_at,verified,verification_status&season=eq.${CURRENT_SEASON}&verified=eq.true&order=kickoff_at.asc`,
+    ),
+    rest<PlayerPriorHealthRow>(
+      "footy_player_season_priors?select=player_code,minutes,retrieved_at,verification_status&season=eq.2526&verified=eq.true",
+    ),
   ]);
 
   const ids = matches.map((match) => `"${match.match_id}"`).join(",");
   const metrics = ids
     ? await rest<MetricRow>(
-        `footy_match_team_metrics?select=*&match_id=in.(${encodeURIComponent(ids)})`,
+        `footy_match_team_metrics?select=*&verified=eq.true&match_id=in.(${encodeURIComponent(ids)})`,
       )
     : [];
 
@@ -203,15 +234,47 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         .at(-1) ?? null
     : null;
   const coveredIds = new Set(metrics.map((row) => row.match_id));
-  const uncoveredMatches = matches.filter((match) => !coveredIds.has(match.match_id));
+  // Process feeds are post-match evidence. Do not mark an in-play or future
+  // fixture as a data-quality failure simply because its underlying metrics
+  // do not exist yet.
+  const finishedMatches = matches.filter(
+    (match) => String(match.status ?? "").toLowerCase() === "finished",
+  );
+  const uncoveredMatches = finishedMatches.filter(
+    (match) => !coveredIds.has(match.match_id),
+  );
   const latestLeagueSync = newest(
     leagues.flatMap((row) => [row.last_synced_at, row.last_deep_synced_at]),
   );
   const managerRetrievedAt = newest(managers.map((row) => row.retrieved_at));
+  const playerProcessRetrievedAt = newest(
+    playerMetrics.map((row) => row.retrieved_at),
+  );
+  const playerIds = new Set(playerMetrics.map((row) => row.player_id));
+  const leaguePlayerRows = playerMetrics.filter(
+    (row) => String(row.competition).toLowerCase() === "prem",
+  );
+  const nonLeaguePlayerRows = playerMetrics.filter(
+    (row) => String(row.competition).toLowerCase() !== "prem",
+  );
+  const priorRetrievedAt = newest(
+    playerPriors.map((row) => row.retrieved_at),
+  );
+  const establishedPriors = playerPriors.filter(
+    (row) => Number(row.minutes ?? 0) >= 180,
+  );
+
+  const competitions = [
+    ...new Set(
+      playerMetrics
+        .map((row) => String(row.competition || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort();
 
   const processMetrics = PROCESS_METRICS.map(([metric, label, supports]) => {
     const coverage =
-      metric in (metrics[0] ?? {}) ? percentage(metrics, metric) : 0;
+      metric in (metrics[0] ?? {}) ? canonicalCoverage(metrics, metric) : 0;
     return {
       metric: label,
       status:
@@ -221,7 +284,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
             ? ("PARTIAL" as const)
             : ("MISSING" as const),
       coverage,
-      source: coverage > 0 ? "Understat production layer" : "No production source",
+      source: coverage > 0 ? "Verified canonical match-team layer" : "No production source",
       supports,
     };
   });
@@ -301,10 +364,10 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
               : ageMinutes(processRetrievedAt) > 24 * 60
                 ? "STALE"
                 : "FRESH",
-        source: "Understat production layer",
+        source: "Understat + verified FPL-Core enrichment",
         retrievedAt: processRetrievedAt,
         target: "Automatic refresh after main match windows",
-        coverage: `${metrics.length} team-match rows across ${coveredIds.size} current-season matches; ${uncoveredMatches.length} match records currently uncovered`,
+        coverage: `${metrics.length} team-match rows across ${coveredIds.size} current-season matches; ${uncoveredMatches.length}/${finishedMatches.length} finished matches currently uncovered`,
         supports: [
           "attack / defence strength",
           "process-vs-results regression",
@@ -320,21 +383,53 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         ],
       },
       {
+        id: "player-process",
+        label: "Player process / role evidence",
+        status:
+          !playerMetrics.length
+            ? "MISSING"
+            : ageMinutes(playerProcessRetrievedAt) > 24 * 60
+              ? "STALE"
+              : leaguePlayerRows.length
+                ? "FRESH"
+                : "INCOMPLETE",
+        source: "FPL-Core-Insights linked to Official FPL IDs",
+        retrievedAt: playerProcessRetrievedAt,
+        target: "Refresh after upstream FPL-Core updates; retain raw match-level provenance",
+        coverage: playerMetrics.length
+          ? `${playerMetrics.length} positive-minute player-match rows across ${playerIds.size} players and ${competitions.length} competition(s)`
+          : "No player-match process rows ingested yet",
+        supports: [
+          "recent xG/xA/xGOT role trend",
+          "chances created / box involvement",
+          "goalkeeper xGOT faced and goals prevented",
+          "defensive contribution context",
+          "minutes and role stability",
+        ],
+        caveats: [
+          "Recent player samples are explicitly regressed; a few matches never become a new long-run prior by themselves.",
+          "FPL remains authoritative for official minutes, points, availability and price.",
+        ],
+      },
+      {
         id: "historical",
         label: "Historical priors / calibration",
-        status: "FRESH",
-        source: "Stored Premier League Understat history + Footy backtests",
-        retrievedAt: processRetrievedAt,
-        target: "Stable historical store; update after completed season / backtest",
-        coverage: "Multiple complete Premier League seasons plus stored historical model predictions",
+        status: establishedPriors.length ? "FRESH" : "INCOMPLETE",
+        source: "Premier League process history + Official-FPL player priors + Footy backtests",
+        retrievedAt: newest([processRetrievedAt, priorRetrievedAt]),
+        target: "Stable historical store; completed-season player priors refreshed when a season closes",
+        coverage: establishedPriors.length
+          ? `Multiple Premier League team seasons plus ${establishedPriors.length} identity-matched 2025/26 player priors with 180+ minutes`
+          : "Team history is available; identity-matched player priors are not loaded",
         supports: [
           "small-sample regression",
+          "role-adjusted player baselines",
           "early-season priors",
           "model calibration",
           "variance control",
         ],
         caveats: [
-          "Historical player-level process is not yet identity-matched across seasons.",
+          "Prior-season player rates are discounted after a club change and lose weight as current-season minutes accumulate.",
           "Current Club Elo production data is not current enough to be a live 2026/27 input.",
         ],
       },
@@ -390,19 +485,27 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
       {
         id: "multi-competition-context",
         label: "Europe / cups / travel / congestion context",
-        status: "MISSING",
-        source: "No verified production feed",
-        retrievedAt: null,
-        target: "Verified multi-competition schedule + club news source",
-        coverage: "League-only rest can be derived; non-league congestion is not yet captured",
+        status:
+          !nonLeaguePlayerRows.length
+            ? "MISSING"
+            : ageMinutes(playerProcessRetrievedAt) > 24 * 60
+              ? "STALE"
+              : "FRESH",
+        source: "FPL-Core-Insights multi-competition player-match layer",
+        retrievedAt: playerProcessRetrievedAt,
+        target: "Measure actual non-league workload and short turnaround; cross-check schedules independently",
+        coverage: nonLeaguePlayerRows.length
+          ? `${nonLeaguePlayerRows.length} non-league player appearances across ${competitions.filter((item) => item.toLowerCase() !== "prem").length} competition(s)`
+          : "No verified non-league player appearances ingested yet",
         supports: [
           "rotation risk",
           "short turnaround",
-          "travel burden",
-          "European / cup prioritisation",
+          "actual cup / European minutes",
+          "fixture-congestion load",
         ],
         caveats: [
-          "Do not infer these effects until a verified production source is configured.",
+          "Travel distance is not yet modelled directly.",
+          "Competition importance/motivation is not inferred from the schedule alone.",
         ],
       },
     ],
@@ -410,39 +513,33 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
     priorities: [
       {
         priority: "P0",
-        item: "Cache current event-live FPL data and use it in league battle state",
+        item: "Maintain post-match freshness and reconciliation",
         reason:
-          "A live Gameweek table is misleading unless Footy knows who has already played and who is still to play.",
-      },
-      {
-        priority: "P0",
-        item: "Automate post-match process refresh",
-        reason:
-          "Underlying team conclusions should update after completed matches without a manual ingest.",
+          "The current completed-match spine is fully covered; every new final whistle must still clear identity, score and source verification before its process evidence influences decisions.",
       },
       {
         priority: "P1",
-        item: "Activate a second compatible team-event source",
+        item: "Calibrate direct EPA use of regressed player process",
         reason:
-          "Current production process is single-source and missing big chances, box touches, key passes, xA, possession and field tilt.",
+          "Prior-regressed xG/xA already improves confidence, role detection and failure modes. It should only change EPA magnitude after a holdout/backtest proves incremental predictive value.",
       },
       {
         priority: "P1",
-        item: "Add verified multi-competition fixtures and club-context feed",
+        item: "Add a trustworthy transition / defensive-error event feed",
         reason:
-          "Europe/cups, travel and short turnarounds can materially alter minutes and rotation risk.",
-      },
-      {
-        priority: "P1",
-        item: "Build identity-matched historical player process",
-        reason:
-          "Current player priors rely on current-season minutes and shrinkage rather than true prior-season role-adjusted history.",
+          "Counterattack exposure and error-prone defending remain genuine matchup gaps; Footy should leave them unknown rather than infer them from possession.",
       },
       {
         priority: "P2",
-        item: "Add post-shot / goalkeeper and transition-event data",
+        item: "Add true field tilt / defensive-line data",
         reason:
-          "xGOT/PSxG, goals prevented, transitions and defensive errors improve finishing, goalkeeper and tactical matchup diagnosis.",
+          "Footy's opposition-half territory proxy is useful context but must not be mislabeled as provider-defined field tilt or line height.",
+      },
+      {
+        priority: "P2",
+        item: "Harden schedule/result fallbacks",
+        reason:
+          "OpenFootball and DataHub can provide independent fixture/result resilience, while Official FPL remains the primary live FPL spine. Kaggle should remain archive/fallback only after a specific dataset is pinned and verified.",
       },
     ],
   };

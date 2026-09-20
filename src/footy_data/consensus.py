@@ -22,6 +22,7 @@ SOURCE_PROFILES: dict[str, SourceProfile] = {
     "statsbomb": SourceProfile("statsbomb", 0.98),
     "statsbomb-open": SourceProfile("statsbomb-open", 0.96),
     "understat": SourceProfile("understat", 0.96),
+    "fpl-core-insights": SourceProfile("fpl-core-insights", 0.88),
     "fbref": SourceProfile("fbref", 0.90),
     "sofascore": SourceProfile("sofascore", 0.86),
     "football-data.co.uk": SourceProfile("football-data.co.uk", 0.82),
@@ -63,6 +64,11 @@ ROBUST_METRICS = {
     "crosses",
     "shots_inside_box",
     "xgot",
+    "final_third_passes",
+    "opposition_half_passes",
+    "territory_proxy",
+    "xgot_faced",
+    "goals_prevented",
 }
 
 METRICS = sorted(MODELLED_METRICS | ROBUST_METRICS)
