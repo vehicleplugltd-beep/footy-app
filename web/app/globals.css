@@ -5510,3 +5510,36 @@ body {
     font-weight: 900;
   }
 }
+
+
+.next-move-statuses {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.decision-readiness {
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: .07em;
+}
+
+.readiness-ready {
+  color: var(--accent);
+  background: rgba(88,242,194,.09);
+}
+
+.readiness-wait-for-news {
+  color: var(--amber);
+  background: rgba(255,211,109,.09);
+}
+
+.readiness-refresh-before-deadline {
+  color: #9fc1ff;
+  background: rgba(119,87,255,.12);
+}
