@@ -868,6 +868,8 @@ export type LeagueManagerEdgeAnalysis = {
   transferOptions: SquadSuggestion[];
   playerTrends: Array<RankedPlayer & { trendScore: number }>;
   teamTrends: TeamProcess[];
+  futurePlan: FutureGameweekPlan[];
+  chipRadar: ChipSignal[];
 };
 
 export async function getLeagueManagerEdgeAnalysis(
@@ -924,6 +926,12 @@ export async function getLeagueManagerEdgeAnalysis(
     fixtures,
     next?.id ?? current?.id ?? null,
     process,
+  );
+  const { futurePlan, chipRadar } = buildFuturePlan(
+    bootstrap,
+    fixtures,
+    process,
+    next,
   );
 
   const [manager, rival] = await Promise.all([
@@ -1014,6 +1022,8 @@ export async function getLeagueManagerEdgeAnalysis(
     transferOptions,
     playerTrends,
     teamTrends,
+    futurePlan,
+    chipRadar,
   };
 }
 
