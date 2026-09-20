@@ -913,6 +913,9 @@ function buildCounterPlay(
   const resourceByEntry = new Map(
     resourceMap.map((item) => [item.standing.entry_id, item.history]),
   );
+  const snapshotByEntry = new Map(
+    snapshots.map((snapshot) => [Number(snapshot.entry_id), snapshot]),
+  );
   const rivalVectorMap = new Map<
     number,
     Array<{
@@ -920,11 +923,43 @@ function buildCounterPlay(
       label: string;
       raw_weight: number;
       model_share: number;
+      drivers: string[];
+      affordability_margin: number | null;
     }>
   >();
 
   for (const rival of selectedRivals) {
     const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
+    const snapshot = snapshotByEntry.get(rival.standing.entry_id) ?? null;
+    const bank = Number(snapshot?.entry_history?.bank ?? 0) / 10;
+    const freeTransfers = history?.estimatedFreeTransfers ?? 1;
+    const activity = history?.activity ?? "PATIENT";
+    const portfolioStatus = rival.team.portfolio.status;
+    const hasReshapeChip = Boolean(
+      history?.currentHalfRemaining.some(
+        (chip) => chip === "Wildcard" || chip === "Free Hit",
+      ),
+    );
+
+    const activityAdjustment =
+      activity === "AGGRESSIVE" ? 0.42 : activity === "ACTIVE" ? 0.18 : -0.18;
+    const freeTransferAdjustment =
+      freeTransfers >= 4 ? 0.52 : freeTransfers >= 2 ? 0.24 : 0;
+    const structureAdjustment =
+      portfolioStatus === "REPAIR"
+        ? 0.42
+        : portfolioStatus === "FRAGILE"
+          ? 0.22
+          : portfolioStatus === "STRONG"
+            ? -0.16
+            : 0;
+    const recentHitAdjustment =
+      (history?.recentHitCost ?? 0) >= 8
+        ? 0.18
+        : (history?.recentHitCost ?? 0) >= 4
+          ? 0.08
+          : 0;
+
     const moveVectors = rival.team.weakLinks
       .filter(
         (move) =>
@@ -932,37 +967,159 @@ function buildCounterPlay(
           move.timing === "NOW" &&
           move.gain >= move.minimumGain,
       )
-      .slice(0, 3)
-      .map((move) => ({
-        transfer: { out: move.player, in: move.replacement! },
-        label: `${move.player.name} → ${move.replacement!.name}`,
-        raw_weight: Math.exp(Math.max(-2, Math.min(2, move.gain / 2))),
-        model_share: 0,
-      }));
-    const holdWeight =
-      history?.estimatedFreeTransfers != null &&
-      history.estimatedFreeTransfers >= 4
-        ? 0.7
-        : 1.0;
+      .map((move) => {
+        const replacement = move.replacement!;
+        const affordabilityMargin =
+          move.player.price + bank - replacement.price;
+        if (affordabilityMargin < -0.001) return null;
+
+        const exposure = localExposure.get(replacement.id);
+        const edgeAboveThreshold = Math.max(
+          0,
+          move.gain - move.minimumGain,
+        );
+        const edgeAdjustment = Math.min(
+          1.0,
+          0.18 + edgeAboveThreshold * 0.34 + Math.max(0, move.gain) * 0.07,
+        );
+        const affordabilityAdjustment =
+          affordabilityMargin >= 1.0
+            ? 0.12
+            : affordabilityMargin >= 0.3
+              ? 0.06
+              : affordabilityMargin <= 0.05
+                ? -0.08
+                : 0;
+        const ownershipAdjustment =
+          replacement.selectedBy >= 25
+            ? 0.16
+            : replacement.selectedBy >= 10
+              ? 0.07
+              : replacement.selectedBy < 5
+                ? -0.05
+                : 0;
+        const momentumAdjustment = Math.max(
+          -0.08,
+          Math.min(0.16, replacement.transfersNet / 750000),
+        );
+        const localTemplateAdjustment = exposure
+          ? Math.min(
+              0.18,
+              exposure.starter_ownership * 0.0015 +
+                exposure.captain_share * 0.0006,
+            )
+          : 0;
+
+        const logWeight =
+          edgeAdjustment +
+          activityAdjustment +
+          freeTransferAdjustment +
+          structureAdjustment +
+          recentHitAdjustment +
+          affordabilityAdjustment +
+          ownershipAdjustment +
+          momentumAdjustment +
+          localTemplateAdjustment;
+
+        const drivers = [
+          `football edge +${move.gain.toFixed(1)} vs +${move.minimumGain.toFixed(1)} threshold`,
+          `${freeTransfers}/5 estimated FT`,
+          `£${bank.toFixed(1)}m ITB; £${Math.max(0, affordabilityMargin).toFixed(1)}m after move`,
+          `${activity.toLowerCase()} recent transfer behaviour`,
+          `${portfolioStatus.toLowerCase()} squad structure`,
+        ];
+        if (replacement.selectedBy >= 10) {
+          drivers.push(
+            `${replacement.selectedBy.toFixed(1)}% official ownership template pressure`,
+          );
+        }
+        if (replacement.transfersNet > 50000) {
+          drivers.push(
+            `+${Math.round(replacement.transfersNet / 1000)}k net public transfers`,
+          );
+        }
+        if ((exposure?.starter_ownership ?? 0) >= 35) {
+          drivers.push(
+            `${exposure!.starter_ownership.toFixed(0)}% local starter exposure`,
+          );
+        }
+
+        return {
+          transfer: { out: move.player, in: replacement },
+          label: `${move.player.name} → ${replacement.name}`,
+          raw_weight: Math.exp(Math.max(-3, Math.min(3, logWeight))),
+          model_share: 0,
+          drivers,
+          affordability_margin: affordabilityMargin,
+        };
+      })
+      .filter(
+        (
+          vector,
+        ): vector is {
+          transfer: { out: RankedPlayer; in: RankedPlayer };
+          label: string;
+          raw_weight: number;
+          model_share: number;
+          drivers: string[];
+          affordability_margin: number;
+        } => Boolean(vector),
+      )
+      .sort((a, b) => b.raw_weight - a.raw_weight)
+      .slice(0, 4);
+
+    let holdLogWeight = 0;
+    holdLogWeight +=
+      activity === "PATIENT" ? 0.42 : activity === "AGGRESSIVE" ? -0.35 : 0;
+    holdLogWeight +=
+      freeTransfers <= 1 ? 0.24 : freeTransfers >= 4 ? -0.48 : freeTransfers >= 3 ? -0.2 : 0;
+    holdLogWeight +=
+      portfolioStatus === "STRONG"
+        ? 0.24
+        : portfolioStatus === "REPAIR"
+          ? -0.46
+          : portfolioStatus === "FRAGILE"
+            ? -0.20
+            : 0;
+
+    const holdDrivers = [
+      `${freeTransfers}/5 estimated FT`,
+      `${activity.toLowerCase()} recent transfer behaviour`,
+      `${portfolioStatus.toLowerCase()} squad structure`,
+    ];
+    if (hasReshapeChip) {
+      holdDrivers.push(
+        "Wildcard/Free Hit resource increases response uncertainty",
+      );
+    }
+
     const vectors = [
       {
         transfer: null,
         label: "HOLD",
-        raw_weight: holdWeight,
+        raw_weight: Math.exp(Math.max(-3, Math.min(3, holdLogWeight))),
         model_share: 0,
+        drivers: holdDrivers,
+        affordability_margin: null,
       },
       ...moveVectors,
     ];
-    const totalWeight = vectors.reduce(
-      (sum, vector) => sum + vector.raw_weight,
-      0,
+
+    // A live WC/FH resource means our single-transfer response set is
+    // incomplete. Flatten the distribution instead of pretending the missing
+    // chip branch makes any specific transfer more likely.
+    const temperature = hasReshapeChip ? 1.18 : 1.0;
+    const temperedWeights = vectors.map((vector) =>
+      Math.pow(vector.raw_weight, 1 / temperature),
     );
+    const totalWeight = temperedWeights.reduce((sum, weight) => sum + weight, 0);
+
     rivalVectorMap.set(
       rival.standing.entry_id,
-      vectors.map((vector) => ({
+      vectors.map((vector, index) => ({
         ...vector,
         model_share:
-          totalWeight > 0 ? vector.raw_weight / totalWeight : 0,
+          totalWeight > 0 ? temperedWeights[index] / totalWeight : 0,
       })),
     );
   }
@@ -2046,13 +2203,36 @@ function buildCounterPlay(
     )
     .sort((a, b) => b.threat_score - a.threat_score);
 
-  const snapshotByEntry = new Map(
-    snapshots.map((snapshot) => [Number(snapshot.entry_id), snapshot]),
-  );
-
   const rivalVectors = selectedRivals.map((rival) => {
     const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
     const vectors = rivalVectorMap.get(rival.standing.entry_id) ?? [];
+    const sortedShares = [...vectors]
+      .map((vector) => vector.model_share)
+      .sort((a, b) => b - a);
+    const entropy =
+      vectors.length <= 1
+        ? 0
+        : -vectors.reduce(
+            (sum, vector) =>
+              vector.model_share > 0
+                ? sum + vector.model_share * Math.log(vector.model_share)
+                : sum,
+            0,
+          ) / Math.log(vectors.length);
+    const evidenceCoverage =
+      (history ? 0.45 : 0) +
+      (snapshot ? 0.2 : 0) +
+      (history?.freeTransferConfidence === "HIGH" ? 0.15 : 0.08) +
+      (localExposure.size > 0 ? 0.2 : 0);
+    const responseConfidence = Math.max(
+      0,
+      Math.min(
+        1,
+        evidenceCoverage * 0.72 +
+          (1 - entropy) * 0.18 +
+          (sortedShares[0] ?? 0) * 0.1,
+      ),
+    );
     return {
       entry_id: rival.standing.entry_id,
       name: rival.standing.entry_name,
@@ -2066,13 +2246,26 @@ function buildCounterPlay(
       estimated_free_transfers: history?.estimatedFreeTransfers ?? null,
       remaining_chips: history?.currentHalfRemaining ?? [],
       activity: history?.activity ?? null,
+      recent_transfers: history?.recentTransfers ?? null,
+      recent_hit_cost: history?.recentHitCost ?? null,
+      response_confidence: responseConfidence,
+      response_uncertainty:
+        history?.currentHalfRemaining.some(
+          (chip) => chip === "Wildcard" || chip === "Free Hit",
+        )
+          ? "ELEVATED_CHIP_OPTIONALITY"
+          : entropy >= 0.78
+            ? "DIFFUSE"
+            : "NORMAL",
       transfer_vectors: vectors.map((vector) => ({
         out: vector.transfer?.out ?? null,
         in: vector.transfer?.in ?? null,
         label: vector.label,
         model_share: vector.model_share,
+        drivers: vector.drivers,
+        affordability_margin: vector.affordability_margin,
         caveat:
-          "Model share is a relative Footy response weight used inside the simulation, not an observed probability of what the rival will do.",
+          "Model share is a relative Footy response weight conditioned on FT bank, cash affordability, recent transfer behaviour, squad repair need and template pressure. It is not an observed probability or a claim about intent.",
       })),
     };
   });
@@ -2144,7 +2337,7 @@ function buildCounterPlay(
         : "The empirical volatility snapshot is unavailable, so player shocks use the conservative heuristic fallback; displayed 5th/95th tails are still direct simulation quantiles.",
       "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
-      "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
+      "Rival HOLD/transfer vectors are relative model weights conditioned on estimated FT bank, ITB/affordability, recent transfer and hit behaviour, squad structure, official ownership/public transfer momentum and local exposure. They are sampled inside the simulation and are not claims about a rival's intent.",
       "When objective probabilities are within one percentage point, Protect uses downside floor/tighter variance, Attack uses upside ceiling, and Hybrid prefers expected score then downside floor. Posture never promotes a move that failed the football-quality gate.",
       "The 1GW/3GW/5GW path is stateful: each deadline carries forward the squad, free-transfer bank, approximate cash balance, hit cost, captaincy and supported chip use before re-evaluating the next football-qualified transfer.",
       "Future manager and rival transfers are model-selected response paths from a bounded football-qualified pool. They are planning weights, not claims about what any manager will do.",
