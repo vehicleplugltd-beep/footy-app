@@ -843,3 +843,96 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     chipRadar,
   };
 }
+
+
+// League Edge on-demand manager analysis
+export type LeagueManagerEdgeAnalysis = {
+  currentEvent: FplEvent | null;
+  nextEvent: FplEvent | null;
+  processTeams: number;
+  manager: TeamAnalysis;
+  rival: TeamAnalysis | null;
+  overlap: {
+    count: number;
+    common: RankedPlayer[];
+    managerOnly: RankedPlayer[];
+    rivalOnly: RankedPlayer[];
+  };
+};
+
+export async function getLeagueManagerEdgeAnalysis(
+  entryId: number,
+  rivalEntryId?: number | null,
+): Promise<LeagueManagerEdgeAnalysis> {
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    throw new Error("A valid FPL entry ID is required.");
+  }
+
+  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
+    footyProcesses(),
+  ]);
+
+  let bootstrap = bootstrapSnapshot?.payload ?? null;
+  let fixtures = fixturesSnapshot?.payload ?? null;
+
+  if (!bootstrap || !fixtures) {
+    const direct = await Promise.all([
+      fplFetch<Bootstrap>("bootstrap-static/"),
+      fplFetch<Fixture[]>("fixtures/"),
+    ]);
+    bootstrap = direct[0];
+    fixtures = direct[1];
+  }
+
+  const { current, next } = currentAndNext(bootstrap.events);
+  const ranked = rankPlayers(
+    bootstrap,
+    fixtures,
+    next?.id ?? current?.id ?? null,
+    process,
+  );
+
+  const [manager, rival] = await Promise.all([
+    analyseTeam(entryId, current, ranked),
+    rivalEntryId && Number.isInteger(rivalEntryId) && rivalEntryId > 0
+      ? analyseTeam(rivalEntryId, current, ranked)
+      : Promise.resolve(null),
+  ]);
+
+  const managerIds = new Set(manager.squad.map((player) => player.id));
+  const rivalIds = new Set((rival?.squad ?? []).map((player) => player.id));
+
+  const common = rival
+    ? manager.squad
+        .filter((player) => rivalIds.has(player.id))
+        .sort((a, b) => b.assistantScore - a.assistantScore)
+    : [];
+
+  const managerOnly = rival
+    ? manager.squad
+        .filter((player) => !rivalIds.has(player.id))
+        .sort((a, b) => b.assistantScore - a.assistantScore)
+    : [...manager.squad];
+
+  const rivalOnly = rival
+    ? rival.squad
+        .filter((player) => !managerIds.has(player.id))
+        .sort((a, b) => b.assistantScore - a.assistantScore)
+    : [];
+
+  return {
+    currentEvent: current,
+    nextEvent: next,
+    processTeams: process.size,
+    manager,
+    rival,
+    overlap: {
+      count: common.length,
+      common,
+      managerOnly,
+      rivalOnly,
+    },
+  };
+}
