@@ -6743,3 +6743,124 @@ body {
     gap: 5px;
   }
 }
+
+
+/* Pressure band + analysis scope */
+.pressure-band {
+  display: grid;
+  grid-template-columns: 1fr .72fr 1fr;
+  gap: 0;
+  margin: 14px 0 4px;
+  border-top: 1px solid #eceef2;
+  border-bottom: 1px solid #eceef2;
+}
+
+.pressure-band article {
+  min-width: 0;
+  padding: 13px 14px 13px 0;
+}
+
+.pressure-band article + article {
+  border-left: 1px solid #eceef2;
+  padding-left: 14px;
+}
+
+.pressure-band span,
+.pressure-band strong,
+.pressure-band small {
+  display: block;
+}
+
+.pressure-band span {
+  color: #8a919d;
+  font-size: 7px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.pressure-band strong {
+  margin: 4px 0 2px;
+  overflow: hidden;
+  color: #111318;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pressure-band small {
+  color: #747c88;
+  font-size: 8px;
+}
+
+.pressure-band .pressure-you {
+  background: #f7faf8;
+}
+
+.pressure-band .pressure-you span {
+  color: #0b8b61;
+}
+
+.pressure-band .pressure-you strong {
+  font-size: 16px;
+}
+
+.analysis-scope {
+  margin-top: 3px;
+  border-top: 1px solid #eceef2;
+}
+
+.analysis-scope > summary {
+  padding: 12px 0;
+  color: #626a76;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.analysis-scope > summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-scope > summary::after {
+  content: "+";
+  float: right;
+  color: #8b929d;
+}
+
+.analysis-scope[open] > summary::after {
+  content: "−";
+}
+
+.analysis-scope > div {
+  padding: 0 0 10px;
+}
+
+.analysis-scope p {
+  margin: 0;
+  padding: 6px 0;
+  color: #7b828d;
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.analysis-scope b {
+  color: #4f5661;
+}
+
+@media (max-width: 700px) {
+  .pressure-band {
+    grid-template-columns: 1fr;
+  }
+
+  .pressure-band article + article {
+    border-left: 0;
+    border-top: 1px solid #eceef2;
+    padding-left: 0;
+  }
+
+  .pressure-band .pressure-you {
+    background: transparent;
+  }
+}
