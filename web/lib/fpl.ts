@@ -2269,6 +2269,39 @@ export type ScoutTeamProfile = {
   }>;
 };
 
+export type FixturePrediction = {
+  eventId: number;
+  eventName: string;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeTeam: string;
+  awayTeam: string;
+  homeShort: string;
+  awayShort: string;
+  homeExpectedGoals: number;
+  awayExpectedGoals: number;
+  homeWinProbability: number;
+  drawProbability: number;
+  awayWinProbability: number;
+  mostLikelyScore: string;
+  modelLean: "HOME" | "DRAW" | "AWAY";
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  reason: string;
+  evidence: {
+    homeAttackIndex: number | null;
+    homeDefenceIndex: number | null;
+    awayAttackIndex: number | null;
+    awayDefenceIndex: number | null;
+    homeXg: number | null;
+    homeXga: number | null;
+    awayXg: number | null;
+    awayXga: number | null;
+    homeAttackTrend: number | null;
+    awayAttackTrend: number | null;
+    sourceConfidence: number;
+  };
+};
+
 export type ScoutIntelligencePayload = {
   currentEvent: FplEvent | null;
   nextEvent: FplEvent | null;
@@ -2280,6 +2313,7 @@ export type ScoutIntelligencePayload = {
   undervalued: ScoutPlayerProfile[];
   players: ScoutPlayerProfile[];
   teams: ScoutTeamProfile[];
+  fixturePredictions: FixturePrediction[];
 };
 
 type FplElementHistory = {
@@ -2347,6 +2381,175 @@ function bestRollingWindow(
   }
 
   return best;
+}
+
+function fixtureOutcomeModel(
+  homeLambda: number,
+  awayLambda: number,
+) {
+  let home = 0;
+  let draw = 0;
+  let away = 0;
+  let total = 0;
+  let bestProbability = -1;
+  let bestHome = 0;
+  let bestAway = 0;
+
+  for (let homeGoals = 0; homeGoals <= 8; homeGoals += 1) {
+    for (let awayGoals = 0; awayGoals <= 8; awayGoals += 1) {
+      const probability =
+        poissonProbability(homeLambda, homeGoals) *
+        poissonProbability(awayLambda, awayGoals);
+      total += probability;
+      if (homeGoals > awayGoals) home += probability;
+      else if (homeGoals === awayGoals) draw += probability;
+      else away += probability;
+      if (probability > bestProbability) {
+        bestProbability = probability;
+        bestHome = homeGoals;
+        bestAway = awayGoals;
+      }
+    }
+  }
+
+  const normaliser = total > 0 ? total : 1;
+  return {
+    home: home / normaliser,
+    draw: draw / normaliser,
+    away: away / normaliser,
+    score: `${bestHome}–${bestAway}`,
+  };
+}
+
+function buildFixturePredictions(
+  bootstrap: Bootstrap,
+  fixtures: Fixture[],
+  process: Map<string, TeamProcess>,
+  events: FplEvent[],
+): FixturePrediction[] {
+  const teamsById = new Map(bootstrap.teams.map((team) => [team.id, team]));
+  const eventNames = new Map(events.map((event) => [event.id, event.name]));
+  const eventIds = new Set(events.map((event) => event.id));
+
+  return fixtures
+    .filter(
+      (fixture) =>
+        fixture.event != null && eventIds.has(Number(fixture.event)),
+    )
+    .map((fixture) => {
+      const eventId = Number(fixture.event);
+      const home = teamsById.get(fixture.team_h);
+      const away = teamsById.get(fixture.team_a);
+      const homeProcess = home
+        ? process.get(canonicalTeam(home.name)) ?? null
+        : null;
+      const awayProcess = away
+        ? process.get(canonicalTeam(away.name)) ?? null
+        : null;
+
+      const homeAttack = homeProcess?.attackIndex ?? 1;
+      const awayAttack = awayProcess?.attackIndex ?? 1;
+      const homeDefence = homeProcess?.defenceIndex ?? 1;
+      const awayDefence = awayProcess?.defenceIndex ?? 1;
+      const homeAttackTrend = homeProcess?.attackTrend ?? 0;
+      const awayAttackTrend = awayProcess?.attackTrend ?? 0;
+      const homeDefenceTrend = homeProcess?.defenceTrend ?? 0;
+      const awayDefenceTrend = awayProcess?.defenceTrend ?? 0;
+
+      // League-level home/away scoring priors are then modified by the
+      // regressed attack/defence process indices. Positive defence index/trend
+      // means a stronger defence, so it reduces the opponent's expected goals.
+      const homeExpectedGoals = clamp(
+        1.52 *
+          (homeAttack / Math.max(0.72, awayDefence)) *
+          (1 + homeAttackTrend * 0.45) /
+          Math.max(0.82, 1 + awayDefenceTrend * 0.30),
+        0.35,
+        3.6,
+      );
+      const awayExpectedGoals = clamp(
+        1.18 *
+          (awayAttack / Math.max(0.72, homeDefence)) *
+          (1 + awayAttackTrend * 0.45) /
+          Math.max(0.82, 1 + homeDefenceTrend * 0.30),
+        0.30,
+        3.4,
+      );
+
+      const outcome = fixtureOutcomeModel(
+        homeExpectedGoals,
+        awayExpectedGoals,
+      );
+      const sourceConfidence = Math.min(
+        homeProcess?.sourceConfidence ?? 0.45,
+        awayProcess?.sourceConfidence ?? 0.45,
+      );
+      const confidence: FixturePrediction["confidence"] =
+        homeProcess &&
+        awayProcess &&
+        homeProcess.matches >= 5 &&
+        awayProcess.matches >= 5 &&
+        sourceConfidence >= 0.75
+          ? "HIGH"
+          : homeProcess && awayProcess
+            ? "MEDIUM"
+            : "LOW";
+
+      const modelLean: FixturePrediction["modelLean"] =
+        outcome.draw >= outcome.home && outcome.draw >= outcome.away
+          ? "DRAW"
+          : outcome.home >= outcome.away
+            ? "HOME"
+            : "AWAY";
+
+      const homeName = home?.name ?? "Home";
+      const awayName = away?.name ?? "Away";
+      const scoringGap = homeExpectedGoals - awayExpectedGoals;
+      const reason =
+        Math.abs(scoringGap) < 0.18
+          ? `The model sees a balanced scoring matchup: ${homeName} ${homeExpectedGoals.toFixed(2)} xG vs ${awayName} ${awayExpectedGoals.toFixed(2)} xG after regressed attack, defence and recent-trend adjustments.`
+          : scoringGap > 0
+            ? `${homeName} projects the stronger scoring process (${homeExpectedGoals.toFixed(2)} vs ${awayExpectedGoals.toFixed(2)} expected goals), driven by its attack index against ${awayName}'s defensive process plus home advantage.`
+            : `${awayName} projects the stronger scoring process (${awayExpectedGoals.toFixed(2)} vs ${homeExpectedGoals.toFixed(2)} expected goals), with its attack/trajectory overcoming the home-side prior.`;
+
+      return {
+        eventId,
+        eventName: eventNames.get(eventId) ?? `Gameweek ${eventId}`,
+        homeTeamId: fixture.team_h,
+        awayTeamId: fixture.team_a,
+        homeTeam: homeName,
+        awayTeam: awayName,
+        homeShort: home?.short_name ?? "—",
+        awayShort: away?.short_name ?? "—",
+        homeExpectedGoals,
+        awayExpectedGoals,
+        homeWinProbability: outcome.home,
+        drawProbability: outcome.draw,
+        awayWinProbability: outcome.away,
+        mostLikelyScore: outcome.score,
+        modelLean,
+        confidence,
+        reason,
+        evidence: {
+          homeAttackIndex: homeProcess?.attackIndex ?? null,
+          homeDefenceIndex: homeProcess?.defenceIndex ?? null,
+          awayAttackIndex: awayProcess?.attackIndex ?? null,
+          awayDefenceIndex: awayProcess?.defenceIndex ?? null,
+          homeXg: homeProcess?.metrics.xg ?? null,
+          homeXga: homeProcess?.metrics.xga ?? null,
+          awayXg: awayProcess?.metrics.xg ?? null,
+          awayXga: awayProcess?.metrics.xga ?? null,
+          homeAttackTrend: homeProcess?.attackTrend ?? null,
+          awayAttackTrend: awayProcess?.attackTrend ?? null,
+          sourceConfidence,
+        },
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.eventId - b.eventId ||
+        a.homeTeam.localeCompare(b.homeTeam),
+    );
 }
 
 function positionGoalPoints(position: string) {
@@ -3104,6 +3307,13 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     };
   });
 
+  const fixturePredictions = buildFixturePredictions(
+    bootstrap,
+    fixtures,
+    process,
+    upcomingEvents,
+  );
+
   return {
     currentEvent: current,
     nextEvent: next,
@@ -3178,6 +3388,7 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         b.averageDifficulty * 0.03;
       return bStrength - aStrength;
     }),
+    fixturePredictions,
   };
 }
 
