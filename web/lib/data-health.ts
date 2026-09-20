@@ -40,6 +40,13 @@ type PlayerMetricHealthRow = {
   verification_status: string | null;
 };
 
+type PlayerPriorHealthRow = {
+  player_code: number;
+  minutes: number | string | null;
+  retrieved_at: string | null;
+  verification_status: string | null;
+};
+
 export type DataHealthStatus =
   | "LIVE"
   | "FRESH"
@@ -153,7 +160,7 @@ const PROCESS_METRICS = [
 ] as const;
 
 export async function getFootyDataHealth(): Promise<FootyDataHealth> {
-  const [snapshots, matches, leagues, managers, playerMetrics] = await Promise.all([
+  const [snapshots, matches, leagues, managers, playerMetrics, playerPriors] = await Promise.all([
     rest<SnapshotRow>(
       "footy_fpl_snapshots?select=snapshot_key,retrieved_at,payload&order=retrieved_at.desc",
     ),
@@ -168,6 +175,9 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
     ),
     rest<PlayerMetricHealthRow>(
       `footy_player_match_metrics?select=player_id,competition,kickoff_at,retrieved_at,verified,verification_status&season=eq.${CURRENT_SEASON}&verified=eq.true&order=kickoff_at.asc`,
+    ),
+    rest<PlayerPriorHealthRow>(
+      "footy_player_season_priors?select=player_code,minutes,retrieved_at,verification_status&season=eq.2526&verified=eq.true",
     ),
   ]);
 
@@ -231,6 +241,13 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
   const nonLeaguePlayerRows = playerMetrics.filter(
     (row) => String(row.competition).toLowerCase() !== "prem",
   );
+  const priorRetrievedAt = newest(
+    playerPriors.map((row) => row.retrieved_at),
+  );
+  const establishedPriors = playerPriors.filter(
+    (row) => Number(row.minutes ?? 0) >= 180,
+  );
+
   const competitions = [
     ...new Set(
       playerMetrics
@@ -381,19 +398,22 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
       {
         id: "historical",
         label: "Historical priors / calibration",
-        status: "FRESH",
-        source: "Stored Premier League Understat history + Footy backtests",
-        retrievedAt: processRetrievedAt,
-        target: "Stable historical store; update after completed season / backtest",
-        coverage: "Multiple complete Premier League seasons plus stored historical model predictions",
+        status: establishedPriors.length ? "FRESH" : "INCOMPLETE",
+        source: "Premier League process history + Official-FPL player priors + Footy backtests",
+        retrievedAt: newest([processRetrievedAt, priorRetrievedAt]),
+        target: "Stable historical store; completed-season player priors refreshed when a season closes",
+        coverage: establishedPriors.length
+          ? `Multiple Premier League team seasons plus ${establishedPriors.length} identity-matched 2025/26 player priors with 180+ minutes`
+          : "Team history is available; identity-matched player priors are not loaded",
         supports: [
           "small-sample regression",
+          "role-adjusted player baselines",
           "early-season priors",
           "model calibration",
           "variance control",
         ],
         caveats: [
-          "Historical player-level process is not yet identity-matched across seasons.",
+          "Prior-season player rates are discounted after a club change and lose weight as current-season minutes accumulate.",
           "Current Club Elo production data is not current enough to be a live 2026/27 input.",
         ],
       },
@@ -480,12 +500,6 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         item: "Complete and continuously verify player-match backfill",
         reason:
           "EPA and role calls should use match-level player process only after every completed Gameweek clears identity and score reconciliation.",
-      },
-      {
-        priority: "P1",
-        item: "Identity-match prior-season player process with stable player codes",
-        reason:
-          "Current-season regression is much stronger when role-adjusted history is available without assuming season-specific FPL IDs are stable.",
       },
       {
         priority: "P1",

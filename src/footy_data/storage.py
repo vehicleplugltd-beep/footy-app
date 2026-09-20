@@ -46,6 +46,15 @@ PLAYER_MATCH_METRIC_FIELDS = {
     "verification_status", "verified_at",
 }
 
+PLAYER_SEASON_PRIOR_FIELDS = {
+    "season", "player_code", "player_id", "player_name", "position",
+    "team", "minutes", "starts", "total_points", "xg", "xa", "xgi",
+    "xg_per90", "xa_per90", "xgi_per90", "starts_per90",
+    "defensive_contributions", "defensive_contribution_per90",
+    "saves_per90", "source", "verified", "verification_status",
+    "retrieved_at",
+}
+
 TEAM_RATING_FIELDS = {
     "team", "rating_type", "rating_value", "rating_date", "source",
 }
@@ -177,6 +186,17 @@ class SupabaseRESTWriter:
             rows,
             "provider_match_id,player_id,source",
             PLAYER_MATCH_METRIC_FIELDS,
+        )
+
+    def upsert_player_season_priors(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._upsert(
+            "footy_player_season_priors",
+            rows,
+            "season,player_code,source",
+            PLAYER_SEASON_PRIOR_FIELDS,
         )
 
     def upsert_team_ratings(self, rows: Iterable[Mapping[str, Any]]) -> None:

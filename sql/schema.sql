@@ -914,3 +914,42 @@ revoke all on table public.footy_player_match_metrics from public, anon, authent
 grant select, insert, update, delete on table public.footy_player_match_metrics to service_role;
 revoke all on sequence public.footy_player_match_metrics_id_seq from public, anon, authenticated;
 grant usage, select on sequence public.footy_player_match_metrics_id_seq to service_role;
+
+
+create table if not exists public.footy_player_season_priors (
+  id bigint generated always as identity primary key,
+  season text not null,
+  player_code bigint not null,
+  player_id integer,
+  player_name text not null,
+  position text,
+  team text,
+  minutes double precision not null default 0,
+  starts double precision,
+  total_points double precision,
+  xg double precision,
+  xa double precision,
+  xgi double precision,
+  xg_per90 double precision,
+  xa_per90 double precision,
+  xgi_per90 double precision,
+  starts_per90 double precision,
+  defensive_contributions double precision,
+  defensive_contribution_per90 double precision,
+  saves_per90 double precision,
+  source text not null,
+  verified boolean not null default false,
+  verification_status text not null default 'UNVERIFIED'
+    check (verification_status in ('UNVERIFIED','PASS','WARN','BLOCKED')),
+  retrieved_at timestamptz not null default now(),
+  unique (season, player_code, source)
+);
+
+create index if not exists idx_footy_player_priors_code_season
+  on public.footy_player_season_priors(player_code, season desc);
+
+alter table public.footy_player_season_priors enable row level security;
+revoke all on table public.footy_player_season_priors from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_player_season_priors to service_role;
+revoke all on sequence public.footy_player_season_priors_id_seq from public, anon, authenticated;
+grant usage, select on sequence public.footy_player_season_priors_id_seq to service_role;

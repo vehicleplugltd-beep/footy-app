@@ -525,3 +525,101 @@ def enrich_fpl_core_team_rows_from_players(
             out[column] = out[player_column]
         out = out.drop(columns=[player_column])
     return out
+
+
+
+def normalise_fpl_core_player_priors(
+    player_stats: pd.DataFrame,
+    players: pd.DataFrame,
+    teams: pd.DataFrame,
+    season: str,
+    retrieved_at: str | None = None,
+) -> pd.DataFrame:
+    """
+    Build stable-code season priors from the completed FPL season snapshot.
+
+    player_code is the cross-season identity key. Rates are recomputed from
+    official season totals/minutes where possible so the prior has one
+    transparent definition.
+    """
+    if player_stats.empty or players.empty:
+        return pd.DataFrame()
+
+    stamp = retrieved_at or datetime.now(timezone.utc).isoformat()
+    player_lookup = {
+        int(float(row["player_id"])): row
+        for _, row in players.dropna(subset=["player_id"]).iterrows()
+    }
+    team_by_code = {
+        int(float(row["code"])): _canonical_team(row["name"])
+        for _, row in teams.dropna(subset=["code", "name"]).iterrows()
+    }
+
+    def rate90(total: object, minutes: object):
+        value = _number(total)
+        played = _number(minutes)
+        if pd.isna(value) or pd.isna(played) or float(played) <= 0:
+            return float("nan")
+        return float(value) * 90.0 / float(played)
+
+    rows: list[dict] = []
+    for _, stat in player_stats.iterrows():
+        player_id = _number(stat.get("id"))
+        if pd.isna(player_id):
+            continue
+        player = player_lookup.get(int(float(player_id)))
+        if player is None:
+            continue
+
+        player_code = _number(player.get("player_code"))
+        if pd.isna(player_code):
+            continue
+
+        minutes = _number(stat.get("minutes"))
+        starts = _number(stat.get("starts"))
+        xg = _number(stat.get("expected_goals"))
+        xa = _number(stat.get("expected_assists"))
+        xgi = _number(stat.get("expected_goal_involvements"))
+        if pd.isna(xgi) and not pd.isna(xg) and not pd.isna(xa):
+            xgi = float(xg) + float(xa)
+
+        team_code = _number(player.get("team_code"))
+        team = (
+            team_by_code.get(int(float(team_code)))
+            if not pd.isna(team_code)
+            else None
+        )
+        defensive = _number(stat.get("defensive_contribution"))
+        saves = _number(stat.get("saves"))
+
+        rows.append({
+            "season": str(season),
+            "player_code": int(float(player_code)),
+            "player_id": int(float(player_id)),
+            "player_name": str(
+                player.get("web_name")
+                or stat.get("web_name")
+                or int(float(player_id))
+            ),
+            "position": str(player.get("position") or ""),
+            "team": team,
+            "minutes": minutes if not pd.isna(minutes) else 0.0,
+            "starts": starts,
+            "total_points": _number(stat.get("total_points")),
+            "xg": xg,
+            "xa": xa,
+            "xgi": xgi,
+            "xg_per90": rate90(xg, minutes),
+            "xa_per90": rate90(xa, minutes),
+            "xgi_per90": rate90(xgi, minutes),
+            "starts_per90": rate90(starts, minutes),
+            "defensive_contributions": defensive,
+            "defensive_contribution_per90": rate90(defensive, minutes),
+            "saves_per90": rate90(saves, minutes),
+            "source": "fpl-core-insights:official-fpl-season",
+            "verified": True,
+            "verification_status": "PASS",
+            "retrieved_at": stamp,
+        })
+
+    return pd.DataFrame(rows)

@@ -7,6 +7,7 @@ from footy_data.normalizers.fpl_core_insights import (
     reconcile_fpl_core_player_matches_to_footy,
     supplement_fpl_core_team_rows_from_players,
     enrich_fpl_core_team_rows_from_players,
+    normalise_fpl_core_player_priors,
 )
 
 
@@ -181,3 +182,43 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
     assert row["final_third_passes"] == 11
     assert row["xgot_faced"] == 1.2
     assert row["goals_prevented"] == 0.2
+
+
+
+def test_player_prior_uses_stable_code_and_recomputed_rates():
+    teams = pd.DataFrame([
+        {"code": 3, "name": "Arsenal"},
+    ])
+    players = pd.DataFrame([
+        {
+            "player_code": 208706,
+            "player_id": 12,
+            "web_name": "Saka",
+            "team_code": 3,
+            "position": "Midfielder",
+        },
+    ])
+    stats = pd.DataFrame([
+        {
+            "id": 12,
+            "minutes": 1800,
+            "starts": 20,
+            "total_points": 150,
+            "expected_goals": 10.0,
+            "expected_assists": 8.0,
+            "expected_goal_involvements": 18.0,
+            "defensive_contribution": 40,
+            "saves": 0,
+        },
+    ])
+
+    priors = normalise_fpl_core_player_priors(
+        stats, players, teams, season="2526"
+    )
+    row = priors.iloc[0]
+    assert row["player_code"] == 208706
+    assert row["team"] == "Arsenal"
+    assert row["xg_per90"] == 0.5
+    assert row["xa_per90"] == 0.4
+    assert row["xgi_per90"] == 0.9
+    assert row["verification_status"] == "PASS"

@@ -16,6 +16,7 @@ type ElementType = { id: number; singular_name_short: string };
 
 type FplPlayer = {
   id: number;
+  code: number;
   web_name: string;
   team: number;
   element_type: number;
@@ -784,10 +785,23 @@ export type PlayerProcessEvidence = {
   daysRest: number | null;
   loadRisk: number;
   sourceConfidence: number;
+  priorAvailable: boolean;
+  priorMinutes: number;
+  priorTeam: string | null;
+  priorXgPer90: number;
+  priorXaPer90: number;
+  priorXgiPer90: number;
+  regressedXgPer90: number;
+  regressedXaPer90: number;
+  regressedXgiPer90: number;
+  currentEvidenceWeight: number;
+  clubChangedSincePrior: boolean;
 };
 
 type PlayerMetricRow = {
   player_id: number;
+  player_code: number | string | null;
+  team: string | null;
   competition: string;
   kickoff_at: string | null;
   minutes: number | string | null;
@@ -800,6 +814,20 @@ type PlayerMetricRow = {
   defensive_contributions: number | string | null;
   xgot_faced: number | string | null;
   goals_prevented: number | string | null;
+  verification_status: string | null;
+};
+
+type PlayerSeasonPriorRow = {
+  player_code: number | string;
+  player_name: string;
+  position: string | null;
+  team: string | null;
+  minutes: number | string | null;
+  xg_per90: number | string | null;
+  xa_per90: number | string | null;
+  xgi_per90: number | string | null;
+  defensive_contribution_per90: number | string | null;
+  saves_per90: number | string | null;
   verification_status: string | null;
 };
 
@@ -838,9 +866,20 @@ function playerMinutesInWindow(
 }
 
 async function footyPlayerProcesses() {
-  const rows = await supabaseRest<PlayerMetricRow>(
-    `footy_player_match_metrics?select=player_id,competition,kickoff_at,minutes,xg,xa,xgot,chances_created,box_touches,final_third_passes,defensive_contributions,xgot_faced,goals_prevented,verification_status&season=eq.${CURRENT_FOOTY_SEASON}&verified=eq.true&order=kickoff_at.asc`,
-  );
+  const [rows, priors] = await Promise.all([
+    supabaseRest<PlayerMetricRow>(
+      `footy_player_match_metrics?select=player_id,player_code,team,competition,kickoff_at,minutes,xg,xa,xgot,chances_created,box_touches,final_third_passes,defensive_contributions,xgot_faced,goals_prevented,verification_status&season=eq.${CURRENT_FOOTY_SEASON}&verified=eq.true&order=kickoff_at.asc`,
+    ),
+    supabaseRest<PlayerSeasonPriorRow>(
+      "footy_player_season_priors?select=player_code,player_name,position,team,minutes,xg_per90,xa_per90,xgi_per90,defensive_contribution_per90,saves_per90,verification_status&season=eq.2526&verified=eq.true",
+    ),
+  ]);
+  const priorByCode = new Map<number, PlayerSeasonPriorRow>();
+  for (const prior of priors) {
+    const code = Number(prior.player_code);
+    if (Number.isFinite(code)) priorByCode.set(code, prior);
+  }
+
   const byPlayer = new Map<number, PlayerMetricRow[]>();
   for (const row of rows) {
     const id = Number(row.player_id);
@@ -862,8 +901,62 @@ async function footyPlayerProcesses() {
       (sum, row) => sum + Math.max(0, num(row.minutes)),
       0,
     );
+    const latestRow =
+      played[played.length - 1] ?? allRows[allRows.length - 1];
+    const playerCode = Number(latestRow?.player_code);
+    const prior = Number.isFinite(playerCode)
+      ? priorByCode.get(playerCode) ?? null
+      : null;
+    const priorMinutes = prior ? Math.max(0, num(prior.minutes)) : 0;
+    const currentTeam = latestRow?.team ?? null;
+    const priorTeam = prior?.team ?? null;
+    const clubChangedSincePrior =
+      Boolean(currentTeam && priorTeam) &&
+      canonicalTeam(String(currentTeam)) !== canonicalTeam(String(priorTeam));
+
+    const currentXgPer90 = playerRate90(leagueRows, "xg");
+    const currentXaPer90 = playerRate90(leagueRows, "xa");
+    const priorXgPer90 = prior ? Math.max(0, num(prior.xg_per90)) : 0;
+    const priorXaPer90 = prior ? Math.max(0, num(prior.xa_per90)) : 0;
+    const priorXgiPer90 = prior
+      ? Math.max(
+          0,
+          num(prior.xgi_per90) || priorXgPer90 + priorXaPer90,
+        )
+      : 0;
+    const effectivePriorMinutes =
+      prior && priorMinutes >= 180
+        ? clamp(
+            priorMinutes * (clubChangedSincePrior ? 0.12 : 0.22),
+            180,
+            clubChangedSincePrior ? 360 : 540,
+          )
+        : 0;
+    const currentEvidenceWeight =
+      effectivePriorMinutes > 0
+        ? clamp(
+            premierLeagueMinutes /
+              (premierLeagueMinutes + effectivePriorMinutes),
+            0,
+            1,
+          )
+        : clamp(premierLeagueMinutes / 450, 0, 1);
+    const regressedXgPer90 =
+      effectivePriorMinutes > 0
+        ? currentXgPer90 * currentEvidenceWeight +
+          priorXgPer90 * (1 - currentEvidenceWeight)
+        : playerRate90(recent, "xg");
+    const regressedXaPer90 =
+      effectivePriorMinutes > 0
+        ? currentXaPer90 * currentEvidenceWeight +
+          priorXaPer90 * (1 - currentEvidenceWeight)
+        : playerRate90(recent, "xa");
+    const regressedXgiPer90 = regressedXgPer90 + regressedXaPer90;
+
     const baseXgi =
-      playerRate90(recent, "xg") + playerRate90(recent, "xa");
+      regressedXgiPer90 > 0
+        ? regressedXgiPer90
+        : playerRate90(recent, "xg") + playerRate90(recent, "xa");
     const recentXgi =
       playerRate90(latestThree, "xg") + playerRate90(latestThree, "xa");
     const latestThreeMinutes = latestThree.reduce(
@@ -907,10 +1000,11 @@ async function footyPlayerProcesses() {
         leagueRows.length
       : 0;
     const sourceConfidence = clamp(
-      0.48 +
-        Math.min(0.34, premierLeagueMinutes / 900 * 0.34) +
-        passShare * 0.14,
-      0.45,
+      0.42 +
+        Math.min(0.32, (premierLeagueMinutes / 900) * 0.32) +
+        passShare * 0.12 +
+        (prior && priorMinutes >= 180 ? 0.10 : 0),
+      0.42,
       0.96,
     );
 
@@ -937,6 +1031,17 @@ async function footyPlayerProcesses() {
       daysRest,
       loadRisk,
       sourceConfidence,
+      priorAvailable: Boolean(prior && priorMinutes >= 180),
+      priorMinutes,
+      priorTeam,
+      priorXgPer90,
+      priorXaPer90,
+      priorXgiPer90,
+      regressedXgPer90,
+      regressedXaPer90,
+      regressedXgiPer90,
+      currentEvidenceWeight,
+      clubChangedSincePrior,
     });
   }
   return output;
@@ -1990,6 +2095,7 @@ export async function getLeagueManagerEdgeAnalysis(
         "Set-piece xG/xGA, PPDA, deep completions and territory/progression proxies",
         "Verified xA/chances-created, xGOT and goalkeeper goals-prevented enrichment when available",
         "Player-match process trends plus cup/Europe workload and short-rest signals",
+        "Prior-season player baselines joined by stable player code and progressively discounted by current minutes",
         "Recent attack/defence process trend with regression",
         "Mini-league ownership, points gaps, chips, hits and estimated free transfers",
       ],
@@ -2540,6 +2646,12 @@ function scoutReasons(
     );
   }
 
+  if (evidence?.priorAvailable && evidence.regressedXgiPer90 >= 0.35) {
+    reasons.push(
+      `Role-adjusted process holds after prior-season shrinkage: ${evidence.regressedXgiPer90.toFixed(2)} xGI/90.`,
+    );
+  }
+
   if (evidence && evidence.premierLeagueMinutes >= 180) {
     if (evidence.attackTrend >= 0.05) {
       reasons.push(
@@ -2605,6 +2717,11 @@ function scoutRisks(
   ) {
     risks.push(
       `Recent attacking process is cooling (${(evidence.attackTrend * 100).toFixed(0)}% regressed trend).`,
+    );
+  }
+  if (evidence?.clubChangedSincePrior) {
+    risks.push(
+      "Prior-season process came at a different club, so role continuity is discounted.",
     );
   }
   if (evidence && evidence.sourceConfidence < 0.62) {
@@ -2748,7 +2865,11 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
             basePlayer.startReliability >= 0.9 &&
             (processRow?.sourceConfidence ?? 0.7) >= 0.7 &&
             playerEvidence != null &&
-            playerEvidence.sourceConfidence >= 0.75
+            playerEvidence.sourceConfidence >= 0.75 &&
+            (
+              playerEvidence.priorAvailable ||
+              playerEvidence.premierLeagueMinutes >= 540
+            )
           ? "HIGH"
           : "MEDIUM";
 
@@ -2782,7 +2903,12 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         "Official FPL live player/market data",
         "Footy canonical team-process layer (Understat + verified FPL-Core enrichment)",
         ...(playerEvidence
-          ? ["FPL-Core player-match process and multi-competition workload"]
+          ? [
+              "FPL-Core player-match process and multi-competition workload",
+              ...(playerEvidence.priorAvailable
+                ? ["2025/26 Official-FPL player prior joined by stable player code"]
+                : []),
+            ]
           : []),
       ],
       evidence: playerEvidence,
