@@ -122,11 +122,18 @@ function newest(values: Array<string | null | undefined>) {
   return times[0]?.value ?? null;
 }
 
-function percentage(rows: MetricRow[], key: string) {
+function canonicalCoverage(rows: MetricRow[], key: string) {
   if (!rows.length) return 0;
+  const identities = new Map<string, boolean>();
+  for (const row of rows) {
+    const identity = `${row.match_id}::${row.team}`;
+    const present = row[key] !== null && row[key] !== undefined;
+    identities.set(identity, (identities.get(identity) ?? false) || present);
+  }
+  if (!identities.size) return 0;
   return (
-    rows.filter((row) => row[key] !== null && row[key] !== undefined).length /
-    rows.length
+    [...identities.values()].filter(Boolean).length /
+    identities.size
   );
 }
 
@@ -185,7 +192,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
   const ids = matches.map((match) => `"${match.match_id}"`).join(",");
   const metrics = ids
     ? await rest<MetricRow>(
-        `footy_match_team_metrics?select=*&match_id=in.(${encodeURIComponent(ids)})`,
+        `footy_match_team_metrics?select=*&verified=eq.true&match_id=in.(${encodeURIComponent(ids)})`,
       )
     : [];
 
@@ -267,7 +274,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
 
   const processMetrics = PROCESS_METRICS.map(([metric, label, supports]) => {
     const coverage =
-      metric in (metrics[0] ?? {}) ? percentage(metrics, metric) : 0;
+      metric in (metrics[0] ?? {}) ? canonicalCoverage(metrics, metric) : 0;
     return {
       metric: label,
       status:
@@ -277,7 +284,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
             ? ("PARTIAL" as const)
             : ("MISSING" as const),
       coverage,
-      source: coverage > 0 ? "Verified canonical team layer" : "No production source",
+      source: coverage > 0 ? "Verified canonical match-team layer" : "No production source",
       supports,
     };
   });
