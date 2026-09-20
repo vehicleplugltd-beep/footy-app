@@ -26,97 +26,159 @@ function battleMode(manager: LeagueEntry, leader: LeagueEntry) {
 
 function buildLeagueStrategy(
   manager: LeagueEntry,
-  rival: LeagueEntry | null,
+  targetAbove: LeagueEntry | null,
+  chaserBelow: LeagueEntry | null,
   leader: LeagueEntry,
   analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
 ) {
   const mode = battleMode(manager, leader);
-  const rivalIds = new Set((analysis.rival?.squad ?? []).map((player) => player.id));
-  const managerOnlyIds = new Set(analysis.overlap.managerOnly.map((player) => player.id));
+  const rivalByEntry = new Map(
+    analysis.rivals.map((item) => [item.entryId, item]),
+  );
+  const targetAnalysis = targetAbove
+    ? rivalByEntry.get(targetAbove.entry_id) ?? null
+    : null;
+  const chaserAnalysis = chaserBelow
+    ? rivalByEntry.get(chaserBelow.entry_id) ?? null
+    : null;
+  const targetIds = new Set(
+    (targetAnalysis?.squad ?? []).map((player) => player.id),
+  );
+  const chaserIds = new Set(
+    (chaserAnalysis?.squad ?? []).map((player) => player.id),
+  );
+
+  const gapAbove =
+    targetAbove?.total != null && manager.total != null
+      ? Number(targetAbove.total) - Number(manager.total)
+      : null;
+  const gapBelow =
+    chaserBelow?.total != null && manager.total != null
+      ? Number(manager.total) - Number(chaserBelow.total)
+      : null;
+  const pressureFocus =
+    manager.entry_id === leader.entry_id
+      ? "PROTECT"
+      : gapAbove != null &&
+          gapBelow != null &&
+          gapAbove <= 5 &&
+          gapBelow <= 5
+        ? "BOTH_SIDES"
+        : gapBelow != null &&
+            gapAbove != null &&
+            gapBelow < gapAbove
+          ? "CHASE_AND_PROTECT"
+          : "CHASE";
 
   const captainMoves = analysis.captainOptions
     .map((player) => {
-      const rivalOwns = rivalIds.has(player.id);
-      const managerOnly = managerOnlyIds.has(player.id);
-      const contextAdjustment =
-        mode === "PROTECT"
-          ? rivalOwns
-            ? 0.35
-            : 0
-          : managerOnly
-            ? Math.min(0.45, player.assistantScore * 0.06)
-            : 0;
+      const targetOwns = targetIds.has(player.id);
+      const chaserOwns = chaserIds.has(player.id);
+
+      // League context is intentionally small. Expected football output must
+      // dominate captaincy; ownership only breaks close calls.
+      const separation =
+        targetAbove && !targetOwns && mode !== "PROTECT"
+          ? Math.min(0.20, player.assistantScore * 0.025)
+          : 0;
+      const protection =
+        chaserBelow && chaserOwns
+          ? Math.min(0.12, player.assistantScore * 0.015)
+          : 0;
 
       return {
         player,
-        rival_owns: rivalOwns,
-        league_score: player.assistantScore + contextAdjustment,
+        rival_owns: targetOwns,
+        chaser_owns: chaserOwns,
+        league_score: player.assistantScore + separation + protection,
         rationale:
-          mode === "PROTECT" && rivalOwns
-            ? "Strong underlying captain who also covers the nearest rival."
-            : mode !== "PROTECT" && managerOnly
-              ? "Strong underlying captain who can create separation from the nearest rival."
-              : "Ranked primarily on expected output, not differential status.",
+          targetAbove && chaserBelow
+            ? targetOwns
+              ? `Strong underlying captain; also limits variance against ${targetAbove.entry_name} while keeping ${chaserBelow.entry_name} in view.`
+              : `Strong underlying captain with some separation from ${targetAbove.entry_name}${chaserOwns ? ` and coverage against ${chaserBelow.entry_name}` : ""}.`
+            : targetAbove
+              ? targetOwns
+                ? `Strong underlying captain who also covers ${targetAbove.entry_name}.`
+                : `Strong underlying captain with separation from ${targetAbove.entry_name}.`
+              : chaserBelow
+                ? chaserOwns
+                  ? `Strong underlying captain who also covers ${chaserBelow.entry_name} chasing from behind.`
+                  : "Ranked on expected output; no ownership adjustment is strong enough to change the call."
+                : "Ranked on expected output.",
       };
     })
     .sort((a, b) => b.league_score - a.league_score)
     .slice(0, 3);
 
   const transferMoves = analysis.manager.weakLinks
-    .filter((move) => move.replacement)
+    .filter(
+      (move) =>
+        move.replacement &&
+        move.timing === "NOW" &&
+        move.gain >= move.minimumGain,
+    )
     .map((move) => {
       const replacement = move.replacement!;
-      const rawGain = replacement.assistantScore - move.player.assistantScore;
-      const rivalOwns = rivalIds.has(replacement.id);
+      const rawGain = move.gain;
+      const targetOwns = targetIds.has(replacement.id);
+      const chaserOwns = chaserIds.has(replacement.id);
+
+      // Football model already includes process, fixture and availability.
+      // League ownership is a small second-stage adjustment only.
       const separation =
-        !rivalOwns && mode !== "PROTECT"
-          ? Math.min(0.5, Math.max(0, rawGain) * 0.18)
+        targetAbove && !targetOwns && mode !== "PROTECT"
+          ? Math.min(0.22, Math.max(0, rawGain) * 0.08)
           : 0;
-      const coverage =
-        rivalOwns && mode === "PROTECT"
-          ? Math.min(0.45, Math.max(0, rawGain) * 0.16 + 0.12)
-          : 0;
-      const processAdjustment = Math.max(
-        -0.18,
-        Math.min(0.18, replacement.processBoost * 0.8),
-      );
-      const uncertaintyHaircut =
-        replacement.availability < 100
-          ? ((100 - replacement.availability) / 100) * 0.5
+      const protection =
+        chaserBelow && chaserOwns
+          ? Math.min(0.12, Math.max(0, rawGain) * 0.05 + 0.03)
           : 0;
 
       return {
         out: move.player,
         in: replacement,
         raw_gain: rawGain,
-        league_score:
-          rawGain + separation + coverage + processAdjustment - uncertaintyHaircut,
-        rival_owns: rivalOwns,
-        process_adjustment: processAdjustment,
+        minimum_gain: move.minimumGain,
+        horizon_gain: move.horizonGain,
+        timing: move.timing,
+        league_score: rawGain + separation + protection,
+        rival_owns: targetOwns,
+        chaser_owns: chaserOwns,
+        process_adjustment: replacement.processBoost,
         rationale:
-          mode === "PROTECT" && rivalOwns
-            ? `Underlying upgrade plus coverage of ${rival?.entry_name ?? "the nearest rival"}.`
-            : mode !== "PROTECT" && !rivalOwns
-              ? `Underlying upgrade with added separation from ${rival?.entry_name ?? "the nearest rival"}.`
-              : "Underlying upgrade ranks highly without relying on rival ownership.",
+          targetAbove && chaserBelow
+            ? !targetOwns
+              ? `The football edge clears the transfer threshold and creates separation from ${targetAbove.entry_name}${chaserOwns ? ` while covering ${chaserBelow.entry_name}` : ""}.`
+              : `The football edge clears the transfer threshold; ownership mainly reduces risk against ${targetAbove.entry_name}.`
+            : targetAbove && !targetOwns
+              ? `The football edge clears the transfer threshold with added separation from ${targetAbove.entry_name}.`
+              : chaserBelow && chaserOwns
+                ? `The football edge clears the transfer threshold and covers ${chaserBelow.entry_name} chasing from behind.`
+                : "The football edge clears Footy's transfer-value threshold without relying on rival ownership.",
       };
     })
-    .filter((move) => move.raw_gain > 0)
     .sort((a, b) => b.league_score - a.league_score)
     .slice(0, 3);
 
   return {
     mode,
+    pressure_focus: pressureFocus,
     gap_to_leader: Math.max(
       0,
       Number(leader.total || 0) - Number(manager.total || 0),
     ),
-    rival_entry_id: rival?.entry_id ?? null,
-    rival_name: rival?.entry_name ?? null,
+    rival_entry_id: targetAbove?.entry_id ?? chaserBelow?.entry_id ?? null,
+    rival_name: targetAbove?.entry_name ?? chaserBelow?.entry_name ?? null,
+    target_entry_id: targetAbove?.entry_id ?? null,
+    target_name: targetAbove?.entry_name ?? null,
+    chaser_entry_id: chaserBelow?.entry_id ?? null,
+    chaser_name: chaserBelow?.entry_name ?? null,
+    gap_above: gapAbove,
+    gap_below: gapBelow,
     captain_moves: captainMoves,
     transfer_moves: transferMoves,
     caveat:
-      "League context adjusts strong underlying picks; weak differentials are not promoted just because a rival does not own them.",
+      "Football quality, fixture and transfer value are evaluated first. Mini-league ownership can only break close calls; it cannot promote a move that fails the football threshold.",
   };
 }
 
@@ -451,28 +513,44 @@ export async function GET(
     }
 
     const managerStanding = entries[managerIndex];
-    const rivalStanding =
-      managerIndex > 0
-        ? entries[managerIndex - 1]
-        : entries[managerIndex + 1] ?? null;
+    const targetStanding =
+      managerIndex > 0 ? entries[managerIndex - 1] : null;
+    const chaserStandings = entries.slice(managerIndex + 1, managerIndex + 4);
+    const nearestChaser = chaserStandings[0] ?? null;
+    const rivalStanding = targetStanding ?? nearestChaser;
     const leaderStanding = entries[0] ?? managerStanding;
+    const pressureAbove = entries
+      .slice(Math.max(0, managerIndex - 3), managerIndex)
+      .reverse();
+
+    const analysisRivalIds = [
+      targetStanding?.entry_id,
+      ...chaserStandings.map((entry) => entry.entry_id),
+      leaderStanding.entry_id,
+    ].filter(
+      (value, index, list): value is number =>
+        Boolean(value) &&
+        value !== managerEntryId &&
+        list.indexOf(value) === index,
+    );
 
     const analysis = await getLeagueManagerEdgeAnalysis(
       managerEntryId,
-      rivalStanding?.entry_id ?? null,
+      analysisRivalIds,
     );
     const leagueStrategy = buildLeagueStrategy(
       managerStanding,
-      rivalStanding,
+      targetStanding,
+      nearestChaser,
       leaderStanding,
       analysis,
     );
 
     const pressureEntries = [
       managerStanding,
-      rivalStanding,
+      targetStanding,
+      ...chaserStandings,
       leaderStanding,
-      entries[managerIndex + 1] ?? null,
     ].filter(
       (entry, index, list): entry is LeagueEntry =>
         Boolean(entry) &&
@@ -501,21 +579,63 @@ export async function GET(
       resourceMap.find(
         (item) => item.standing.entry_id === managerStanding.entry_id,
       )?.history ?? null;
-    const rivalHistory =
-      rivalStanding
+    const targetHistory =
+      targetStanding
         ? resourceMap.find(
-            (item) => item.standing.entry_id === rivalStanding.entry_id,
+            (item) => item.standing.entry_id === targetStanding.entry_id,
+          )?.history ?? null
+        : null;
+    const nearestChaserHistory =
+      nearestChaser
+        ? resourceMap.find(
+            (item) => item.standing.entry_id === nearestChaser.entry_id,
           )?.history ?? null
         : null;
     const resourceAdvice = managerHistory
-      ? buildResourceAdvice(managerHistory, rivalHistory, leagueStrategy.mode)
+      ? buildResourceAdvice(
+          managerHistory,
+          targetHistory ?? nearestChaserHistory,
+          leagueStrategy.mode,
+        )
       : null;
+    const chaserResourceAdvice =
+      managerHistory && nearestChaserHistory
+        ? buildResourceAdvice(
+            managerHistory,
+            nearestChaserHistory,
+            "PROTECT",
+          )
+        : null;
     const decisionPath = buildDecisionPath(
       analysis,
       leagueStrategy,
       managerHistory,
       resourceAdvice,
     );
+
+    const pressureMap = {
+      above: pressureAbove.map((entry) => ({
+        ...entry,
+        gap:
+          entry.total != null && managerStanding.total != null
+            ? Number(entry.total) - Number(managerStanding.total)
+            : null,
+      })),
+      below: chaserStandings.map((entry) => ({
+        ...entry,
+        gap:
+          entry.total != null && managerStanding.total != null
+            ? Number(managerStanding.total) - Number(entry.total)
+            : null,
+      })),
+      leader: {
+        ...leaderStanding,
+        gap:
+          leaderStanding.total != null && managerStanding.total != null
+            ? Number(leaderStanding.total) - Number(managerStanding.total)
+            : null,
+      },
+    };
 
     await persistRecommendationSnapshot(
       leagueId,
@@ -530,10 +650,14 @@ export async function GET(
       league_id: leagueId,
       manager_standing: managerStanding,
       rival_standing: rivalStanding,
+      target_standing: targetStanding,
+      chaser_standings: chaserStandings,
+      pressure_map: pressureMap,
       analysis,
       league_strategy: leagueStrategy,
       resource_map: resourceMap,
       resource_advice: resourceAdvice,
+      chaser_resource_advice: chaserResourceAdvice,
       decision_path: decisionPath,
       generated_at: new Date().toISOString(),
     });
