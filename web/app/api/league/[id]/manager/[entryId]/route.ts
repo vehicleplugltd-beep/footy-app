@@ -2205,6 +2205,7 @@ function buildCounterPlay(
 
   const rivalVectors = selectedRivals.map((rival) => {
     const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
+    const snapshot = snapshotByEntry.get(rival.standing.entry_id) ?? null;
     const vectors = rivalVectorMap.get(rival.standing.entry_id) ?? [];
     const sortedShares = [...vectors]
       .map((vector) => vector.model_share)
