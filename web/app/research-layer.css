@@ -663,3 +663,120 @@
     grid-column: 1 / -1;
   }
 }
+
+
+.counterplay-horizon-shell {
+  margin: 12px 0;
+  border: 1px solid #dce3ea;
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+.counterplay-horizon-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e3e7eb;
+  border-radius: 999px;
+  background: #f6f8fa;
+}
+.counterplay-horizon-toggle button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.counterplay-horizon-toggle button.active {
+  background: #111827;
+  color: #fff;
+}
+.counterplay-horizon-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.counterplay-horizon-summary > div {
+  min-width: 0;
+  border: 1px solid #e7ebef;
+  border-radius: 10px;
+  padding: 9px;
+  background: #fafbfc;
+}
+.counterplay-horizon-summary span,
+.counterplay-horizon-summary small {
+  display: block;
+  font-size: 8px;
+  line-height: 1.35;
+}
+.counterplay-horizon-summary span {
+  color: #64748b;
+  font-weight: 900;
+}
+.counterplay-horizon-summary strong {
+  display: block;
+  margin: 4px 0 2px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.counterplay-horizon-summary small {
+  color: #64748b;
+}
+.counterplay-path-weeks {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+.counterplay-path-weeks article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #edf0f2;
+  padding-top: 7px;
+}
+.counterplay-path-weeks article:first-child {
+  border-top: 0;
+}
+.counterplay-path-weeks article > div {
+  min-width: 0;
+}
+.counterplay-path-weeks b,
+.counterplay-path-weeks small,
+.counterplay-path-weeks span {
+  display: block;
+}
+.counterplay-path-weeks b {
+  font-size: 10px;
+}
+.counterplay-path-weeks small,
+.counterplay-path-weeks span {
+  margin-top: 2px;
+  font-size: 8px;
+  line-height: 1.35;
+  color: #64748b;
+}
+.counterplay-path-weeks article > div:last-child {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .counterplay-horizon-shell {
+    padding: 9px;
+  }
+  .counterplay-horizon-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .counterplay-path-weeks article {
+    display: block;
+  }
+  .counterplay-path-weeks article > div:last-child {
+    margin-top: 5px;
+    text-align: left;
+  }
+}
