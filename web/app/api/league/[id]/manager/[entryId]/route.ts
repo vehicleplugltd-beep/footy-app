@@ -2740,10 +2740,10 @@ export async function GET(
 
     // The bounded transfer pool is an internal CounterPlay search space. Keep
     // it out of the response payload once the path engine has consumed it.
-    const {
-      counterPlayTransferPool: _counterPlayTransferPool,
-      ...publicAnalysis
-    } = analysis;
+    const publicAnalysis = {
+      ...analysis,
+      counterPlayTransferPool: undefined,
+    };
 
     return NextResponse.json({
       league_id: leagueId,
