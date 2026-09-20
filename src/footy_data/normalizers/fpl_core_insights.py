@@ -272,6 +272,8 @@ def normalise_fpl_core_player_match_stats(
         match = match_by_id.get(provider_match_id)
         if player is None or match is None:
             continue
+        if str(match.get("player_stats_processed")).lower() != "true":
+            continue
 
         team_code = _number(player.get("team_code"))
         if pd.isna(team_code):
@@ -323,29 +325,131 @@ def normalise_fpl_core_player_match_stats(
     return pd.DataFrame(rows)
 
 
-def attach_fpl_core_player_match_ids(
+def reconcile_fpl_core_player_matches_to_footy(
     player_rows: pd.DataFrame,
-    reconciled_team_rows: pd.DataFrame,
-) -> pd.DataFrame:
-    if player_rows.empty:
-        return player_rows.copy()
-    out = player_rows.copy()
-    if reconciled_team_rows.empty:
-        return out
+    footy: pd.DataFrame,
+) -> tuple[pd.DataFrame, float]:
+    if player_rows.empty or footy.empty:
+        return player_rows.copy(), 0.0
 
+    out = player_rows.copy()
+    league_mask = out["competition"].astype(str).str.lower().eq("prem")
+    league = out.loc[
+        league_mask,
+        ["provider_match_id", "kickoff_at", "team", "opponent"],
+    ].drop_duplicates()
+
+    league["date_key"] = pd.to_datetime(
+        league["kickoff_at"], errors="coerce", utc=True
+    ).dt.floor("D")
+    league["team_key"] = league["team"].map(canonical_text)
+    league["opponent_key"] = league["opponent"].map(canonical_text)
+
+    f = footy.copy()
+    f["date_key"] = pd.to_datetime(
+        f["match_date"], errors="coerce", utc=True
+    ).dt.floor("D")
+    f["team_key"] = f["team"].map(canonical_text)
+    f["opponent_key"] = f["opponent"].map(canonical_text)
+
+    matched = league.merge(
+        f[["match_id", "date_key", "team_key", "opponent_key"]],
+        on=["date_key", "team_key", "opponent_key"],
+        how="left",
+        validate="many_to_one",
+    )
     mapping = (
-        reconciled_team_rows[
-            ["provider_match_id", "match_id"]
-        ]
-        .dropna()
-        .drop_duplicates(subset=["provider_match_id"])
+        matched.dropna(subset=["match_id"])
+        [["provider_match_id", "match_id"]]
+        .drop_duplicates()
+    )
+    ambiguous = mapping.groupby("provider_match_id")["match_id"].nunique()
+    bad = set(ambiguous[ambiguous > 1].index.astype(str))
+    if bad:
+        mapping = mapping[~mapping["provider_match_id"].astype(str).isin(bad)]
+
+    match_map = (
+        mapping.drop_duplicates("provider_match_id")
         .set_index("provider_match_id")["match_id"]
         .astype(str)
         .to_dict()
     )
-    out["footy_match_id"] = out["provider_match_id"].map(mapping)
-    return out
+    out.loc[league_mask, "footy_match_id"] = out.loc[
+        league_mask, "provider_match_id"
+    ].map(match_map)
 
+    distinct_matches = league["provider_match_id"].nunique()
+    linked_matches = out.loc[
+        league_mask & out["footy_match_id"].notna(),
+        "provider_match_id",
+    ].nunique()
+    match_rate = (
+        float(linked_matches / distinct_matches)
+        if distinct_matches
+        else 0.0
+    )
+    return out, match_rate
+
+
+def supplement_fpl_core_team_rows_from_players(
+    team_rows: pd.DataFrame,
+    player_rows: pd.DataFrame,
+    footy: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Add a sparse team row when the upstream team-stat block is not processed
+    but player stats are processed and identity-linked.
+
+    Only player-derived fields are later promoted. Team-only fields remain
+    null, preserving the upstream processing distinction.
+    """
+    if player_rows.empty or footy.empty:
+        return team_rows.copy()
+
+    linked = player_rows[
+        player_rows["competition"].astype(str).str.lower().eq("prem")
+        & player_rows["footy_match_id"].notna()
+    ].copy()
+    if linked.empty:
+        return team_rows.copy()
+
+    base = (
+        linked.groupby(
+            ["provider_match_id", "footy_match_id", "team"],
+            as_index=False,
+            dropna=False,
+        )
+        .agg(match_date=("kickoff_at", "first"))
+        .rename(columns={"footy_match_id": "match_id"})
+    )
+    side = footy[["match_id", "team", "opponent", "home_away"]].copy()
+    base = base.merge(
+        side,
+        on=["match_id", "team"],
+        how="left",
+        validate="many_to_one",
+    )
+    base["source"] = "fpl-core-insights"
+    base["retrieved_at"] = datetime.now(timezone.utc).isoformat()
+
+    existing = set()
+    if not team_rows.empty:
+        existing = set(
+            zip(
+                team_rows["match_id"].astype(str),
+                team_rows["team"].astype(str),
+            )
+        )
+    missing = base[
+        ~base.apply(
+            lambda row: (str(row["match_id"]), str(row["team"])) in existing,
+            axis=1,
+        )
+    ].copy()
+
+    if missing.empty:
+        return team_rows.copy()
+    return pd.concat([team_rows, missing], ignore_index=True, sort=False)
 
 def enrich_fpl_core_team_rows_from_players(
     team_rows: pd.DataFrame,

@@ -4,7 +4,8 @@ from footy_data.normalizers.fpl_core_insights import (
     normalise_fpl_core_matches,
     normalise_fpl_core_player_match_stats,
     reconcile_fpl_core_to_footy,
-    attach_fpl_core_player_match_ids,
+    reconcile_fpl_core_player_matches_to_footy,
+    supplement_fpl_core_team_rows_from_players,
     enrich_fpl_core_team_rows_from_players,
 )
 
@@ -105,6 +106,7 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
             "away_team": 3,
             "match_id": "provider-1",
             "tournament": "prem",
+            "player_stats_processed": True,
         }
     ])
     player_stats = pd.DataFrame([
@@ -140,15 +142,37 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
     assert saka["xa"] == 0.3
     assert saka["final_third_passes"] == 11
 
-    team_rows = pd.DataFrame([
+    footy = pd.DataFrame([
         {
-            "provider_match_id": "provider-1",
             "match_id": "understat-abc",
+            "match_date": "2026-09-19T14:00:00Z",
             "team": "Arsenal",
-        }
+            "opponent": "Brighton",
+            "home_away": "A",
+        },
+        {
+            "match_id": "understat-abc",
+            "match_date": "2026-09-19T14:00:00Z",
+            "team": "Brighton",
+            "opponent": "Arsenal",
+            "home_away": "H",
+        },
     ])
-    linked = attach_fpl_core_player_match_ids(player_rows, team_rows)
+    linked, rate = reconcile_fpl_core_player_matches_to_footy(
+        player_rows, footy
+    )
+    assert rate == 1.0
     assert set(linked["footy_match_id"]) == {"understat-abc"}
+
+    team_rows = pd.DataFrame(columns=[
+        "provider_match_id", "match_id", "team", "opponent", "home_away",
+        "source", "retrieved_at",
+    ])
+    team_rows = supplement_fpl_core_team_rows_from_players(
+        team_rows, linked, footy
+    )
+    assert len(team_rows) == 1
+    assert team_rows.iloc[0]["team"] == "Arsenal"
 
     enriched = enrich_fpl_core_team_rows_from_players(team_rows, linked)
     row = enriched.iloc[0]

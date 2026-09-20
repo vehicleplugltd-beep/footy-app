@@ -15,7 +15,8 @@ from .normalizers.fpl_core_insights import (
     normalise_fpl_core_matches,
     normalise_fpl_core_player_match_stats,
     reconcile_fpl_core_to_footy,
-    attach_fpl_core_player_match_ids,
+    reconcile_fpl_core_player_matches_to_footy,
+    supplement_fpl_core_team_rows_from_players,
     enrich_fpl_core_team_rows_from_players,
 )
 from .sources.fpl_core_insights import FPLCoreInsightsSource
@@ -222,9 +223,21 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
             f"{args.min_match_rate:.1%}"
         )
 
-    player_metrics = attach_fpl_core_player_match_ids(
-        player_metrics,
+    player_metrics, player_match_rate = (
+        reconcile_fpl_core_player_matches_to_footy(
+            player_metrics,
+            side_scope,
+        )
+    )
+    if player_match_rate < args.min_match_rate:
+        raise RuntimeError(
+            f"FPL-Core player reconciliation {player_match_rate:.1%} below "
+            f"{args.min_match_rate:.1%}"
+        )
+    reconciled = supplement_fpl_core_team_rows_from_players(
         reconciled,
+        player_metrics,
+        side_scope,
     )
     reconciled = enrich_fpl_core_team_rows_from_players(
         reconciled,
@@ -263,6 +276,7 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
                 if not player_metrics.empty
                 else 0
             ),
+            "player_match_rate": player_match_rate,
             "competitions": (
                 sorted(player_metrics["competition"].dropna().astype(str).unique().tolist())
                 if not player_metrics.empty
@@ -288,9 +302,17 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
     if not player_metrics.empty:
         player_metrics = player_metrics.copy()
         player_metrics["verified"] = True
-        player_metrics["verification_status"] = player_metrics[
-            "footy_match_id"
-        ].map(lambda value: report.status if pd.notna(value) else "WARN")
+        player_metrics["verification_status"] = player_metrics.apply(
+            lambda row: (
+                report.status
+                if (
+                    str(row.get("competition", "")).lower() == "prem"
+                    and pd.notna(row.get("footy_match_id"))
+                )
+                else "WARN"
+            ),
+            axis=1,
+        )
         player_metrics["verified_at"] = stamp
         writer.upsert_player_match_metrics(
             frame_records(player_metrics, PLAYER_MATCH_METRIC_FIELDS)
@@ -307,6 +329,7 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
             if not player_metrics.empty
             else 0
         ),
+        "player_match_rate": player_match_rate,
         "verification": report.as_dict(),
     }, indent=2, default=str))
 
