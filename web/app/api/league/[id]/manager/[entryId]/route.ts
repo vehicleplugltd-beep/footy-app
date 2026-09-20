@@ -170,7 +170,7 @@ async function decisionQualityHistory(
       { headers, cache: "no-store" },
     ),
     fetch(
-      `${url}/rest/v1/footy_fpl_snapshots?select=snapshot_key,payload`,
+      `${url}/rest/v1/footy_fpl_snapshots?select=snapshot_key,payload&snapshot_key=like.event-live-*`,
       { headers, cache: "no-store" },
     ),
   ]);
@@ -480,12 +480,20 @@ function simulationVolatility(player: RankedPlayer) {
   );
 }
 
-function simulatedPlayerScore(player: RankedPlayer, iteration: number) {
+function simulatedPlayerScore(
+  player: RankedPlayer,
+  iteration: number,
+  cache?: Map<number, number>,
+) {
+  const cached = cache?.get(player.id);
+  if (cached != null) return cached;
   const sd = simulationVolatility(player);
   const shock = normalFromSeed(
     (player.id * 73856093) ^ ((iteration + 1) * 19349663),
   );
-  return Math.max(-1, player.assistantScore + shock * sd);
+  const score = Math.max(-1, player.assistantScore + shock * sd);
+  cache?.set(player.id, score);
+  return score;
 }
 
 function bestXiFromSquad(squad: RankedPlayer[]) {
@@ -547,11 +555,12 @@ function simulateTeamScore(
   iteration: number,
   transfer: { out: RankedPlayer; in: RankedPlayer } | null,
   captain: RankedPlayer | null,
+  cache?: Map<number, number>,
 ) {
   const squad = scenarioSquad(team, transfer);
   const xi = bestXiFromSquad(squad);
   let score = xi.reduce(
-    (sum, player) => sum + simulatedPlayerScore(player, iteration),
+    (sum, player) => sum + simulatedPlayerScore(player, iteration, cache),
     0,
   );
   const captainId =
@@ -560,7 +569,7 @@ function simulateTeamScore(
       : team.recommendedCaptain?.id ?? team.currentCaptain?.id ?? null;
   if (captainId && xi.some((player) => player.id === captainId)) {
     const player = xi.find((item) => item.id === captainId)!;
-    score += simulatedPlayerScore(player, iteration);
+    score += simulatedPlayerScore(player, iteration, cache);
   }
   return score;
 }
@@ -754,11 +763,13 @@ function buildCounterPlay(
     const managerStart = Number(managerStanding.total ?? 0);
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const scoreCache = new Map<number, number>();
       const managerScore = simulateTeamScore(
         analysis.manager,
         iteration,
         candidate.transfer,
         candidate.captain,
+        scoreCache,
       );
       scoreSum += managerScore;
       squareSum += managerScore * managerScore;
@@ -770,6 +781,7 @@ function buildCounterPlay(
           iteration,
           rivalTransferForIteration(rival.standing.entry_id, iteration),
           rival.team.recommendedCaptain ?? rival.team.currentCaptain,
+          scoreCache,
         );
         const managerTotal = managerStart + managerScore;
         const rivalTotal = Number(rival.standing.total ?? 0) + rivalScore;
