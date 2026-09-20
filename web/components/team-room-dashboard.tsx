@@ -267,6 +267,22 @@ export function TeamRoomDashboard({
   const captain =
     manager?.league_strategy?.captain_moves?.[0] ?? null;
 
+  const transferInProfile =
+    transfer && scout
+      ? scout.players.find((profile) => profile.player.id === transfer.in.id) ?? null
+      : null;
+  const transferEvidence = transfer
+    ? transferInProfile?.decisionConfidence ?? "PENDING"
+    : "THRESHOLD HOLD";
+  const transferWhy =
+    transfer?.rationale ??
+    "No replacement currently clears Footy’s value, minutes and timing threshold.";
+  const transferFailure =
+    transferInProfile?.risks[0] ??
+    (transfer
+      ? "Late team news, role changes or a price move can reduce the projected gain."
+      : "Late team news, a price move or a role change can create a new edge before the deadline.");
+
   const standings = league?.standings?.results ?? [];
   const ownIndex = standings.findIndex(
     (row) => row.entry_id === teamId,
@@ -347,7 +363,9 @@ export function TeamRoomDashboard({
                 {transfer
                   ? "+" +
                     transfer.raw_gain.toFixed(1) +
-                    " now · +" +
+                    " now · min +" +
+                    (transfer.minimum_gain ?? 0).toFixed(1) +
+                    " · +" +
                     (transfer.horizon_gain ?? 0).toFixed(1) +
                     " horizon"
                   : "No replacement clears the value and timing threshold."}
@@ -379,6 +397,27 @@ export function TeamRoomDashboard({
                 {manager?.resource_advice?.recommendation ??
                   "No resource warning."}
               </small>
+            </div>
+          </div>
+
+          <div className="team-room-decision-proof">
+            <div>
+              <span>WHY</span>
+              <strong>{transferWhy}</strong>
+            </div>
+            <div>
+              <span>EVIDENCE</span>
+              <strong className={
+                transferInProfile
+                  ? "confidence-" + transferInProfile.decisionConfidence.toLowerCase()
+                  : ""
+              }>
+                {transferEvidence}
+              </strong>
+            </div>
+            <div>
+              <span>FAILURE MODE</span>
+              <strong>{transferFailure}</strong>
             </div>
           </div>
 
