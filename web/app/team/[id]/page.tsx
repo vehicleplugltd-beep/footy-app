@@ -44,7 +44,6 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         <div className="nav-links">
           <Link href={`/squad-lab?team=${team.id}`}>Squad Lab</Link>
           <Link href="/results">Receipts</Link>
-          <Link href="/pro">Player Pass</Link>
         </div>
       </nav>
 
