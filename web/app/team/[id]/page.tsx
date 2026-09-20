@@ -78,6 +78,7 @@ export default async function TeamPage({
           <a href="#today">Today</a>
           <a href="#squad">Squad</a>
           <a href="#scout">Scout</a>
+          <a href="#leagues">League</a>
           <a href="#build-test">Build</a>
           <Link href="/results">Receipts</Link>
         </div>
@@ -237,8 +238,8 @@ export default async function TeamPage({
         <a href="#today"><span>●</span><b>Today</b></a>
         <a href="#squad"><span>▦</span><b>Squad</b></a>
         <a href="#scout"><span>⌕</span><b>Scout</b></a>
+        <a href="#leagues"><span>↕</span><b>League</b></a>
         <a href="#build-test"><span>＋</span><b>Build</b></a>
-        <Link href="/results"><span>✓</span><b>Receipts</b></Link>
       </nav>
 
       <footer className="shell footer minimal-footer">

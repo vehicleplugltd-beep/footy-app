@@ -21,6 +21,13 @@ type FplPlayer = {
   element_type: number;
   now_cost: number;
   total_points: number;
+  goals_scored: number;
+  assists: number;
+  clean_sheets: number;
+  goals_conceded: number;
+  saves: number;
+  bonus: number;
+  bps: number;
   form: string;
   selected_by_percent: string;
   points_per_game: string;
@@ -153,6 +160,16 @@ export type RankedPlayer = {
   teamName: string;
   position: string;
   price: number;
+  totalPoints: number;
+  pointsPerGame: number;
+  goalsScored: number;
+  assists: number;
+  cleanSheets: number;
+  goalsConceded: number;
+  saves: number;
+  bonus: number;
+  bps: number;
+  defensiveContribution: number;
   form: number;
   expectedNext: number;
   assistantScore: number;
@@ -909,6 +926,16 @@ function rankPlayers(
         teamName: team?.name ?? team?.short_name ?? "—",
         position,
         price,
+        totalPoints: player.total_points,
+        pointsPerGame: ppg,
+        goalsScored: player.goals_scored,
+        assists: player.assists,
+        cleanSheets: player.clean_sheets,
+        goalsConceded: player.goals_conceded,
+        saves: player.saves,
+        bonus: player.bonus,
+        bps: player.bps,
+        defensiveContribution: num(player.defensive_contribution),
         form,
         expectedNext: useExpectedNext ? ep : score,
         assistantScore: score,
@@ -1816,6 +1843,34 @@ export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
 
 
 
+export type EpaBreakdown = {
+  expectedMinutes: number;
+  appearance: number;
+  attacking: number;
+  cleanSheet: number;
+  conceded: number;
+  saves: number;
+  bonus: number;
+  defensiveContribution: number;
+  baseXP: number;
+  replacementXP: number;
+  replacementSample: number;
+  epa: number;
+  epaPerMillion: number;
+  actualAttackPointsPer90: number;
+  expectedAttackPointsPer90: number;
+  underperformanceGap: number;
+  recentAverageMinutes: number | null;
+  volumeFloorPass: boolean | null;
+  undervalued: boolean;
+};
+
+export type ScoutSourceVerification = {
+  source: string;
+  status: "ACTIVE" | "VERIFIED_REFERENCE" | "CROSS_CHECK" | "AVAILABLE_NOT_ACTIVE" | "LICENSED_ONLY";
+  provides: string;
+};
+
 export type ScoutHorizonPoint = {
   eventId: number;
   name: string;
@@ -1842,8 +1897,10 @@ export type ScoutPlayerProfile = {
     index: number;
   };
   status: "BUY_NOW" | "WATCH" | "FUTURE_TARGET";
+  epa: EpaBreakdown;
   reasons: string[];
   risks: string[];
+  coreSources: string[];
 };
 
 export type ScoutTeamProfile = {
@@ -1877,9 +1934,33 @@ export type ScoutIntelligencePayload = {
   dataRetrievedAt: string;
   freshness: "LIVE_FPL" | "CACHED_FALLBACK";
   horizonGameweeks: number;
+  sourceVerification: ScoutSourceVerification[];
   picks: ScoutPlayerProfile[];
+  undervalued: ScoutPlayerProfile[];
   players: ScoutPlayerProfile[];
   teams: ScoutTeamProfile[];
+};
+
+type FplElementHistory = {
+  round: number;
+  minutes: number;
+  total_points: number;
+  goals_scored: number;
+  assists: number;
+  clean_sheets: number;
+  goals_conceded: number;
+  saves: number;
+  bonus: number;
+  bps: number;
+  expected_goals: string | number | null;
+  expected_assists: string | number | null;
+  expected_goal_involvements: string | number | null;
+  expected_goals_conceded: string | number | null;
+  defensive_contribution?: string | number | null;
+};
+
+type FplElementSummary = {
+  history: FplElementHistory[];
 };
 
 function average(values: number[]) {
@@ -1925,6 +2006,243 @@ function bestRollingWindow(
   }
 
   return best;
+}
+
+function positionGoalPoints(position: string) {
+  if (position === "GKP") return 10;
+  if (position === "DEF") return 6;
+  if (position === "MID") return 5;
+  return 4;
+}
+
+function positionCleanSheetPoints(position: string) {
+  if (position === "GKP" || position === "DEF") return 4;
+  if (position === "MID") return 1;
+  return 0;
+}
+
+function poissonProbability(lambda: number, goals: number) {
+  let factorial = 1;
+  for (let i = 2; i <= goals; i += 1) factorial *= i;
+  return Math.exp(-lambda) * Math.pow(lambda, goals) / factorial;
+}
+
+function expectedGoalsConcededDeduction(lambda: number) {
+  let expected = 0;
+  for (let goals = 0; goals <= 10; goals += 1) {
+    expected += Math.floor(goals / 2) * poissonProbability(lambda, goals);
+  }
+  return expected;
+}
+
+function expectedMinutesFallback(player: RankedPlayer) {
+  if (player.starts > 0) {
+    return clamp(
+      (player.minutes / player.starts) * 0.72 +
+        90 * player.startReliability * 0.28,
+      25,
+      90,
+    );
+  }
+  return clamp(90 * player.startReliability, 20, 75);
+}
+
+function calculateBaseXP(
+  player: RankedPlayer,
+  process: Map<string, TeamProcess>,
+  recentAverageMinutes: number | null,
+) {
+  const expectedMinutes = clamp(
+    recentAverageMinutes ?? expectedMinutesFallback(player),
+    0,
+    90,
+  );
+  const minuteShare = expectedMinutes / 90;
+  const probability60 = clamp((expectedMinutes - 30) / 30, 0, 1);
+  const appearance = expectedMinutes <= 0 ? 0 : 1 + probability60;
+
+  const goalPoints = positionGoalPoints(player.position);
+  const expectedAttackPointsPer90 =
+    player.xgPer90 * goalPoints + player.xaPer90 * 3;
+  const attacking = expectedAttackPointsPer90 * minuteShare;
+
+  const teamProcess = process.get(canonicalTeam(player.teamName));
+  const opponentProcess = player.opponentName
+    ? process.get(canonicalTeam(player.opponentName))
+    : undefined;
+  const baselineXga =
+    (teamProcess?.metrics.npxga ?? 0) > 0
+      ? teamProcess!.metrics.npxga
+      : (teamProcess?.metrics.xga ?? 0) > 0
+        ? teamProcess!.metrics.xga
+        : Math.max(0.6, player.xgcPer90);
+  const opponentAttack = opponentProcess?.attackIndex ?? 1;
+  const ownDefence = teamProcess?.defenceIndex ?? 1;
+  const fixtureXga = clamp(
+    baselineXga *
+      (opponentAttack / Math.max(0.72, ownDefence)) *
+      (1 + (player.fixtureDifficulty - 3) * 0.10),
+    0.25,
+    3.5,
+  );
+  const cleanSheetProbability = Math.exp(-fixtureXga);
+  const cleanSheet =
+    positionCleanSheetPoints(player.position) *
+    cleanSheetProbability *
+    probability60;
+
+  const conceded =
+    player.position === "GKP" || player.position === "DEF"
+      ? -expectedGoalsConcededDeduction(fixtureXga) * probability60
+      : 0;
+
+  const savesPer90 =
+    player.position === "GKP" && player.minutes > 0
+      ? (player.saves * 90) / player.minutes
+      : 0;
+  const saves =
+    player.position === "GKP" ? (savesPer90 * minuteShare) / 3 : 0;
+
+  const bonusPer90 =
+    player.minutes > 0 ? (player.bonus * 90) / player.minutes : 0;
+  const bonusReliability = clamp(player.minutes / 540, 0, 1);
+  const bonus =
+    clamp(
+      bonusPer90 * bonusReliability +
+        (player.xgiPer90 * 0.22 + cleanSheetProbability * 0.12) *
+          (1 - bonusReliability),
+      0,
+      2.2,
+    ) * minuteShare;
+
+  const dcThreshold = player.position === "DEF" ? 10 : 12;
+  const defensiveContribution =
+    player.position === "GKP" || player.minutes <= 0
+      ? 0
+      : 2 /
+        (1 +
+          Math.exp(
+            -(
+              ((player.defensiveContribution * 90) / player.minutes) *
+                minuteShare -
+              dcThreshold
+            ) /
+              2.2,
+          ));
+
+  const fixtureCount = Math.max(0, player.fixtureCount);
+  const singleFixtureXP =
+    appearance +
+    attacking +
+    cleanSheet +
+    conceded +
+    saves +
+    bonus +
+    defensiveContribution;
+  const baseXP = singleFixtureXP * fixtureCount;
+
+  const actualAttackPointsPer90 =
+    player.minutes > 0
+      ? ((player.goalsScored * goalPoints + player.assists * 3) * 90) /
+        player.minutes
+      : 0;
+
+  return {
+    expectedMinutes,
+    appearance,
+    attacking: attacking * fixtureCount,
+    cleanSheet: cleanSheet * fixtureCount,
+    conceded: conceded * fixtureCount,
+    saves: saves * fixtureCount,
+    bonus: bonus * fixtureCount,
+    defensiveContribution: defensiveContribution * fixtureCount,
+    baseXP,
+    actualAttackPointsPer90,
+    expectedAttackPointsPer90,
+    underperformanceGap:
+      expectedAttackPointsPer90 - actualAttackPointsPer90,
+  };
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+async function recentMinutesForPlayers(playerIds: number[]) {
+  const result = new Map<number, number | null>();
+  const settled = await Promise.allSettled(
+    playerIds.map(async (playerId) => {
+      const summary = await fplFetch<FplElementSummary>(
+        `element-summary/${playerId}/`,
+        300,
+      );
+      const appearances = [...summary.history]
+        .filter((item) => item.minutes > 0)
+        .sort((a, b) => b.round - a.round)
+        .slice(0, 5);
+      const averageMinutes = appearances.length
+        ? average(appearances.map((item) => item.minutes))
+        : null;
+      return [playerId, averageMinutes] as const;
+    }),
+  );
+
+  settled.forEach((item, index) => {
+    const playerId = playerIds[index];
+    if (item.status === "fulfilled") {
+      result.set(item.value[0], item.value[1]);
+    } else {
+      result.set(playerId, null);
+    }
+  });
+  return result;
+}
+
+function replacementBaseline(
+  profile: ScoutPlayerProfile,
+  profiles: ScoutPlayerProfile[],
+) {
+  const player = profile.player;
+  const eligible = (priceBand: number) =>
+    profiles.filter(
+      (candidate) =>
+        candidate.player.id !== player.id &&
+        candidate.player.position === player.position &&
+        Math.abs(candidate.player.price - player.price) <= priceBand &&
+        candidate.player.availability >= 75 &&
+        candidate.player.startReliability >= 0.85 &&
+        candidate.player.minutes >= 180,
+    );
+
+  let sample = eligible(0.5);
+  if (sample.length < 4) sample = eligible(1.0);
+  if (sample.length < 4) {
+    sample = profiles.filter(
+      (candidate) =>
+        candidate.player.id !== player.id &&
+        candidate.player.position === player.position &&
+        candidate.player.availability >= 75 &&
+        candidate.player.startReliability >= 0.85 &&
+        candidate.player.price <= player.price + 0.5,
+    );
+  }
+
+  return {
+    value: median(sample.map((candidate) => candidate.epa.baseXP)),
+    sample: sample.length,
+  };
+}
+
+function percentile(values: number[], p: number) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = clamp(Math.ceil(sorted.length * p) - 1, 0, sorted.length - 1);
+  return sorted[index];
 }
 
 function scoutReasons(
@@ -2147,6 +2465,8 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
       status = "FUTURE_TARGET";
     }
 
+    const base = calculateBaseXP(basePlayer, process, null);
+
     return {
       player: basePlayer,
       horizon,
@@ -2155,19 +2475,44 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
       score8,
       bestWindow,
       status,
+      epa: {
+        ...base,
+        replacementXP: 0,
+        replacementSample: 0,
+        epa: 0,
+        epaPerMillion: 0,
+        recentAverageMinutes: null,
+        volumeFloorPass: null,
+        undervalued: false,
+      },
       reasons: scoutReasons(basePlayer, processRow, horizon, bestWindow),
       risks: scoutRisks(basePlayer, processRow, horizon),
+      coreSources: [
+        "Official FPL live player/market data",
+        "Footy canonical team-process layer (currently Understat production feed)",
+      ],
     };
   });
 
-  const pickScore = (profile: ScoutPlayerProfile) =>
-    profile.bestWindow.score * 0.38 +
-    profile.score6 * 0.34 +
-    profile.score8 * 0.14 +
-    profile.player.xgiPer90 * 1.35 +
-    profile.player.valueScore * 0.22;
+  // Establish replacement-level xP by position and current price bracket.
+  profiles.forEach((profile) => {
+    const replacement = replacementBaseline(profile, profiles);
+    profile.epa.replacementXP = replacement.value;
+    profile.epa.replacementSample = replacement.sample;
+    profile.epa.epa = profile.epa.baseXP - replacement.value;
+    profile.epa.epaPerMillion =
+      profile.player.price > 0 ? profile.epa.epa / profile.player.price : 0;
+  });
 
-  const picks = profiles
+  const pickScore = (profile: ScoutPlayerProfile) =>
+    profile.bestWindow.score * 0.34 +
+    profile.score6 * 0.30 +
+    profile.score8 * 0.12 +
+    profile.player.xgiPer90 * 1.25 +
+    profile.player.valueScore * 0.16 +
+    Math.max(-0.5, profile.epa.epa) * 0.30;
+
+  const shortlist = profiles
     .filter(
       (profile) =>
         profile.player.availability >= 75 &&
@@ -2175,7 +2520,70 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         profile.horizon.some((item) => item.score > 0),
     )
     .sort((a, b) => pickScore(b) - pickScore(a))
-    .slice(0, 24);
+    .slice(0, 36);
+
+  // Strict undervalued classification needs real minutes from the player's
+  // last five appearances. Only shortlist candidates trigger these live FPL
+  // element-summary requests; the full database remains fast.
+  const recentMinutes = await recentMinutesForPlayers(
+    shortlist.map((profile) => profile.player.id),
+  );
+
+  shortlist.forEach((profile) => {
+    const recentAverageMinutes =
+      recentMinutes.get(profile.player.id) ?? null;
+    const recalculated = calculateBaseXP(
+      profile.player,
+      process,
+      recentAverageMinutes,
+    );
+    profile.epa = {
+      ...profile.epa,
+      ...recalculated,
+      recentAverageMinutes,
+      volumeFloorPass:
+        recentAverageMinutes == null ? null : recentAverageMinutes >= 70,
+    };
+  });
+
+  // Recalculate replacement levels after recent-minutes refinement.
+  shortlist.forEach((profile) => {
+    const replacement = replacementBaseline(profile, profiles);
+    profile.epa.replacementXP = replacement.value;
+    profile.epa.replacementSample = replacement.sample;
+    profile.epa.epa = profile.epa.baseXP - replacement.value;
+    profile.epa.epaPerMillion =
+      profile.player.price > 0 ? profile.epa.epa / profile.player.price : 0;
+  });
+
+  const epaByPosition = new Map<string, number[]>();
+  shortlist.forEach((profile) => {
+    const group = epaByPosition.get(profile.player.position) ?? [];
+    group.push(profile.epa.epaPerMillion);
+    epaByPosition.set(profile.player.position, group);
+  });
+
+  shortlist.forEach((profile) => {
+    const threshold = percentile(
+      epaByPosition.get(profile.player.position) ?? [],
+      0.65,
+    );
+    profile.epa.undervalued =
+      profile.epa.underperformanceGap > 0.20 &&
+      profile.epa.epa > 0.30 &&
+      profile.epa.epaPerMillion >= threshold &&
+      profile.epa.volumeFloorPass === true;
+  });
+
+  const picks = shortlist.slice(0, 24);
+  const undervalued = [...shortlist]
+    .filter((profile) => profile.epa.undervalued)
+    .sort(
+      (a, b) =>
+        b.epa.epaPerMillion - a.epa.epaPerMillion ||
+        b.epa.epa - a.epa.epa,
+    )
+    .slice(0, 16);
 
   const profileByTeam = new Map<string, ScoutPlayerProfile[]>();
   for (const profile of profiles) {
@@ -2259,7 +2667,58 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     dataRetrievedAt,
     freshness,
     horizonGameweeks: upcomingEvents.length,
+    sourceVerification: [
+      {
+        source: "Official FPL",
+        status: "ACTIVE",
+        provides:
+          "Live prices, ownership, points, xG/xA/xGI/xGC, minutes, starts, availability, saves, bonus and defensive contribution.",
+      },
+      {
+        source: "PremierLeague.com",
+        status: "VERIFIED_REFERENCE",
+        provides:
+          "Current 2026/27 FPL scoring rules, defensive-contribution rules and official competition context.",
+      },
+      {
+        source: "Understat via Footy canonical layer",
+        status: "ACTIVE",
+        provides:
+          "Production team process: xG/npxG, xGA/npxGA, shots/SOT, set pieces, PPDA and deep completions.",
+      },
+      {
+        source: "StatMuse",
+        status: "CROSS_CHECK",
+        provides:
+          "Current-season xG/xA, shots, key passes and touches-in-box queries where available.",
+      },
+      {
+        source: "Opta Analyst",
+        status: "CROSS_CHECK",
+        provides:
+          "Opta-powered player projections and published advanced-data analysis; direct Opta feed remains licensed-only.",
+      },
+      {
+        source: "SofaScore",
+        status: "AVAILABLE_NOT_ACTIVE",
+        provides:
+          "Current matches, standings and player/team statistics; adapter exists but is not yet production consensus.",
+      },
+      {
+        source: "Sky Sports",
+        status: "CROSS_CHECK",
+        provides:
+          "Live league context, results, scoring tables, team news and editorial statistical context.",
+      },
+      {
+        source: "Opta / Stats Perform direct",
+        status: "LICENSED_ONLY",
+        provides:
+          "Granular event data only when a legitimate licensed feed is configured.",
+      },
+    ],
     picks,
+    undervalued,
     players: profiles.sort((a, b) => b.score6 - a.score6),
     teams: teams.sort((a, b) => {
       const aStrength =

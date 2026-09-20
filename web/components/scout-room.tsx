@@ -8,7 +8,12 @@ import type {
 } from "@/lib/fpl";
 
 type Tab = "PICKS" | "PLAYERS" | "TEAMS";
-type PickFilter = "ALL" | "BUY_NOW" | "WATCH" | "FUTURE_TARGET";
+type PickFilter =
+  | "ALL"
+  | "UNDERVALUED"
+  | "BUY_NOW"
+  | "WATCH"
+  | "FUTURE_TARGET";
 
 function statusLabel(status: ScoutPlayerProfile["status"]) {
   return status === "BUY_NOW"
@@ -57,7 +62,67 @@ function PlayerProfile({
         <div><span>Minutes</span><strong>{player.minutes}</strong></div>
         <div><span>Owned</span><strong>{player.selectedBy.toFixed(1)}%</strong></div>
         <div><span>Available</span><strong>{player.availability}%</strong></div>
+        <div><span>FPL points</span><strong>{player.totalPoints}</strong></div>
+        <div><span>PPG</span><strong>{player.pointsPerGame.toFixed(1)}</strong></div>
+        <div><span>Bonus</span><strong>{player.bonus}</strong></div>
+        <div><span>Def. contrib.</span><strong>{player.defensiveContribution.toFixed(0)}</strong></div>
       </div>
+
+      <section className={`epa-panel ${profile.epa.undervalued ? "epa-undervalued" : ""}`}>
+        <div className="epa-panel-head">
+          <div>
+            <span>EXPECTED POINTS ADDED</span>
+            <strong>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)} EPA</strong>
+            <small>
+              {profile.epa.epaPerMillion >= 0 ? "+" : ""}
+              {profile.epa.epaPerMillion.toFixed(3)} per £m
+            </small>
+          </div>
+          <div>
+            {profile.epa.undervalued ? <b>UNDERVALUED</b> : <b>MARKET CHECK</b>}
+          </div>
+        </div>
+
+        <div className="epa-equation">
+          <div>
+            <span>BASE xP</span>
+            <strong>{profile.epa.baseXP.toFixed(2)}</strong>
+          </div>
+          <i>−</i>
+          <div>
+            <span>REPLACEMENT xP</span>
+            <strong>{profile.epa.replacementXP.toFixed(2)}</strong>
+            <small>{profile.epa.replacementSample} comparable players</small>
+          </div>
+          <i>=</i>
+          <div>
+            <span>EPA</span>
+            <strong>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)}</strong>
+          </div>
+        </div>
+
+        <details className="epa-details">
+          <summary>Show EPA calculation</summary>
+          <div className="epa-components">
+            <span>Appearance <b>{profile.epa.appearance.toFixed(2)}</b></span>
+            <span>Attack <b>{profile.epa.attacking.toFixed(2)}</b></span>
+            <span>Clean sheet <b>{profile.epa.cleanSheet.toFixed(2)}</b></span>
+            <span>Goals conceded <b>{profile.epa.conceded.toFixed(2)}</b></span>
+            <span>Saves <b>{profile.epa.saves.toFixed(2)}</b></span>
+            <span>Bonus <b>{profile.epa.bonus.toFixed(2)}</b></span>
+            <span>Defensive contribution <b>{profile.epa.defensiveContribution.toFixed(2)}</b></span>
+          </div>
+          <p>
+            Expected minutes {profile.epa.expectedMinutes.toFixed(0)} · recent 5-appearance average{" "}
+            {profile.epa.recentAverageMinutes == null
+              ? "unavailable"
+              : `${profile.epa.recentAverageMinutes.toFixed(1)} mins`}
+            {" · "}underperformance gap{" "}
+            {profile.epa.underperformanceGap >= 0 ? "+" : ""}
+            {profile.epa.underperformanceGap.toFixed(2)} attacking points/90.
+          </p>
+        </details>
+      </section>
 
       <div className="scout-window">
         <div>
@@ -103,6 +168,19 @@ function PlayerProfile({
           {player.news ? <p><b>Official news:</b> {player.news}</p> : null}
         </section>
       </div>
+
+      <details className="scout-source-details">
+        <summary>Data source verification</summary>
+        <div>
+          {profile.coreSources.map((source) => (
+            <p key={source}><b>Core:</b> {source}</p>
+          ))}
+          <p>
+            External corroboration is shown separately by Footy and never
+            treated as a live production feed unless its status says ACTIVE.
+          </p>
+        </div>
+      </details>
     </article>
   );
 }
@@ -238,7 +316,10 @@ export function ScoutRoom() {
 
   const filteredPicks = useMemo(() => {
     if (!data) return [];
-    return data.picks.filter((profile) => filter === "ALL" || profile.status === filter);
+    if (filter === "UNDERVALUED") return data.undervalued;
+    return data.picks.filter(
+      (profile) => filter === "ALL" || profile.status === filter,
+    );
   }, [data, filter]);
 
   const filteredPlayers = useMemo(() => {
@@ -293,6 +374,18 @@ export function ScoutRoom() {
                   minute: "2-digit",
                 })}
               </small>
+              <details className="scout-source-summary">
+                <summary>Sources</summary>
+                <div>
+                  {data.sourceVerification.map((source) => (
+                    <p key={source.source}>
+                      <b>{source.source}</b>
+                      <span>{source.status.replaceAll("_", " ")}</span>
+                      <small>{source.provides}</small>
+                    </p>
+                  ))}
+                </div>
+              </details>
             </div>
             <nav aria-label="Scout views">
               {(["PICKS", "PLAYERS", "TEAMS"] as Tab[]).map((item) => (
@@ -321,6 +414,7 @@ export function ScoutRoom() {
                   aria-label="Filter potential picks"
                 >
                   <option value="ALL">All timings</option>
+                  <option value="UNDERVALUED">Undervalued</option>
                   <option value="BUY_NOW">Buy now</option>
                   <option value="WATCH">Watch</option>
                   <option value="FUTURE_TARGET">Future target</option>
@@ -339,12 +433,24 @@ export function ScoutRoom() {
                       </button>
                       <small>
                         {profile.player.team} · {profile.player.position} · £{profile.player.price.toFixed(1)}m
+                        {" · "}{profile.player.totalPoints} pts
+                        {" · "}{profile.player.selectedBy.toFixed(1)}% owned
                       </small>
                     </div>
                     <div>
-                      <span>BEST WINDOW</span>
-                      <strong>{profile.bestWindow.startName} → {profile.bestWindow.endName}</strong>
-                      <small>3GW {profile.bestWindow.score.toFixed(1)} · 6GW {profile.score6.toFixed(1)}</small>
+                      <span>{profile.epa.undervalued ? "EPA · UNDERVALUED" : "EPA / BEST WINDOW"}</span>
+                      <strong>
+                        {profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)} EPA
+                        {" · "}{profile.bestWindow.startName} → {profile.bestWindow.endName}
+                      </strong>
+                      <small>
+                        {profile.epa.epaPerMillion >= 0 ? "+" : ""}
+                        {profile.epa.epaPerMillion.toFixed(3)}/£m
+                        {" · "}6GW {profile.score6.toFixed(1)}
+                        {profile.epa.recentAverageMinutes != null
+                          ? ` · ${profile.epa.recentAverageMinutes.toFixed(0)} min recent avg`
+                          : ""}
+                      </small>
                     </div>
                     <div className="scout-pick-reason">
                       <span>WHY</span>
@@ -381,9 +487,17 @@ export function ScoutRoom() {
                     >
                       <span>
                         <b>{profile.player.name}</b>
-                        <small>{profile.player.team} · {profile.player.position}</small>
+                        <small>
+                          {profile.player.team} · {profile.player.position}
+                          {" · "}£{profile.player.price.toFixed(1)}m
+                          {" · "}{profile.player.totalPoints} pts
+                        </small>
                       </span>
-                      <em>{statusLabel(profile.status)}</em>
+                      <em>
+                        {profile.epa.undervalued
+                          ? `+${profile.epa.epa.toFixed(1)} EPA`
+                          : statusLabel(profile.status)}
+                      </em>
                     </button>
                   ))}
                 </div>
