@@ -294,11 +294,17 @@ type ManagerResponse = {
       estimated_free_transfers: number | null;
       remaining_chips: string[];
       activity: string | null;
+      recent_transfers: number | null;
+      recent_hit_cost: number | null;
+      response_confidence: number;
+      response_uncertainty: "ELEVATED_CHIP_OPTIONALITY" | "DIFFUSE" | "NORMAL";
       transfer_vectors: Array<{
         out: { id: number; name: string; team: string } | null;
         in: { id: number; name: string; team: string } | null;
         label: string;
         model_share: number;
+        drivers: string[];
+        affordability_margin: number | null;
         caveat: string;
       }>;
     }>;
@@ -1455,16 +1461,38 @@ export function TeamRoomDashboard({
                     </header>
                     <small className="counterplay-rival-meta">
                       {rival.activity ?? "resource style unknown"} ·{" "}
+                      {rival.recent_transfers == null
+                        ? "recent transfers unknown"
+                        : rival.recent_transfers + " moves / last 4"} ·{" "}
+                      confidence {(rival.response_confidence * 100).toFixed(0)}%
+                    </small>
+                    <small className="counterplay-rival-meta">
                       {rival.remaining_chips.length
                         ? rival.remaining_chips.join(", ") + " available"
                         : "no tracked chips remaining in current half"}
+                      {rival.response_uncertainty === "ELEVATED_CHIP_OPTIONALITY"
+                        ? " · chip optionality widens response uncertainty"
+                        : rival.response_uncertainty === "DIFFUSE"
+                          ? " · response weights are diffuse"
+                          : ""}
                     </small>
                     {rival.transfer_vectors.length ? (
                       rival.transfer_vectors.map((vector, vectorIndex) => (
-                        <p key={rival.entry_id + "-" + vectorIndex}>
-                          {vector.label} ·{" "}
-                          <b>{(vector.model_share * 100).toFixed(0)}% relative response weight</b>
-                        </p>
+                        <div
+                          className="counterplay-vector-row"
+                          key={rival.entry_id + "-" + vectorIndex}
+                        >
+                          <p>
+                            {vector.label} ·{" "}
+                            <b>
+                              {(vector.model_share * 100).toFixed(0)}% relative
+                              response weight
+                            </b>
+                          </p>
+                          <small>
+                            {vector.drivers.slice(0, 3).join(" · ")}
+                          </small>
+                        </div>
                       ))
                     ) : (
                       <p>No current response vector is available.</p>
