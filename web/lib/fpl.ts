@@ -1079,3 +1079,158 @@ export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
     players,
   };
 }
+
+
+type EntryHistoryGameweek = {
+  event: number;
+  points: number;
+  total_points: number;
+  overall_rank: number | null;
+  bank: number;
+  value: number;
+  event_transfers: number;
+  event_transfers_cost: number;
+  points_on_bench: number;
+};
+
+type EntryChipUse = {
+  name: string;
+  event: number;
+  time: string;
+};
+
+type EntryHistoryResponse = {
+  current: EntryHistoryGameweek[];
+  chips: EntryChipUse[];
+};
+
+type EntryTransfer = {
+  element_in: number;
+  element_out: number;
+  element_in_cost: number;
+  element_out_cost: number;
+  event: number;
+  time: string;
+};
+
+export type RivalResourceHistory = {
+  entryId: number;
+  currentEvent: number;
+  chips: Array<{
+    code: string;
+    label: string;
+    event: number;
+    half: 1 | 2;
+    time: string;
+  }>;
+  currentHalf: 1 | 2;
+  currentHalfRemaining: string[];
+  secondHalfRemaining: string[];
+  totalTransfers: number;
+  totalHitCost: number;
+  hitGameweeks: number;
+  recentTransfers: number;
+  recentHitCost: number;
+  activity: "AGGRESSIVE" | "ACTIVE" | "PATIENT";
+  transferLog: EntryTransfer[];
+  gameweeks: EntryHistoryGameweek[];
+};
+
+const CHIP_LABELS: Record<string, string> = {
+  wildcard: "Wildcard",
+  bboost: "Bench Boost",
+  freehit: "Free Hit",
+  "3xc": "Triple Captain",
+};
+
+export async function getRivalResourceHistory(
+  entryId: number,
+): Promise<RivalResourceHistory> {
+  const [history, transfers] = await Promise.all([
+    fplFetch<EntryHistoryResponse>(`entry/${entryId}/history/`, 300),
+    fplFetch<EntryTransfer[]>(`entry/${entryId}/transfers/`, 300),
+  ]);
+
+  const gameweeks = [...(history.current ?? [])].sort(
+    (a, b) => a.event - b.event,
+  );
+  const currentEvent = gameweeks.at(-1)?.event ?? 1;
+  const currentHalf: 1 | 2 = currentEvent <= 19 ? 1 : 2;
+
+  const chips = (history.chips ?? [])
+    .map((chip) => ({
+      code: chip.name,
+      label: CHIP_LABELS[chip.name] ?? chip.name,
+      event: chip.event,
+      half: (chip.event <= 19 ? 1 : 2) as 1 | 2,
+      time: chip.time,
+    }))
+    .sort((a, b) => a.event - b.event);
+
+  const allChipLabels = [
+    "Wildcard",
+    "Free Hit",
+    "Triple Captain",
+    "Bench Boost",
+  ];
+  const usedCurrentHalf = new Set(
+    chips.filter((chip) => chip.half === currentHalf).map((chip) => chip.label),
+  );
+  const usedSecondHalf = new Set(
+    chips.filter((chip) => chip.half === 2).map((chip) => chip.label),
+  );
+
+  const recentGameweeks = gameweeks.slice(-4);
+  const totalTransfers = gameweeks.reduce(
+    (sum, item) => sum + Number(item.event_transfers || 0),
+    0,
+  );
+  const totalHitCost = gameweeks.reduce(
+    (sum, item) => sum + Number(item.event_transfers_cost || 0),
+    0,
+  );
+  const hitGameweeks = gameweeks.filter(
+    (item) => Number(item.event_transfers_cost || 0) > 0,
+  ).length;
+  const recentTransfers = recentGameweeks.reduce(
+    (sum, item) => sum + Number(item.event_transfers || 0),
+    0,
+  );
+  const recentHitCost = recentGameweeks.reduce(
+    (sum, item) => sum + Number(item.event_transfers_cost || 0),
+    0,
+  );
+
+  const activity =
+    recentHitCost >= 8 || recentTransfers >= 7
+      ? "AGGRESSIVE"
+      : recentTransfers >= 4
+        ? "ACTIVE"
+        : "PATIENT";
+
+  return {
+    entryId,
+    currentEvent,
+    chips,
+    currentHalf,
+    currentHalfRemaining: allChipLabels.filter(
+      (label) => !usedCurrentHalf.has(label),
+    ),
+    secondHalfRemaining: allChipLabels.filter(
+      (label) => !usedSecondHalf.has(label),
+    ),
+    totalTransfers,
+    totalHitCost,
+    hitGameweeks,
+    recentTransfers,
+    recentHitCost,
+    activity,
+    transferLog: [...(transfers ?? [])]
+      .sort(
+        (a, b) =>
+          new Date(b.time).getTime() - new Date(a.time).getTime(),
+      )
+      .slice(0, 12),
+    gameweeks,
+  };
+}
