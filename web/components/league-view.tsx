@@ -786,25 +786,22 @@ export function LeagueView({
                 <div className="beta-analysis-split">
                   <div>
                     <span>Your rival-only threats</span>
-                    {edgePreview.analysis.overlap.rivalOnly
-                      .map((player) => (
-                        <small key={player.id}>
-                          {player.name} · {player.team}
-                        </small>
-                      ))}
+                    {edgePreview.analysis.overlap.rivalOnly.map((player) => (
+                      <Link key={player.id} href={"/research?player=" + player.id}>
+                        {player.name} · {player.team}
+                      </Link>
+                    ))}
                     {!edgePreview.analysis.overlap.rivalOnly.length ? (
                       <small>No unique rival players in the current squad.</small>
                     ) : null}
                   </div>
                   <div>
                     <span>Your differentials vs this rival</span>
-                    {edgePreview.analysis.overlap.managerOnly
-                      .slice(0, 4)
-                      .map((player) => (
-                        <small key={player.id}>
-                          {player.name} · {player.team}
-                        </small>
-                      ))}
+                    {edgePreview.analysis.overlap.managerOnly.map((player) => (
+                      <Link key={player.id} href={"/research?player=" + player.id}>
+                        {player.name} · {player.team}
+                      </Link>
+                    ))}
                     {!edgePreview.analysis.overlap.managerOnly.length ? (
                       <small>Your squads currently fully overlap.</small>
                     ) : null}
@@ -826,11 +823,14 @@ export function LeagueView({
                   <div>
                     <span>Recent team process</span>
                     {edgePreview.analysis.teamTrends.map((team) => (
-                      <small key={team.team}>
+                      <Link
+                        key={team.team}
+                        href={"/research?club=" + encodeURIComponent(team.team)}
+                      >
                         <b>{team.team}</b> · ATT {team.attackIndex.toFixed(2)}
                         {" · "}DEF {team.defenceIndex.toFixed(2)}
                         {" · "}{team.matches} match sample
-                      </small>
+                      </Link>
                     ))}
                   </div>
                 </div>
