@@ -5543,3 +5543,738 @@ body {
   color: #9fc1ff;
   background: rgba(119,87,255,.12);
 }
+
+
+/* Minimal Footy workspace v3 */
+.minimal-footy {
+  --text: #111318;
+  --muted: #697386;
+  --accent: #10b981;
+  --violet: #5b34da;
+  --blue: #2563eb;
+  --amber: #b7791f;
+  --line-soft: #e6e8ee;
+  background: #f5f6f8;
+  color: #111318;
+}
+
+.minimal-footy .shell {
+  max-width: 1180px;
+}
+
+.minimal-footy > .nav.minimal-nav {
+  position: sticky;
+  top: 0;
+  min-height: 58px;
+  border: 0;
+  border-bottom: 1px solid #e7e9ee;
+  border-radius: 0;
+  background: rgba(255,255,255,.96);
+  box-shadow: none;
+}
+
+.minimal-footy .brand {
+  color: #111318;
+}
+
+.minimal-footy .brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #111318;
+  color: #fff;
+  box-shadow: none;
+}
+
+.minimal-footy .nav-links a {
+  color: #5e6675;
+  background: transparent;
+  padding: 7px 9px;
+  font-size: 10px;
+}
+
+.minimal-footy .nav-links a:hover {
+  color: #111318;
+  background: #f1f2f5;
+  transform: none;
+}
+
+.minimal-team-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 24px;
+  align-items: center;
+  padding: 28px 0 18px;
+}
+
+.minimal-team-header > div:first-child > span,
+.minimal-league-chooser > div:first-child > span,
+.minimal-section-head span,
+.minimal-context-panel > span,
+.minimal-section-copy > span,
+.minimal-label {
+  display: block;
+  color: #6b7280;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .11em;
+}
+
+.minimal-team-header h1 {
+  margin: 3px 0 2px;
+  color: #111318;
+  font-size: clamp(26px,3vw,38px);
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+
+.minimal-team-header p {
+  margin: 0;
+  color: #7a8290;
+  font-size: 10px;
+}
+
+.minimal-header-stats {
+  display: flex;
+  gap: 22px;
+}
+
+.minimal-header-stats div {
+  min-width: 64px;
+}
+
+.minimal-header-stats span,
+.minimal-header-stats strong {
+  display: block;
+}
+
+.minimal-header-stats span {
+  color: #8a919e;
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.minimal-header-stats strong {
+  margin-top: 3px;
+  color: #111318;
+  font-size: 16px;
+}
+
+.minimal-footy .change-team-link {
+  color: #646b78;
+  border: 1px solid #e1e4ea;
+  background: #fff;
+  box-shadow: none;
+}
+
+.minimal-league-chooser {
+  display: grid;
+  grid-template-columns: .7fr 1.3fr;
+  gap: 24px;
+  padding: 22px;
+  margin-bottom: 14px;
+  border: 1px solid #e3e6eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.minimal-league-chooser h2 {
+  margin: 5px 0 5px;
+  color: #111318;
+  font-size: 24px;
+  letter-spacing: -.03em;
+}
+
+.minimal-league-chooser p {
+  margin: 0;
+  color: #737b89;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.minimal-league-list {
+  display: grid;
+  gap: 6px;
+}
+
+.minimal-league-list > a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  border: 1px solid #e7e9ee;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fafbfc;
+  color: #111318;
+  text-decoration: none;
+}
+
+.minimal-league-list > a:hover {
+  border-color: #b9dfcf;
+  background: #f6fcf9;
+}
+
+.minimal-league-list strong,
+.minimal-league-list small {
+  display: block;
+}
+
+.minimal-league-list strong {
+  font-size: 11px;
+}
+
+.minimal-league-list small {
+  margin-top: 3px;
+  color: #7b8390;
+  font-size: 8px;
+}
+
+.minimal-league-list b {
+  color: #10b981;
+  font-size: 16px;
+}
+
+/* Minimal recommendation card */
+.minimal-footy .next-move-command.minimal-command {
+  margin-bottom: 14px;
+  border: 1px solid #e2e5ea;
+  border-radius: 14px;
+  padding: 18px;
+  background: #fff;
+  box-shadow: none;
+  color: #111318;
+}
+
+.minimal-command-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eceef2;
+}
+
+.minimal-command-top > div:first-child > strong {
+  display: block;
+  margin-top: 4px;
+  color: #111318;
+  font-size: 11px;
+}
+
+.minimal-footy .decision-readiness,
+.minimal-footy .next-move-mode {
+  border: 1px solid #e0e3e8;
+  background: #f7f8fa;
+  color: #555f6d;
+  box-shadow: none;
+}
+
+.minimal-footy .readiness-ready {
+  border-color: #bfe6d6;
+  background: #f1fbf7;
+  color: #087c56;
+}
+
+.minimal-footy .readiness-wait-for-news {
+  border-color: #ead8ae;
+  background: #fffaf0;
+  color: #94651c;
+}
+
+.minimal-footy .readiness-refresh-before-deadline {
+  border-color: #cad7f7;
+  background: #f5f8ff;
+  color: #3159ad;
+}
+
+.minimal-position {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 0 4px;
+}
+
+.minimal-position > div:not(.minimal-position-arrow) {
+  display: grid;
+  gap: 2px;
+}
+
+.minimal-position span {
+  color: #8a919c;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.minimal-position strong {
+  color: #111318;
+  font-size: 15px;
+}
+
+.minimal-position small {
+  color: #737b87;
+  font-size: 8px;
+}
+
+.minimal-position-arrow {
+  color: #a1a7b0;
+  font-size: 14px;
+}
+
+.minimal-decision {
+  max-width: 940px;
+  padding: 15px 0 17px;
+}
+
+.minimal-decision > span {
+  display: block;
+  color: #0a8c61;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .11em;
+}
+
+.minimal-decision h2 {
+  margin: 6px 0 0;
+  color: #111318;
+  font-size: clamp(21px,2.7vw,34px);
+  line-height: 1.12;
+  letter-spacing: -.035em;
+  font-weight: 800;
+}
+
+.minimal-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  border-top: 1px solid #eceef2;
+  border-bottom: 1px solid #eceef2;
+}
+
+.minimal-actions-grid article {
+  min-width: 0;
+  padding: 13px 16px 13px 0;
+  background: transparent;
+}
+
+.minimal-actions-grid article + article {
+  border-left: 1px solid #eceef2;
+  padding-left: 16px;
+}
+
+.minimal-actions-grid span,
+.minimal-actions-grid strong,
+.minimal-actions-grid small {
+  display: block;
+}
+
+.minimal-actions-grid span {
+  color: #8a919d;
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.minimal-actions-grid strong {
+  margin: 5px 0 2px;
+  color: #111318;
+  font-size: 14px;
+  white-space: normal;
+}
+
+.minimal-actions-grid small {
+  color: #6f7784;
+  font-size: 8px;
+}
+
+.minimal-why {
+  border-bottom: 1px solid #eceef2;
+}
+
+.minimal-why summary {
+  padding: 13px 0;
+  color: #454c57;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.minimal-why summary::-webkit-details-marker {
+  display: none;
+}
+
+.minimal-why summary::after {
+  content: "+";
+  float: right;
+  color: #838a96;
+}
+
+.minimal-why[open] summary::after {
+  content: "−";
+}
+
+.minimal-proof {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 22px;
+  padding: 0 0 15px;
+}
+
+.minimal-proof article {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.minimal-proof span {
+  color: #8b929e;
+  font-size: 7px;
+  letter-spacing: .08em;
+}
+
+.minimal-proof strong {
+  display: block;
+  margin: 4px 0;
+  color: #111318;
+  font-size: 12px;
+}
+
+.minimal-proof p {
+  margin: 0;
+  color: #6d7582;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.minimal-command-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+  flex-wrap: wrap;
+}
+
+.minimal-footy .next-move-primary {
+  min-height: 38px;
+  border-radius: 8px;
+  background: #111318;
+  color: #fff;
+  box-shadow: none;
+}
+
+.minimal-footy .next-move-secondary {
+  min-height: 38px;
+  border: 1px solid #dfe2e8;
+  border-radius: 8px;
+  background: #fff;
+  color: #3f4650;
+}
+
+.minimal-command-actions > small {
+  margin-left: auto;
+  color: #9096a0;
+  font-size: 7px;
+}
+
+/* Minimal squad and context */
+.minimal-squad-layout {
+  display: grid;
+  grid-template-columns: minmax(0,1.45fr) minmax(260px,.55fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.minimal-footy .minimal-panel,
+.minimal-context-panel {
+  border: 1px solid #e3e6eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.minimal-footy .minimal-panel {
+  padding: 14px;
+}
+
+.minimal-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: end;
+  padding: 2px 2px 12px;
+}
+
+.minimal-section-head h2,
+.minimal-context-panel h2,
+.minimal-section-copy h2 {
+  margin: 4px 0 0;
+  color: #111318;
+  letter-spacing: -.03em;
+}
+
+.minimal-section-head h2 {
+  font-size: 21px;
+}
+
+.minimal-squad-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.minimal-squad-meta span {
+  border: 1px solid #e2e5ea;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #fafbfc;
+  color: #616976;
+  font-size: 7px;
+}
+
+.minimal-context-panel {
+  padding: 16px;
+}
+
+.minimal-context-panel h2 {
+  font-size: 20px;
+}
+
+.minimal-context-rank {
+  padding: 18px 0;
+  border-bottom: 1px solid #eceef2;
+}
+
+.minimal-context-rank strong,
+.minimal-context-rank small {
+  display: block;
+}
+
+.minimal-context-rank strong {
+  color: #111318;
+  font-size: 34px;
+  letter-spacing: -.05em;
+}
+
+.minimal-context-rank small {
+  margin-top: 2px;
+  color: #7d8490;
+  font-size: 8px;
+}
+
+.minimal-context-panel > p {
+  color: #6f7783;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.minimal-switcher {
+  margin-top: 12px;
+  border-top: 1px solid #eceef2;
+  border-bottom: 1px solid #eceef2;
+}
+
+.minimal-switcher summary {
+  padding: 11px 0;
+  color: #4c535e;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.minimal-switcher > div {
+  display: grid;
+  padding-bottom: 8px;
+}
+
+.minimal-switcher a {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  color: #333a44;
+  text-decoration: none;
+  font-size: 8px;
+}
+
+.minimal-switcher a small {
+  color: #8b919b;
+}
+
+.text-link {
+  display: inline-flex;
+  margin-top: 12px;
+  color: #0b7e59;
+  font-size: 8px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+/* Build area */
+.minimal-build-section {
+  border-top: 1px solid #e2e5ea;
+  padding-top: 28px;
+  padding-bottom: 34px;
+}
+
+.minimal-section-copy {
+  max-width: 620px;
+  margin-bottom: 16px;
+}
+
+.minimal-section-copy h2 {
+  font-size: 26px;
+}
+
+.minimal-section-copy p {
+  margin: 7px 0 0;
+  color: #707884;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.minimal-footy .build-test-load {
+  min-height: 52px;
+  border: 1px solid #dfe2e8;
+  border-radius: 10px;
+  background: #fff;
+  color: #232831;
+  box-shadow: none;
+}
+
+.minimal-footy .build-test-loading,
+.minimal-footy .lab-toolbar,
+.minimal-footy .lab-database-panel,
+.minimal-footy .lab-squad-panel,
+.minimal-footy .league-sim-card,
+.minimal-footy .lab-mode {
+  border-color: #e2e5ea;
+  background: #fff;
+  color: #111318;
+  box-shadow: none;
+}
+
+.minimal-footy .lab-toolbar h1,
+.minimal-footy .lab-toolbar p,
+.minimal-footy .lab-freshness strong,
+.minimal-footy .lab-squad-summary strong,
+.minimal-footy .player-db-row,
+.minimal-footy .player-db-name b {
+  color: #111318;
+}
+
+.minimal-footy .lab-freshness,
+.minimal-footy .lab-squad-summary > div,
+.minimal-footy .lab-bench,
+.minimal-footy .lab-position-check div,
+.minimal-footy .player-db-row,
+.minimal-footy .lab-filters input,
+.minimal-footy .lab-filters select {
+  border-color: #e4e7ec;
+  background: #fafbfc;
+  color: #111318;
+}
+
+.minimal-footy .lab-mode button {
+  border-color: #e1e4ea;
+  background: #f8f9fb;
+  color: #5c6370;
+}
+
+.minimal-footy .lab-mode button.active {
+  border-color: #111318;
+  background: #111318;
+  color: #fff;
+}
+
+.minimal-footy .player-db-row:hover,
+.minimal-footy .player-db-row.selected {
+  border-color: #bfe4d4;
+  background: #f4fbf8;
+}
+
+.minimal-footer {
+  border-top: 1px solid #e2e5ea;
+  color: #7a818d;
+}
+
+/* Keep pitch as the visual anchor */
+.minimal-footy .team-pitch,
+.minimal-footy .lab-pitch {
+  border-color: rgba(255,255,255,.72);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,.04) 0,
+      rgba(255,255,255,.04) 12.5%,
+      rgba(0,0,0,.018) 12.5%,
+      rgba(0,0,0,.018) 25%
+    ),
+    linear-gradient(180deg,#1a8f5b,#137149);
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .minimal-team-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .minimal-header-stats {
+    grid-column: 1 / -1;
+    order: 3;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid #e7e9ee;
+  }
+
+  .minimal-league-chooser,
+  .minimal-squad-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .minimal-footy .nav-links {
+    display: none;
+  }
+
+  .minimal-team-header {
+    padding: 18px 0 12px;
+  }
+
+  .minimal-team-header h1 {
+    font-size: 28px;
+  }
+
+  .minimal-league-chooser,
+  .minimal-footy .next-move-command.minimal-command,
+  .minimal-footy .minimal-panel,
+  .minimal-context-panel {
+    border-radius: 11px;
+  }
+
+  .minimal-actions-grid,
+  .minimal-proof {
+    grid-template-columns: 1fr;
+  }
+
+  .minimal-actions-grid article {
+    padding: 11px 0;
+  }
+
+  .minimal-actions-grid article + article {
+    border-left: 0;
+    border-top: 1px solid #eceef2;
+    padding-left: 0;
+  }
+
+  .minimal-command-actions > small {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .minimal-command-actions .next-move-primary,
+  .minimal-command-actions .next-move-secondary {
+    flex: 1 1 140px;
+  }
+}
