@@ -1,0 +1,54 @@
+/* Supplemental styles for the full research/deep-link layer. */
+.player-db-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 5px;
+  align-items: stretch;
+}
+.player-db-profile {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: rgba(7, 20, 13, .75);
+  color: var(--accent);
+  font-size: 7px;
+  font-weight: 900;
+  text-decoration: none;
+}
+.player-db-profile:hover {
+  border-color: rgba(114, 245, 158, .35);
+  background: rgba(12, 34, 21, .9);
+}
+.player-db-head a {
+  color: var(--accent);
+  font-weight: 850;
+  text-decoration: none;
+}
+.player-db-show-all {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: rgba(7, 20, 13, .72);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 850;
+}
+.lab-pitch-player > a {
+  display: block;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 900;
+  text-decoration: none;
+}
+.lab-pitch-player > a:hover { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .player-db-row-shell {
+    grid-template-columns: minmax(0, 1fr) 64px;
+  }
+  .player-db-profile { font-size: 7px; }
+}
