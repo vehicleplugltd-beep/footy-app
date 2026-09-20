@@ -513,9 +513,15 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
     priorities: [
       {
         priority: "P0",
-        item: "Complete and continuously verify player-match backfill",
+        item: "Maintain post-match freshness and reconciliation",
         reason:
-          "EPA and role calls should use match-level player process only after every completed Gameweek clears identity and score reconciliation.",
+          "The current completed-match spine is fully covered; every new final whistle must still clear identity, score and source verification before its process evidence influences decisions.",
+      },
+      {
+        priority: "P1",
+        item: "Calibrate direct EPA use of regressed player process",
+        reason:
+          "Prior-regressed xG/xA already improves confidence, role detection and failure modes. It should only change EPA magnitude after a holdout/backtest proves incremental predictive value.",
       },
       {
         priority: "P1",
@@ -533,7 +539,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         priority: "P2",
         item: "Harden schedule/result fallbacks",
         reason:
-          "OpenFootball and DataHub can provide independent fixture/result resilience, while Official FPL remains the primary live FPL spine.",
+          "OpenFootball and DataHub can provide independent fixture/result resilience, while Official FPL remains the primary live FPL spine. Kaggle should remain archive/fallback only after a specific dataset is pinned and verified.",
       },
     ],
   };
