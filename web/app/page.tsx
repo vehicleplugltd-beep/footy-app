@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BettingAgeGate } from "@/components/age-gate";
 import { PriceChecker } from "@/components/tools";
+import { WatchPriceButton } from "@/components/watch-price-button";
 import { getDashboardData } from "@/lib/footy";
 import type { ValidationStatus } from "@/lib/types";
 import { decimalToFractional, minimumTakeToFractional } from "@/lib/odds";
@@ -31,8 +32,70 @@ function StatusPill({ status }: { status: ValidationStatus }) {
   );
 }
 
-export default async function Home() {
-  const [{ board, validation, strategies, configured }, results] =
+
+type FeedView = "today" | "tomorrow" | "weekend";
+
+function londonDateKey(value: Date | string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Europe/London",
+  }).formatToParts(date);
+  const pick = (type: string) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+}
+
+function londonWeekday(value: Date | string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    timeZone: "Europe/London",
+  }).format(typeof value === "string" ? new Date(value) : value);
+}
+
+function filterBoard(
+  board: Awaited<ReturnType<typeof getDashboardData>>["board"],
+  view: FeedView,
+) {
+  const now = new Date();
+  const today = londonDateKey(now);
+  const tomorrow = londonDateKey(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+
+  if (view === "today") {
+    return board.filter((match) => londonDateKey(match.kickoff_at) === today);
+  }
+  if (view === "tomorrow") {
+    return board.filter((match) => londonDateKey(match.kickoff_at) === tomorrow);
+  }
+
+  const horizon = now.getTime() + 7 * 24 * 60 * 60 * 1000;
+  return board.filter((match) => {
+    const kickoffTime = new Date(match.kickoff_at).getTime();
+    const weekday = londonWeekday(match.kickoff_at);
+    return kickoffTime >= now.getTime() && kickoffTime <= horizon &&
+      (weekday === "Sat" || weekday === "Sun");
+  });
+}
+
+function movement(current: number, previous: number | null) {
+  if (!previous || Math.abs(current - previous) < 0.0001) return null;
+  return current > previous ? "up" : "down";
+}
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const params = await searchParams;
+  const view: FeedView =
+    params.view === "tomorrow" || params.view === "weekend"
+      ? params.view
+      : "today";
+
+  const [{ board, validation, strategies, feedStatus, configured }, results] =
     await Promise.all([getDashboardData(), getResultsData()]);
 
   const status = validation?.status ?? "RESEARCH";
@@ -40,7 +103,8 @@ export default async function Home() {
     (rule) => rule.strategy_id === "home-edge-v1",
   );
 
-  const shortlist = board
+  const visibleBoard = filterBoard(board, view);
+  const shortlist = visibleBoard
     .map((match) => {
       const pick = [...match.selections].sort(
         (a, b) => b.model_probability - a.model_probability,
@@ -51,7 +115,8 @@ export default async function Home() {
     .sort((a, b) => b.pick.model_probability - a.pick.model_probability)
     .slice(0, 3);
 
-  const watchCount = board.length;
+  const watchCount = visibleBoard.length;
+  const feedLive = Boolean(feedStatus?.last_success_at && !feedStatus?.last_error);
 
   return (
     <main>
@@ -86,6 +151,14 @@ export default async function Home() {
                   selection: selection.displaySelection,
                   fair: decimalToFractional(selection.fair_odds),
                   take: minimumTakeToFractional(selection.minimum_take_price),
+                  live: selection.bestPrice
+                    ? decimalToFractional(selection.bestPrice.decimal_odds)
+                    : null,
+                  liveBookmaker: selection.bestPrice?.bookmaker_name ?? null,
+                  live: selection.bestPrice
+                    ? decimalToFractional(selection.bestPrice.decimal_odds)
+                    : null,
+                  liveBookmaker: selection.bestPrice?.bookmaker_name ?? null,
                 })),
               ), ...board.flatMap((match) =>
                 match.selections.map((selection) => ({
@@ -99,7 +172,13 @@ export default async function Home() {
                 <span className="ticker-item" key={item.key}>
                   <strong>{item.fixture}</strong>
                   <b>{item.selection}</b>
-                  <span>Fair {item.fair}</span>
+                  {item.live ? (
+                    <span className="ticker-live">
+                      Best {item.live} · {item.liveBookmaker}
+                    </span>
+                  ) : (
+                    <span>Fair {item.fair}</span>
+                  )}
                   <span className="ticker-take">Take {item.take}+</span>
                 </span>
               ))}
@@ -141,7 +220,7 @@ export default async function Home() {
             <span className="live-dot" />
             <span>FOOTY TODAY</span>
           </div>
-          <strong>{board.length} matches scanned</strong>
+          <strong>{visibleBoard.length} matches scanned</strong>
           <div className="today-glance-grid">
             <div>
               <span>Price watches</span>
@@ -183,9 +262,33 @@ export default async function Home() {
       </section>
 
       <section className="shell consumer-shortlist" id="today-shortlist">
+        <div className="feed-tabs" aria-label="Fixture window">
+          <Link className={view === "today" ? "active" : ""} href="/?view=today#today-shortlist">
+            Today
+          </Link>
+          <Link className={view === "tomorrow" ? "active" : ""} href="/?view=tomorrow#today-shortlist">
+            Tomorrow
+          </Link>
+          <Link className={view === "weekend" ? "active" : ""} href="/?view=weekend#today-shortlist">
+            Weekend
+          </Link>
+          <span className={feedLive ? "feed-health live" : "feed-health"}>
+            <span className="live-dot" />
+            {feedLive
+              ? `Live prices · ${feedStatus?.prices_received ?? 0} quotes`
+              : "Live prices awaiting API key"}
+          </span>
+        </div>
+
         <div className="consumer-section-head">
           <div>
-            <span className="eyebrow">Today&apos;s shortlist</span>
+            <span className="eyebrow">
+              {view === "today"
+                ? "Today&apos;s shortlist"
+                : view === "tomorrow"
+                  ? "Tomorrow&apos;s shortlist"
+                  : "Weekend shortlist"}
+            </span>
             <h2>What Footy likes most</h2>
             <p>
               These are the strongest 1X2 model leans. The important number is
@@ -224,6 +327,58 @@ export default async function Home() {
                   </strong>
                 </div>
 
+
+                <div className="live-bookmaker-prices">
+                  <div>
+                    <span>William Hill</span>
+                    <strong>
+                      {pick.williamHillPrice
+                        ? decimalToFractional(pick.williamHillPrice.decimal_odds)
+                        : "—"}
+                    </strong>
+                    {pick.williamHillPrice &&
+                    movement(
+                      pick.williamHillPrice.decimal_odds,
+                      pick.williamHillPrice.previous_decimal_odds,
+                    ) ? (
+                      <small
+                        className={`price-move price-move-${movement(
+                          pick.williamHillPrice.decimal_odds,
+                          pick.williamHillPrice.previous_decimal_odds,
+                        )}`}
+                      >
+                        {movement(
+                          pick.williamHillPrice.decimal_odds,
+                          pick.williamHillPrice.previous_decimal_odds,
+                        ) === "up"
+                          ? "↑ bigger"
+                          : "↓ shorter"}
+                      </small>
+                    ) : null}
+                  </div>
+                  <div>
+                    <span>Best UK price</span>
+                    <strong>
+                      {pick.bestPrice
+                        ? decimalToFractional(pick.bestPrice.decimal_odds)
+                        : "—"}
+                    </strong>
+                    <small>{pick.bestPrice?.bookmaker_name ?? "feed not live"}</small>
+                  </div>
+                </div>
+
+                <div
+                  className={`market-message market-message-${pick.priceState.toLowerCase().replace("_", "-")}`}
+                >
+                  {pick.priceState === "CLEARS_TAKE"
+                    ? status === "APPROVED"
+                      ? "✓ Current price clears Footy’s validated take price"
+                      : "✓ Price clears the raw threshold · model still WATCH"
+                    : pick.priceState === "TOO_SHORT"
+                      ? "Too short right now — wait for a bigger price"
+                      : "Live bookmaker feed not connected yet"}
+                </div>
+
                 <p className="consumer-explain">
                   Footy gives {pick.displaySelection} a{" "}
                   <b>{(pick.model_probability * 100).toFixed(0)}% chance</b>.
@@ -232,9 +387,26 @@ export default async function Home() {
                   is shorter than the take price, move on.
                 </p>
 
+                <div className="consumer-card-actions">
+                  <WatchPriceButton
+                    matchId={match.match_id}
+                    eventName={`${match.home_team} vs ${match.away_team}`}
+                    selection={pick.displaySelection}
+                    targetOdds={pick.minimum_take_price}
+                  />
+                  <a href="#price-checker">Check price →</a>
+                </div>
                 <div className="consumer-card-footer">
                   <span>{kickoff(match.kickoff_at)}</span>
-                  <a href="#price-checker">Check price →</a>
+                  <span>
+                    {pick.bestPrice
+                      ? `Updated ${new Intl.DateTimeFormat("en-GB", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZone: "Europe/London",
+                        }).format(new Date(pick.bestPrice.captured_at))}`
+                      : "Model price only"}
+                  </span>
                 </div>
               </article>
             ))
@@ -372,7 +544,7 @@ export default async function Home() {
             Type the fractional odds from your bookmaker — 7/4, 6/5, EVS etc.
             Footy tells you whether the price is interesting or too short.
           </p>
-          <PriceChecker board={board} validationStatus={status} />
+          <PriceChecker board={visibleBoard.length ? visibleBoard : board} validationStatus={status} />
         </div>
 
         <div className="panel">
