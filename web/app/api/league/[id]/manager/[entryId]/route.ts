@@ -877,6 +877,19 @@ function buildCounterPlay(
     const targetOwns = target?.team.squad.some(
       (player) => player.id === move.in.id,
     );
+    const chaserOwns = primaryChaser?.team.squad.some(
+      (player) => player.id === move.in.id,
+    );
+    const candidateStyle =
+      target
+        ? targetOwns
+          ? ("BLOCK" as const)
+          : ("ATTACK" as const)
+        : primaryChaser
+          ? chaserOwns
+            ? ("BLOCK" as const)
+            : ("BALANCED" as const)
+          : ("BALANCED" as const);
     candidates.push({
       id: `transfer-${move.in.id}`,
       label: `${move.out.name} → ${move.in.name}`,
@@ -885,7 +898,7 @@ function buildCounterPlay(
         leagueStrategy.captain_moves[0]?.player ??
         analysis.manager.recommendedCaptain ??
         null,
-      style: targetOwns ? "BLOCK" : "ATTACK",
+      style: candidateStyle,
     });
   }
 
@@ -899,12 +912,25 @@ function buildCounterPlay(
     const targetOwns = target?.team.squad.some(
       (player) => player.id === captainMove.player.id,
     );
+    const chaserOwns = primaryChaser?.team.squad.some(
+      (player) => player.id === captainMove.player.id,
+    );
+    const candidateStyle =
+      target
+        ? targetOwns
+          ? ("BLOCK" as const)
+          : ("ATTACK" as const)
+        : primaryChaser
+          ? chaserOwns
+            ? ("BLOCK" as const)
+            : ("BALANCED" as const)
+          : ("BALANCED" as const);
     candidates.push({
       id: `captain-${captainMove.player.id}`,
       label: `Captain ${captainMove.player.name}`,
       transfer: null,
       captain: captainMove.player,
-      style: targetOwns ? "BLOCK" : "ATTACK",
+      style: candidateStyle,
     });
   }
 
