@@ -194,6 +194,22 @@ export function NextMoveCommand({
         ? "close the gap"
         : "make up ground";
 
+  const modeLabel =
+    strategy.mode === "PROTECT"
+      ? "Protect your lead"
+      : strategy.mode === "CHASE"
+        ? "Close the gap"
+        : "Make up ground";
+
+  const resourceLabel =
+    resources?.status === "ADVANTAGE"
+      ? "Your edge"
+      : resources?.status === "THREAT"
+        ? "Rival edge"
+        : resources?.status === "UNKNOWN"
+          ? "Unknown"
+          : "Even";
+
   const resourceInstruction =
     resources?.status === "ADVANTAGE"
       ? "Preserve your resource edge."
@@ -262,7 +278,7 @@ export function NextMoveCommand({
             {readiness}
           </div>
           <div className={`next-move-mode mode-${strategy.mode.toLowerCase()}`}>
-            {strategy.mode}
+            {modeLabel}
           </div>
         </div>
       </div>
@@ -313,7 +329,7 @@ export function NextMoveCommand({
           </strong>
           <small>
             {transfer
-              ? `+${transfer.raw_gain.toFixed(1)} model gain`
+              ? "Strongest model-backed upgrade"
               : "No move clears the threshold"}
           </small>
         </article>
@@ -328,7 +344,7 @@ export function NextMoveCommand({
         </article>
         <article>
           <span>RESOURCES</span>
-          <strong>{resources?.status ?? "EVEN"}</strong>
+          <strong>{resourceLabel}</strong>
           <small>
             {resources
               ? `FT edge ${resources.free_transfer_edge >= 0 ? "+" : ""}${resources.free_transfer_edge}`
