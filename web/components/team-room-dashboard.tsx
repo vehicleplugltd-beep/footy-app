@@ -157,6 +157,15 @@ type ManagerResponse = {
     strategy_mode: "PROTECT" | "CHASE" | "RECOVER";
     posture: CounterPosture;
     posture_source: "USER" | "INFERRED";
+    volatility_calibration: {
+      status: "EMPIRICAL" | "FALLBACK";
+      version: string | null;
+      season: string | null;
+      source: string | null;
+      sample_count: number;
+      generated_at: string | null;
+      tail_method: string;
+    };
     objective: string;
     baseline: {
       objective_probability: number;
@@ -1119,6 +1128,31 @@ export function TeamRoomDashboard({
                     ? "Using your selected posture."
                     : "Using Footy’s inferred posture."}
             </div>
+          </div>
+
+          <div
+            className={
+              "counterplay-calibration-status " +
+              (counterPlay.volatility_calibration.status === "EMPIRICAL"
+                ? "empirical"
+                : "fallback")
+            }
+          >
+            <span>
+              {counterPlay.volatility_calibration.status === "EMPIRICAL"
+                ? "EMPIRICAL TAILS"
+                : "TAIL FALLBACK"}
+            </span>
+            <strong>
+              {counterPlay.volatility_calibration.status === "EMPIRICAL"
+                ? counterPlay.volatility_calibration.sample_count.toLocaleString() +
+                  " historical player-GW samples"
+                : "Historical calibration temporarily unavailable"}
+            </strong>
+            <small>
+              5th–95th ranges are direct simulation quantiles, not mean ± a
+              normal-distribution multiplier.
+            </small>
           </div>
 
           <p className="counterplay-objective">{counterPlay.objective}</p>

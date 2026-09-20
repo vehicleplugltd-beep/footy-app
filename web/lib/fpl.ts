@@ -172,6 +172,32 @@ export type TeamProcess = {
   };
 };
 
+export type FplVolatilityCalibration = {
+  version: string;
+  season: string;
+  source: string;
+  source_url?: string;
+  generated_at: string;
+  sample_count: number;
+  row_count: number;
+  methodology?: Record<string, string>;
+  profiles: Record<string, {
+    sample_size: number;
+    residual_mean?: number;
+    residual_sd: number;
+    standardized_quantiles: Record<string, number>;
+    zero_minute_rate?: number;
+    cameo_rate?: number;
+    starter_60_rate?: number;
+  }>;
+  modifiers: {
+    xgi?: Record<string, { sample_size: number; multiplier: number }>;
+    minute_stability?: Record<string, { sample_size: number; multiplier: number }>;
+    bonus?: Record<string, { sample_size: number; multiplier: number }>;
+    clean_sheet?: Record<string, { sample_size: number; multiplier: number }>;
+  };
+};
+
 export type RankedPlayer = {
   id: number;
   name: string;
@@ -211,6 +237,7 @@ export type RankedPlayer = {
   fixtureFactor: number;
   trendFactor: number;
   startReliability: number;
+  recentMinutesSd: number;
   teamAttackIndex: number;
   teamDefenceIndex: number;
   opponent: string | null;
@@ -850,6 +877,7 @@ export type PlayerProcessEvidence = {
   regressedXgPer90: number;
   regressedXaPer90: number;
   regressedXgiPer90: number;
+  recentMinutesSd: number;
   currentEvidenceWeight: number;
   clubChangedSincePrior: boolean;
 };
@@ -903,6 +931,15 @@ function playerRate90(
     minutes += played;
   }
   return minutes > 0 ? (numerator * 90) / minutes : 0;
+}
+
+function standardDeviation(values: number[]) {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    values.length;
+  return Math.sqrt(Math.max(0, variance));
 }
 
 function playerMinutesInWindow(
@@ -1100,6 +1137,9 @@ async function footyPlayerProcesses() {
       regressedXgPer90,
       regressedXaPer90,
       regressedXgiPer90,
+      recentMinutesSd: standardDeviation(
+        recent.map((row) => Math.max(0, num(row.minutes))),
+      ),
       currentEvidenceWeight,
       clubChangedSincePrior,
     });
@@ -1149,6 +1189,7 @@ function rankPlayers(
   process: Map<string, TeamProcess>,
   useExpectedNext = true,
   includeUnavailable = false,
+  playerProcesses?: Map<number, PlayerProcessEvidence>,
 ): RankedPlayer[] {
   const teams = new Map(bootstrap.teams.map((team) => [team.id, team]));
   const positions = new Map(
@@ -1158,6 +1199,7 @@ function rankPlayers(
   return bootstrap.elements
     .map((player) => {
       const team = teams.get(player.team);
+      const playerProcess = playerProcesses?.get(player.code) ?? null;
       const teamFixtures = fixturesForTeam(player.team, eventId, fixtures);
       const teamProcess = team
         ? process.get(canonicalTeam(team.name))
@@ -1182,8 +1224,16 @@ function rankPlayers(
         shrunkPer90(player.expected_goals_conceded, player.minutes, 4.0),
       );
       const starts = Math.max(0, Number(player.starts || 0));
+      const completedEvents = bootstrap.events.filter(
+        (event) => event.finished && (eventId == null || event.id < eventId),
+      ).length;
+      // Beta-smoothed start rate. The old 3-start threshold made a player
+      // appear perfectly reliable far too early in the season and could not
+      // distinguish a regular substitute from a nailed starter.
       const startReliability =
-        starts >= 3 ? 1 : starts === 2 ? 0.90 : starts === 1 ? 0.76 : 0.58;
+        completedEvents > 0
+          ? clamp((starts + 1) / (completedEvents + 2), 0.08, 0.98)
+          : 0.5;
 
       const matchupFactors = teamFixtures.map((fixture) => {
         const isHome = fixture.team_h === player.team;
@@ -1359,6 +1409,7 @@ function rankPlayers(
         fixtureFactor,
         trendFactor,
         startReliability,
+        recentMinutesSd: playerProcess?.recentMinutesSd ?? 0,
         teamAttackIndex: teamProcess?.attackIndex ?? 1,
         teamDefenceIndex: teamProcess?.defenceIndex ?? 1,
         opponent: opponent || null,
@@ -2335,6 +2386,7 @@ export type LeagueManagerEdgeAnalysis = {
     }>;
   }>;
   counterPlayTransferPool: RankedPlayer[];
+  volatilityCalibration: FplVolatilityCalibration | null;
   chipRadar: ChipSignal[];
 };
 
@@ -2346,10 +2398,18 @@ export async function getLeagueManagerEdgeAnalysis(
     throw new Error("A valid FPL entry ID is required.");
   }
 
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+  const [
+    bootstrapSnapshot,
+    fixturesSnapshot,
+    process,
+    volatilitySnapshot,
+    playerProcesses,
+  ] = await Promise.all([
     cachedFpl<Bootstrap>("bootstrap-static"),
     cachedFpl<Fixture[]>("fixtures"),
     footyProcesses(),
+    cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
+    footyPlayerProcesses(),
   ]);
 
   let bootstrap: Bootstrap | null = null;
@@ -2392,6 +2452,9 @@ export async function getLeagueManagerEdgeAnalysis(
     fixtures,
     next?.id ?? current?.id ?? null,
     process,
+    true,
+    false,
+    playerProcesses,
   );
   const { futurePlan, chipRadar } = buildFuturePlan(
     bootstrap,
@@ -2409,7 +2472,15 @@ export async function getLeagueManagerEdgeAnalysis(
     .map((event) => event.id);
   const horizonRankings = upcomingEventIds.length
     ? upcomingEventIds.map((eventId) =>
-        rankPlayers(bootstrap!, fixtures!, eventId, process, false),
+        rankPlayers(
+          bootstrap!,
+          fixtures!,
+          eventId,
+          process,
+          false,
+          false,
+          playerProcesses,
+        ),
       )
     : [ranked];
 
@@ -2622,6 +2693,9 @@ export async function getLeagueManagerEdgeAnalysis(
         "Official field ownership plus actual connected mini-league squad/captain overlap",
         "Mini-league points gaps, chips, hits and estimated free transfers",
         "Portfolio structure: bank buffer, actual bench cover, price-band routes and 6GW/8GW best-XI model scores",
+        volatilitySnapshot?.payload
+          ? `Empirical FPL scoring volatility/tails calibrated from ${volatilitySnapshot.payload.sample_count.toLocaleString()} leakage-controlled prior-season player-Gameweek samples`
+          : "CounterPlay volatility calibration snapshot pending; heuristic fallback remains active",
       ],
       notMeasured: [
         "True global effective ownership (EO); official ownership is not relabelled as EO",
@@ -2637,6 +2711,7 @@ export async function getLeagueManagerEdgeAnalysis(
     managerFuturePlan,
     counterPlayHorizon,
     counterPlayTransferPool,
+    volatilityCalibration: volatilitySnapshot?.payload ?? null,
     chipRadar,
   };
 }

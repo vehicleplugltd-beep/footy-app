@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getLeagueManagerEdgeAnalysis,
   getRivalResourceHistory,
+  type FplVolatilityCalibration,
   type RankedPlayer,
   type TeamAnalysis,
 } from "@/lib/fpl";
@@ -461,12 +462,89 @@ function normalFromSeed(seed: number) {
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-function simulationVolatility(player: RankedPlayer) {
+function calibrationReliabilityBucket(player: RankedPlayer) {
+  if (player.startReliability >= 0.80) return "HIGH";
+  if (player.startReliability >= 0.45) return "MIXED";
+  return "LOW";
+}
+
+function calibrationProfile(
+  player: RankedPlayer,
+  calibration: FplVolatilityCalibration | null | undefined,
+) {
+  if (!calibration) return null;
+  return (
+    calibration.profiles[
+      player.position + "_" + calibrationReliabilityBucket(player)
+    ] ??
+    calibration.profiles[player.position + "_ALL"] ??
+    calibration.profiles.GLOBAL ??
+    null
+  );
+}
+
+function calibrationModifier(
+  calibration: FplVolatilityCalibration | null | undefined,
+  family: keyof FplVolatilityCalibration["modifiers"],
+  band: string,
+) {
+  return calibration?.modifiers?.[family]?.[band]?.multiplier ?? 1;
+}
+
+function simulationVolatility(
+  player: RankedPlayer,
+  calibration?: FplVolatilityCalibration | null,
+) {
+  const profile = calibrationProfile(player, calibration);
+  if (profile) {
+    let scale = Math.max(0.75, Number(profile.residual_sd) || 0.75);
+
+    if (player.position === "MID" || player.position === "FWD") {
+      const xgiBand =
+        player.xgiPer90 >= 0.45 ? "HIGH" : player.xgiPer90 >= 0.20 ? "MID" : "LOW";
+      scale *= calibrationModifier(calibration, "xgi", xgiBand);
+    }
+
+    const minuteBand =
+      player.recentMinutesSd >= 28 ? "UNSTABLE" : "STABLE";
+    scale *= calibrationModifier(
+      calibration,
+      "minute_stability",
+      minuteBand,
+    );
+
+    const bonusPer90 =
+      player.minutes > 0 ? (player.bonus * 90) / player.minutes : 0;
+    scale *= calibrationModifier(
+      calibration,
+      "bonus",
+      bonusPer90 >= 0.45 ? "HIGH" : "LOW",
+    );
+
+    if (player.position === "GKP" || player.position === "DEF") {
+      const cleanSheetRate =
+        player.starts > 0 ? player.cleanSheets / player.starts : 0;
+      const cleanSheetBand =
+        cleanSheetRate >= 0.40
+          ? "HIGH"
+          : cleanSheetRate >= 0.20
+            ? "MID"
+            : "LOW";
+      scale *= calibrationModifier(
+        calibration,
+        "clean_sheet",
+        cleanSheetBand,
+      );
+    }
+
+    return Math.max(0.75, Math.min(6.8, scale));
+  }
+
   const rotationRisk = 1 - Math.max(0, Math.min(1, player.startReliability));
   const attackingVariance =
-    (player.position === "MID" || player.position === "FWD"
+    player.position === "MID" || player.position === "FWD"
       ? player.xgiPer90 * 2.3
-      : player.xgiPer90 * 1.35);
+      : player.xgiPer90 * 1.35;
   const cleanSheetVariance =
     player.position === "GKP" || player.position === "DEF" ? 1.0 : 0.25;
   return Math.max(
@@ -482,18 +560,70 @@ function simulationVolatility(player: RankedPlayer) {
   );
 }
 
+const EMPIRICAL_QUANTILE_POINTS = [
+  [0.01, "q01"],
+  [0.05, "q05"],
+  [0.10, "q10"],
+  [0.25, "q25"],
+  [0.50, "q50"],
+  [0.75, "q75"],
+  [0.90, "q90"],
+  [0.95, "q95"],
+  [0.99, "q99"],
+] as const;
+
+function empiricalStandardShock(
+  player: RankedPlayer,
+  seed: number,
+  calibration?: FplVolatilityCalibration | null,
+) {
+  const profile = calibrationProfile(player, calibration);
+  if (!profile) return normalFromSeed(seed);
+
+  const quantiles = profile.standardized_quantiles ?? {};
+  const draw = Math.max(0.01, Math.min(0.99, deterministicUnit(seed)));
+  let previous: (typeof EMPIRICAL_QUANTILE_POINTS)[number] =
+    EMPIRICAL_QUANTILE_POINTS[0];
+  for (const point of EMPIRICAL_QUANTILE_POINTS.slice(1)) {
+    if (draw <= point[0]) {
+      const low = Number(quantiles[previous[1]]);
+      const high = Number(quantiles[point[1]]);
+      if (!Number.isFinite(low) || !Number.isFinite(high)) {
+        return normalFromSeed(seed);
+      }
+      const span = point[0] - previous[0];
+      const weight = span > 0 ? (draw - previous[0]) / span : 0;
+      return low + (high - low) * weight;
+    }
+    previous = point;
+  }
+  const fallback = Number(quantiles.q99);
+  return Number.isFinite(fallback) ? fallback : normalFromSeed(seed);
+}
+
+function sampleQuantile(values: number[], probability: number) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * probability;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sorted[lower];
+  const weight = position - lower;
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * weight;
+}
+
 function simulatedPlayerScore(
   player: RankedPlayer,
   iteration: number,
   cache?: Map<number, number>,
+  calibration?: FplVolatilityCalibration | null,
 ) {
   const cached = cache?.get(player.id);
   if (cached != null) return cached;
-  const sd = simulationVolatility(player);
-  const shock = normalFromSeed(
-    (player.id * 73856093) ^ ((iteration + 1) * 19349663),
-  );
-  const score = Math.max(-1, player.assistantScore + shock * sd);
+  const seed = (player.id * 73856093) ^ ((iteration + 1) * 19349663);
+  const sd = simulationVolatility(player, calibration);
+  const shock = empiricalStandardShock(player, seed, calibration);
+  const score = Math.max(-8, player.assistantScore + shock * sd);
   cache?.set(player.id, score);
   return score;
 }
@@ -599,18 +729,20 @@ function simulatedHorizonPlayerScore(
   eventId: number,
   iteration: number,
   cache: Map<string, number>,
+  calibration?: FplVolatilityCalibration | null,
 ) {
   const key = eventId + ":" + player.id;
   const cached = cache.get(key);
   if (cached != null) return cached;
-  const sd =
-    simulationVolatility(player) * Math.sqrt(Math.max(1, fixtureCount));
-  const shock = normalFromSeed(
+  const seed =
     (player.id * 73856093) ^
-      ((iteration + 1) * 19349663) ^
-      (eventId * 83492791),
-  );
-  const score = Math.max(-1, mean + shock * sd);
+    ((iteration + 1) * 19349663) ^
+    (eventId * 83492791);
+  const sd =
+    simulationVolatility(player, calibration) *
+    Math.sqrt(Math.max(1, fixtureCount));
+  const shock = empiricalStandardShock(player, seed, calibration);
+  const score = Math.max(-8, mean + shock * sd);
   cache.set(key, score);
   return score;
 }
@@ -686,11 +818,13 @@ function simulateTeamScore(
   transfer: { out: RankedPlayer; in: RankedPlayer } | null,
   captain: RankedPlayer | null,
   cache?: Map<number, number>,
+  calibration?: FplVolatilityCalibration | null,
 ) {
   const squad = scenarioSquad(team, transfer);
   const xi = bestXiFromSquad(squad);
   let score = xi.reduce(
-    (sum, player) => sum + simulatedPlayerScore(player, iteration, cache),
+    (sum, player) =>
+      sum + simulatedPlayerScore(player, iteration, cache, calibration),
     0,
   );
   const captainId =
@@ -699,7 +833,7 @@ function simulateTeamScore(
       : team.recommendedCaptain?.id ?? team.currentCaptain?.id ?? null;
   if (captainId && xi.some((player) => player.id === captainId)) {
     const player = xi.find((item) => item.id === captainId)!;
-    score += simulatedPlayerScore(player, iteration, cache);
+    score += simulatedPlayerScore(player, iteration, cache, calibration);
   }
   return score;
 }
@@ -941,6 +1075,7 @@ function buildCounterPlay(
     let controlAll = 0;
     let scoreSum = 0;
     let squareSum = 0;
+    const scoreSamples: number[] = [];
     const managerStart = Number(managerStanding.total ?? 0);
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
@@ -951,7 +1086,9 @@ function buildCounterPlay(
         candidate.transfer,
         candidate.captain,
         scoreCache,
+        analysis.volatilityCalibration,
       );
+      scoreSamples.push(managerScore);
       scoreSum += managerScore;
       squareSum += managerScore * managerScore;
 
@@ -963,6 +1100,7 @@ function buildCounterPlay(
           rivalTransferForIteration(rival.standing.entry_id, iteration),
           rival.team.recommendedCaptain ?? rival.team.currentCaptain,
           scoreCache,
+          analysis.volatilityCalibration,
         );
         const managerTotal = managerStart + managerScore;
         const rivalTotal = Number(rival.standing.total ?? 0) + rivalScore;
@@ -1007,8 +1145,8 @@ function buildCounterPlay(
       ...candidate,
       mean_score: mean,
       volatility: sd,
-      floor_5: mean - 1.645 * sd,
-      ceiling_95: mean + 1.645 * sd,
+      floor_5: sampleQuantile(scoreSamples, 0.05),
+      ceiling_95: sampleQuantile(scoreSamples, 0.95),
       beat_target_probability: target ? beatTarget / iterations : null,
       protect_vs_chaser_probability: primaryChaser
         ? stayAheadChaser / iterations
@@ -1511,6 +1649,7 @@ function buildCounterPlay(
         event.eventId,
         iteration,
         cache,
+        analysis.volatilityCalibration,
       );
     }
     if (week.captain) {
@@ -1522,6 +1661,7 @@ function buildCounterPlay(
         event.eventId,
         iteration,
         cache,
+        analysis.volatilityCalibration,
       );
       total += captainScore;
       if (week.chip === "Triple Captain") total += captainScore;
@@ -1651,6 +1791,7 @@ function buildCounterPlay(
         controlAll: number;
         scoreSum: number;
         squareSum: number;
+        scoreSamples: number[];
       }
     >(
       horizonLengths.map((length) => [
@@ -1661,6 +1802,7 @@ function buildCounterPlay(
           controlAll: 0,
           scoreSum: 0,
           squareSum: 0,
+          scoreSamples: [],
         },
       ]),
     );
@@ -1722,6 +1864,7 @@ function buildCounterPlay(
         const horizonStats = stats.get(horizonLength)!;
         horizonStats.scoreSum += managerCumulative;
         horizonStats.squareSum += managerCumulative * managerCumulative;
+        horizonStats.scoreSamples.push(managerCumulative);
 
         let controlsAll = true;
         for (const rival of selectedRivals) {
@@ -1777,8 +1920,8 @@ function buildCounterPlay(
         objective_probability: objectiveProbability,
         mean_score: mean,
         volatility,
-        floor_5: mean - 1.645 * volatility,
-        ceiling_95: mean + 1.645 * volatility,
+        floor_5: sampleQuantile(item.scoreSamples, 0.05),
+        ceiling_95: sampleQuantile(item.scoreSamples, 0.95),
         resource_path: summarizePath(managerPath, horizonLength),
       });
     }
@@ -1873,7 +2016,12 @@ function buildCounterPlay(
         .map((player) => {
           const exposure = localExposure.get(player.id);
           const ceiling =
-            player.assistantScore + simulationVolatility(player) * 1.65;
+            player.assistantScore +
+            simulationVolatility(
+              player,
+              analysis.volatilityCalibration,
+            ) *
+              1.65;
           const threatScore = Math.round(
             Math.max(
               0,
@@ -1936,6 +2084,25 @@ function buildCounterPlay(
     strategy_mode: leagueStrategy.mode,
     posture,
     posture_source: postureSource,
+    volatility_calibration: analysis.volatilityCalibration
+      ? {
+          status: "EMPIRICAL",
+          version: analysis.volatilityCalibration.version,
+          season: analysis.volatilityCalibration.season,
+          source: analysis.volatilityCalibration.source,
+          sample_count: analysis.volatilityCalibration.sample_count,
+          generated_at: analysis.volatilityCalibration.generated_at,
+          tail_method: "SIMULATED_EMPIRICAL_QUANTILES",
+        }
+      : {
+          status: "FALLBACK",
+          version: null,
+          season: null,
+          source: null,
+          sample_count: 0,
+          generated_at: null,
+          tail_method: "SIMULATED_HEURISTIC_QUANTILES",
+        },
     objective:
       posture === "PROTECT"
         ? "Protect: maximise the probability of staying ahead of the nearest chasing pressure, with downside floor and tighter variance breaking close calls."
@@ -1972,6 +2139,9 @@ function buildCounterPlay(
     rival_vectors: rivalVectors,
     caveats: [
       "The 10,000-run simulator is a model distribution, not a guarantee of future results.",
+      analysis.volatilityCalibration
+        ? `Player scoring shocks use ${analysis.volatilityCalibration.sample_count.toLocaleString()} leakage-controlled prior-season FPL player-Gameweek samples; displayed 5th/95th tails are direct simulation quantiles rather than a normal approximation.`
+        : "The empirical volatility snapshot is unavailable, so player shocks use the conservative heuristic fallback; displayed 5th/95th tails are still direct simulation quantiles.",
       "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
       "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
@@ -2850,6 +3020,7 @@ export async function GET(
     const publicAnalysis = {
       ...analysis,
       counterPlayTransferPool: undefined,
+      volatilityCalibration: undefined,
     };
 
     return NextResponse.json({

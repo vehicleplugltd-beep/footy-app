@@ -199,6 +199,32 @@ class SupabaseRESTWriter:
             PLAYER_SEASON_PRIOR_FIELDS,
         )
 
+    def upsert_fpl_snapshot(
+        self,
+        snapshot_key: str,
+        payload: Mapping[str, Any],
+        *,
+        source: str,
+    ) -> None:
+        response = requests.post(
+            f"{self.url}/rest/v1/footy_fpl_snapshots",
+            params={"on_conflict": "snapshot_key"},
+            headers={
+                "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=minimal",
+            },
+            json=[{
+                "snapshot_key": snapshot_key,
+                "payload": dict(payload),
+                "source": source,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            }],
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+
     def upsert_team_ratings(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self._upsert(
             "footy_team_ratings",
