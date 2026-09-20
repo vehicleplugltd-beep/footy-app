@@ -1493,8 +1493,9 @@ function buildFuturePlan(
       a.event.id - b.event.id,
   )[0];
 
+  const wildcardEvents = upcomingEvents.slice(0, 6);
   const teamRunScores = bootstrap.teams.map((team) => {
-    const eventScores = upcomingEvents.map((event) => {
+    const eventScores = wildcardEvents.map((event) => {
       const fixturesForEvent = fixturesForTeam(team.id, event.id, fixtures);
       if (!fixturesForEvent.length) return 0;
       return fixturesForEvent.reduce((sum, fixture) => {
@@ -1565,7 +1566,7 @@ function buildFuturePlan(
       chip: "WILDCARD",
       status: "WATCH",
       eventName: futurePlan[0]?.name ?? null,
-      reason: `Use the next five-Gameweek fixture swing rather than one bad week. Current strongest attacking runs include ${teamRunScores.slice(0,3).map((item)=>item.team).join(", ") || "no clear cluster yet"}.`,
+      reason: `Use the next six-Gameweek structure rather than one bad week. Current strongest attacking runs include ${teamRunScores.slice(0,3).map((item)=>item.team).join(", ") || "no clear cluster yet"}; Wildcard remains a squad-structure decision, not an automatic response to short-term points.`,
     },
   ];
 
@@ -1864,7 +1865,7 @@ function buildPortfolioHealth(
       "Regressed player process and team attack/defence process",
       "Best-XI formation-constrained model score across 6GW and 8GW",
       "Actual FPL bench positions from the current squad",
-      "Price-band escape routes using current bank and same-position sale value",
+      "Indicative price-band escape routes using current bank and public market prices",
     ],
     missing: [
       "True global effective ownership (official ownership is shown only as a field-ownership proxy)",
