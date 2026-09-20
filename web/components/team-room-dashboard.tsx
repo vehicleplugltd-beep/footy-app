@@ -998,6 +998,31 @@ export function TeamRoomDashboard({
                   </Link>
                 ))}
               </div>
+              {counterPlay.primary_threats.length > 8 ? (
+                <details className="counterplay-full-list">
+                  <summary>View all {counterPlay.primary_threats.length} rival threat assets</summary>
+                  <div className="counterplay-threats">
+                    {counterPlay.primary_threats.map((threat) => (
+                      <Link
+                        key={"all-" + threat.rival_entry_id + "-" + threat.player.id}
+                        href={"/research?player=" + threat.player.id}
+                      >
+                        <div>
+                          <b>{threat.player.name}</b>
+                          <small>{threat.rival_name} · {threat.player.team}</small>
+                        </div>
+                        <strong>{threat.threat_score}/100</strong>
+                        <small>
+                          ceiling {threat.ceiling_proxy.toFixed(1)} · local starter{" "}
+                          {threat.local_exposure
+                            ? threat.local_exposure.starter_ownership.toFixed(0) + "%"
+                            : "—"}
+                        </small>
+                      </Link>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </section>
           </div>
 
@@ -1017,6 +1042,27 @@ export function TeamRoomDashboard({
                   </Link>
                 ))}
               </div>
+              {counterPlay.local_exposure.length > 12 ? (
+                <details className="counterplay-full-list">
+                  <summary>View all {counterPlay.local_exposure.length} league-owned players</summary>
+                  <div className="counterplay-exposure">
+                    {counterPlay.local_exposure.map((item) => (
+                      <Link
+                        key={"all-exposure-" + item.player_id}
+                        href={"/research?player=" + item.player_id}
+                      >
+                        <b>{item.player?.name ?? "Player " + item.player_id}</b>
+                        <small>
+                          squad {item.squad_ownership.toFixed(0)}% · starters{" "}
+                          {item.starter_ownership.toFixed(0)}% · captains{" "}
+                          {item.captain_share.toFixed(0)}%
+                        </small>
+                        <strong>{item.effective_exposure.toFixed(0)}% local exposure</strong>
+                      </Link>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </section>
 
             <section>
