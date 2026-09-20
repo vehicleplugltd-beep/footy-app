@@ -43,7 +43,44 @@ type ResourceAdvice = {
   recommendation: string;
 };
 
+type DecisionPath = {
+  now: {
+    event_id: number | null;
+    event_name: string;
+    transfer: { out: Player; in: Player; gain: number } | null;
+    captain: Player | null;
+    instruction: string;
+  };
+  next: {
+    event_id: number | null;
+    event_name: string;
+    transfer_watch: { out: Player; in: Player; gain: number } | null;
+    captain_watch: Player | null;
+    projected_free_transfers: number | null;
+    instruction: string;
+  };
+  later: {
+    event_name: string | null;
+    chip: {
+      chip: string;
+      status: "STRONG" | "WATCH" | "HOLD";
+      eventName: string | null;
+      reason: string;
+    } | null;
+    instruction: string;
+  };
+  resources: {
+    estimated_free_transfers_now: number | null;
+    projected_free_transfers_next: number | null;
+    confidence: "HIGH" | "MEDIUM" | null;
+    league_status: "ADVANTAGE" | "EVEN" | "THREAT" | "UNKNOWN";
+    note: string;
+  };
+  caveat: string;
+};
+
 type Payload = {
+  decision_path?: DecisionPath;
   manager_standing?: {
     rank: number | null;
     total: number | null;
@@ -352,6 +389,61 @@ export function NextMoveCommand({
           </small>
         </article>
       </div>
+
+      {payload?.decision_path ? (
+        <section className="multi-gw-plan" aria-label="Multi-Gameweek plan">
+          <div className="multi-gw-plan-head">
+            <div>
+              <span>PLAN AHEAD</span>
+              <strong>One move now. Keep the next decisions flexible.</strong>
+            </div>
+            {payload.decision_path.resources.estimated_free_transfers_now != null ? (
+              <small>
+                FT {payload.decision_path.resources.estimated_free_transfers_now}
+                {" → "}
+                {payload.decision_path.resources.projected_free_transfers_next ?? "—"}
+                {" next GW"}
+              </small>
+            ) : null}
+          </div>
+
+          <div className="multi-gw-plan-rows">
+            <article>
+              <span>NOW · {payload.decision_path.now.event_name}</span>
+              <strong>{payload.decision_path.now.instruction}</strong>
+              <small>
+                {payload.decision_path.now.transfer
+                  ? `Model gain +${payload.decision_path.now.transfer.gain.toFixed(1)}`
+                  : "Bank the transfer if nothing changes before deadline."}
+              </small>
+            </article>
+
+            <article>
+              <span>NEXT · {payload.decision_path.next.event_name}</span>
+              <strong>{payload.decision_path.next.instruction}</strong>
+              <small>
+                {payload.decision_path.next.captain_watch
+                  ? `Captain watch: ${payload.decision_path.next.captain_watch.name}`
+                  : "Captaincy will be re-run with fresh data."}
+                {payload.decision_path.next.projected_free_transfers != null
+                  ? ` · projected ${payload.decision_path.next.projected_free_transfers} FT`
+                  : ""}
+              </small>
+            </article>
+
+            <article>
+              <span>LATER{payload.decision_path.later.event_name ? ` · ${payload.decision_path.later.event_name}` : ""}</span>
+              <strong>{payload.decision_path.later.instruction}</strong>
+              <small>
+                {payload.decision_path.later.chip?.reason ??
+                  "No chip window currently clears Footy's deployment threshold."}
+              </small>
+            </article>
+          </div>
+
+          <p className="multi-gw-caveat">{payload.decision_path.caveat}</p>
+        </section>
+      ) : null}
 
       <details className="minimal-why">
         <summary>Why this decision?</summary>
