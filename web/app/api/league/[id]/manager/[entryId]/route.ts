@@ -582,7 +582,8 @@ function empiricalStandardShock(
 
   const quantiles = profile.standardized_quantiles ?? {};
   const draw = Math.max(0.01, Math.min(0.99, deterministicUnit(seed)));
-  let previous = EMPIRICAL_QUANTILE_POINTS[0];
+  let previous: (typeof EMPIRICAL_QUANTILE_POINTS)[number] =
+    EMPIRICAL_QUANTILE_POINTS[0];
   for (const point of EMPIRICAL_QUANTILE_POINTS.slice(1)) {
     if (draw <= point[0]) {
       const low = Number(quantiles[previous[1]]);
