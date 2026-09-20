@@ -16,7 +16,7 @@ export default async function ReceiptsPage() {
         </Link>
         <div className="nav-links">
           <Link href="/">League Edge</Link>
-          <Link href="/pro">Season passes</Link>
+          <Link href="/squad-lab">Squad Lab</Link>
         </div>
       </nav>
 
