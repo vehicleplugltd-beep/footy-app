@@ -179,3 +179,43 @@
 .fixture-clean-sheets b {
   color: #0b8b61;
 }
+
+.portfolio-price-bands {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+.portfolio-price-bands > div {
+  border: 1px solid #dfe5e2;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f7faf8;
+}
+.portfolio-price-bands span,
+.portfolio-price-bands strong,
+.portfolio-price-bands small {
+  display: block;
+}
+.portfolio-price-bands span {
+  color: #0b8b61;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+.portfolio-price-bands strong {
+  margin-top: 4px;
+  color: #111318;
+  font-size: 13px;
+}
+.portfolio-price-bands small {
+  margin-top: 3px;
+  color: #68746e;
+  font-size: 8px;
+  line-height: 1.35;
+}
+@media (max-width: 800px) {
+  .portfolio-price-bands {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

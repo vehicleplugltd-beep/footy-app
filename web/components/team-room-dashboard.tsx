@@ -646,6 +646,53 @@ export function TeamRoomDashboard({
                 {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
               </small>
             </div>
+            <div>
+              <span>FIELD OWNERSHIP</span>
+              <strong>{portfolioPlan.field_ownership_proxy.average_squad_ownership.toFixed(1)}%</strong>
+              <small>official ownership average · not EO</small>
+            </div>
+            <div>
+              <span>PREMIUMS</span>
+              <strong>{portfolioPlan.portfolio.premiumCount}</strong>
+              <small>£8.5m+ squad assets</small>
+            </div>
+          </div>
+
+          <div className="portfolio-price-bands">
+            <div>
+              <span>GOALKEEPERS</span>
+              <strong>£{portfolioPlan.portfolio.priceStructure.bands.goalkeeperSpend.toFixed(1)}m</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.bands.budgetGoalkeepers}/2 at £4.5m or below
+              </small>
+            </div>
+            <div>
+              <span>DEFENDERS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumDefenders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.midDefenders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.budgetDefenders}
+              </strong>
+              <small>premium / mid / budget</small>
+            </div>
+            <div>
+              <span>MIDFIELDERS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumMidfielders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.midMidfielders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.enablerMidfielders}
+              </strong>
+              <small>£8.5m+ / £6.5–8.0m / ≤£5.5m</small>
+            </div>
+            <div>
+              <span>FORWARDS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumMidForwards} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.valueForwards} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.budgetForwards}
+              </strong>
+              <small>£7.5m+ / £5.5–7.4m / &lt;£5.5m</small>
+            </div>
           </div>
 
           <div className="portfolio-evidence-grid">
