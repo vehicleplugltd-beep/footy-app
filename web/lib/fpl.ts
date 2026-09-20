@@ -1375,10 +1375,14 @@ function buildFuturePlan(
     .filter((event) => event.id >= nextEvent.id && !event.finished)
     .sort((a, b) => a.id - b.id);
   const upcomingEvents = allFutureEvents.slice(0, 8);
+  const chipHalfEnd = nextEvent.id <= 19 ? 19 : 38;
+  const chipWindowEvents = allFutureEvents.filter(
+    (event) => event.id <= chipHalfEnd,
+  );
 
   const teamById = new Map(bootstrap.teams.map((team) => [team.id, team]));
 
-  const calendarStructure = allFutureEvents.map((event) => {
+  const calendarStructure = chipWindowEvents.map((event) => {
     const counts = new Map<number, number>();
     for (const fixture of fixtures.filter((item) => item.event === event.id)) {
       counts.set(fixture.team_h, (counts.get(fixture.team_h) ?? 0) + 1);
@@ -1515,7 +1519,7 @@ function buildFuturePlan(
             : "HOLD",
       eventName: tripleCandidate?.name ?? null,
       reason: tripleCandidate?.captain
-        ? `${tripleCandidate.captain.name} leads the relevant captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}; scheduled doubles are scanned across the full remaining calendar.`
+        ? `${tripleCandidate.captain.name} leads the relevant captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}; scheduled doubles are scanned across the current chip half through GW${chipHalfEnd}.`
         : "No standout captain window yet.",
     },
     {
@@ -1528,7 +1532,7 @@ function buildFuturePlan(
             : "HOLD",
       eventName: benchBoostCandidate?.event.name ?? null,
       reason: benchBoostCandidate
-        ? `${benchBoostCandidate.event.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s) on the remaining scheduled calendar. Bench Boost becomes more attractive when the manager can also carry 15 dependable starters into that window.`
+        ? `${benchBoostCandidate.event.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s) inside the current chip half (through GW${chipHalfEnd}). Bench Boost becomes more attractive when the manager can also carry 15 dependable starters into that window.`
         : "No obvious Bench Boost window yet.",
     },
     {
@@ -1541,7 +1545,7 @@ function buildFuturePlan(
             : "HOLD",
       eventName: freeHitCandidate?.event.name ?? null,
       reason: freeHitCandidate
-        ? `${freeHitCandidate.event.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) on the remaining scheduled calendar.`
+        ? `${freeHitCandidate.event.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) inside the current chip half (through GW${chipHalfEnd}).`
         : "No major blank/double disruption is currently scheduled.",
     },
     {
@@ -1806,6 +1810,7 @@ function buildPortfolioHealth(
     missing: [
       "True global effective ownership (official ownership is shown only as a field-ownership proxy)",
       "Verified player NPxG/90 and player share of team non-penalty xGI",
+      "Manager-specific selling prices are private; price-band routes use current market price and should be treated as indicative",
     ],
   };
 }

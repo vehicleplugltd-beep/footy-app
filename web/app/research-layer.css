@@ -161,3 +161,21 @@
   .portfolio-evidence-grid p,
   .portfolio-missing p { font-size: 9px; }
 }
+
+.fixture-clean-sheets {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+}
+.fixture-clean-sheets span {
+  flex: 1;
+  border: 1px solid #dfe7e3;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #f4faf7;
+  color: #647069;
+  font-size: 7px;
+}
+.fixture-clean-sheets b {
+  color: #0b8b61;
+}
