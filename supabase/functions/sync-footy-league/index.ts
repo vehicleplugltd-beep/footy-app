@@ -163,9 +163,11 @@ Deno.serve(async (req: Request) => {
       league: { id: Number(cleanLeagueId), name: leagueName },
       standings: {
         results: entries,
-        has_next: false,
+        has_next: Boolean(pagePayload?.standings?.has_next),
+        fully_loaded: !Boolean(pagePayload?.standings?.has_next),
         pages_loaded: pageNumber,
         total_entries: entries.length,
+        safety_page_cap: 200,
         focused_entry_id: requestedEntryId || null,
       },
       recap: facts,

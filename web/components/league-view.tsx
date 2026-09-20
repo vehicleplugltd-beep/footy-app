@@ -19,6 +19,10 @@ type LeaguePayload = {
   standings?: {
     page?: number;
     has_next: boolean;
+    fully_loaded?: boolean;
+    pages_loaded?: number;
+    total_entries?: number;
+    safety_page_cap?: number;
     results: Standing[];
   };
 };
@@ -547,6 +551,15 @@ export function LeagueView({
           </div>
           <span>{rows.length} managers shown · tap any row to focus the analysis</span>
         </div>
+
+        {payload?.standings?.fully_loaded === false ? (
+          <div className="league-full-warning">
+            This league is exceptionally large. Footy loaded{" "}
+            {payload.standings.total_entries ?? rows.length} managers across{" "}
+            {payload.standings.pages_loaded ?? "many"} pages before the sync safety cap.
+            The table below is explicitly marked partial rather than pretending to be complete.
+          </div>
+        ) : null}
 
         <div className="league-table">
           {sortedRows.map((row) => {
