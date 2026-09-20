@@ -60,11 +60,11 @@ class FPLCoreInsightsSource:
     def player_gameweek_stats(self, gameweek: int) -> pd.DataFrame:
         return self._csv(gameweek, "player_gameweek_stats.csv")
 
-    def season_players(self) -> pd.DataFrame:
-        return self._season_csv("players.csv")
+    def season_players(self, final_gameweek: int = 38) -> pd.DataFrame:
+        return self._csv(final_gameweek, "players.csv")
 
-    def season_teams(self) -> pd.DataFrame:
-        return self._season_csv("teams.csv")
+    def season_teams(self, final_gameweek: int = 38) -> pd.DataFrame:
+        return self._csv(final_gameweek, "teams.csv")
 
-    def season_player_stats(self) -> pd.DataFrame:
-        return self._season_csv("playerstats.csv")
+    def season_player_stats(self, final_gameweek: int = 38) -> pd.DataFrame:
+        return self._csv(final_gameweek, "playerstats.csv")

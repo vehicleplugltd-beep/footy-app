@@ -340,9 +340,9 @@ def command_fpl_core_priors_ingest(args: argparse.Namespace) -> None:
     source = FPLCoreInsightsSource(
         season_folder=args.season_folder,
     )
-    player_stats = source.season_player_stats()
-    players = source.season_players()
-    teams = source.season_teams()
+    player_stats = source.season_player_stats(args.gameweek)
+    players = source.season_players(args.gameweek)
+    teams = source.season_teams(args.gameweek)
 
     priors = normalise_fpl_core_player_priors(
         player_stats,
@@ -380,6 +380,7 @@ def command_fpl_core_priors_ingest(args: argparse.Namespace) -> None:
         status="PASS",
         report={
             "season_folder": args.season_folder,
+            "final_gameweek": args.gameweek,
             "rows": int(len(priors)),
             "players_180_plus_minutes": int(len(usable)),
             "duplicate_player_codes": duplicate_codes,
@@ -393,6 +394,7 @@ def command_fpl_core_priors_ingest(args: argparse.Namespace) -> None:
         "status": "PASS",
         "season": args.season,
         "season_folder": args.season_folder,
+        "final_gameweek": args.gameweek,
         "rows_upserted": len(priors),
         "players_180_plus_minutes": len(usable),
     }, indent=2))
@@ -1194,6 +1196,7 @@ def main() -> None:
     )
     fpl_core_priors.add_argument("--season-folder", required=True)
     fpl_core_priors.add_argument("--season", required=True)
+    fpl_core_priors.add_argument("--gameweek", type=int, default=38)
 
     clubelo = sub.add_parser(
         "clubelo-ingest",
