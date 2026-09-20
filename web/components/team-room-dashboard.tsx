@@ -74,6 +74,95 @@ type ManagerResponse = {
     chip_threats: string[];
     recommendation: string;
   } | null;
+  counterplay?: {
+    snapshot_event: number | null;
+    managers_in_local_matrix: number;
+    iterations: number;
+    strategy_mode: "PROTECT" | "CHASE" | "RECOVER";
+    objective: string;
+    baseline: {
+      objective_probability: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+    } | null;
+    recommended_scenario: {
+      id: string;
+      label: string;
+      style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+      objective_probability: number;
+      probability_delta: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+      reason: string;
+      transfer: {
+        out: { id: number; name: string; team: string };
+        in: { id: number; name: string; team: string };
+      } | null;
+      captain: { id: number; name: string; team: string } | null;
+    } | null;
+    scenarios: Array<{
+      id: string;
+      label: string;
+      style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+      objective_probability: number;
+      probability_delta: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+      reason: string;
+    }>;
+    local_exposure: Array<{
+      player_id: number;
+      squad_ownership: number;
+      starter_ownership: number;
+      captain_share: number;
+      effective_exposure: number;
+      player: {
+        id: number;
+        name: string;
+        team: string;
+        assistantScore: number;
+      } | null;
+    }>;
+    primary_threats: Array<{
+      rival_entry_id: number;
+      rival_name: string;
+      player: {
+        id: number;
+        name: string;
+        team: string;
+        assistantScore: number;
+      };
+      threat_score: number;
+      local_exposure: {
+        squad_ownership: number;
+        starter_ownership: number;
+        captain_share: number;
+        effective_exposure: number;
+      } | null;
+      ceiling_proxy: number;
+    }>;
+    rival_vectors: Array<{
+      entry_id: number;
+      name: string;
+      gap: number;
+      bank: number;
+      transfer_vectors: Array<{
+        out: { id: number; name: string; team: string };
+        in: { id: number; name: string; team: string };
+        gain: number;
+        horizon_gain: number;
+        model_share: number;
+        caveat: string;
+      }>;
+    }>;
+    caveats: string[];
+  };
   portfolio_plan?: {
     action: "BANK" | "HOLD" | "TRANSFER" | "STRUCTURAL_REPAIR" | "CHIP_PREP";
     headline: string;
@@ -292,6 +381,7 @@ export function TeamRoomDashboard({
 
   const intelligenceLoading = !error && (!scout || !manager);
   const portfolioPlan = manager?.portfolio_plan ?? null;
+  const counterPlay = manager?.counterplay ?? null;
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
   const captain =
@@ -733,6 +823,179 @@ export function TeamRoomDashboard({
               ))}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {counterPlay ? (
+        <section className="team-room-block counterplay-panel">
+          <div className="team-room-block-head">
+            <div>
+              <span>COUNTERPLAY</span>
+              <h2>
+                {counterPlay.strategy_mode} ·{" "}
+                {counterPlay.recommended_scenario?.label ?? "Hold structure"}
+              </h2>
+            </div>
+            <small>
+              {counterPlay.iterations.toLocaleString()} correlated simulations ·{" "}
+              {counterPlay.managers_in_local_matrix} league squads in local exposure matrix
+            </small>
+          </div>
+
+          <p className="counterplay-objective">{counterPlay.objective}</p>
+
+          <div className="counterplay-hero-grid">
+            <div>
+              <span>BASELINE OBJECTIVE</span>
+              <strong>
+                {counterPlay.baseline
+                  ? Math.round(counterPlay.baseline.objective_probability * 1000) / 10 + "%"
+                  : "—"}
+              </strong>
+              <small>Hold / current structure</small>
+            </div>
+            <div>
+              <span>BEST SCENARIO</span>
+              <strong>
+                {counterPlay.recommended_scenario
+                  ? Math.round(counterPlay.recommended_scenario.objective_probability * 1000) / 10 + "%"
+                  : "—"}
+              </strong>
+              <small>
+                {counterPlay.recommended_scenario
+                  ? (counterPlay.recommended_scenario.probability_delta >= 0 ? "+" : "") +
+                    (counterPlay.recommended_scenario.probability_delta * 100).toFixed(1) +
+                    "pp vs baseline"
+                  : "No scenario edge"}
+              </small>
+            </div>
+            <div>
+              <span>5TH–95TH</span>
+              <strong>
+                {counterPlay.recommended_scenario
+                  ? counterPlay.recommended_scenario.floor_5.toFixed(1) +
+                    "–" +
+                    counterPlay.recommended_scenario.ceiling_95.toFixed(1)
+                  : "—"}
+              </strong>
+              <small>model Gameweek score band</small>
+            </div>
+            <div>
+              <span>VOLATILITY</span>
+              <strong>
+                {counterPlay.recommended_scenario?.volatility.toFixed(1) ?? "—"}
+              </strong>
+              <small>lower = tighter outcome distribution</small>
+            </div>
+          </div>
+
+          {counterPlay.recommended_scenario ? (
+            <div className="counterplay-primary-reason">
+              <span>WHY THIS MOVES WIN/CONTROL PROBABILITY</span>
+              <p>{counterPlay.recommended_scenario.reason}</p>
+            </div>
+          ) : null}
+
+          <div className="counterplay-layout">
+            <section>
+              <span>SCENARIOS</span>
+              <div className="counterplay-scenarios">
+                {counterPlay.scenarios.map((scenario) => (
+                  <article key={scenario.id}>
+                    <div>
+                      <b>{scenario.label}</b>
+                      <small>{scenario.style}</small>
+                    </div>
+                    <strong>
+                      {(scenario.objective_probability * 100).toFixed(1)}%
+                    </strong>
+                    <small>
+                      {(scenario.probability_delta >= 0 ? "+" : "") +
+                        (scenario.probability_delta * 100).toFixed(1)}
+                      pp · mean {scenario.mean_score.toFixed(1)}
+                    </small>
+                    <p>{scenario.reason}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <span>PRIMARY RIVAL THREATS</span>
+              <div className="counterplay-threats">
+                {counterPlay.primary_threats.slice(0, 8).map((threat) => (
+                  <Link
+                    key={threat.rival_entry_id + "-" + threat.player.id}
+                    href={"/research?player=" + threat.player.id}
+                  >
+                    <div>
+                      <b>{threat.player.name}</b>
+                      <small>{threat.rival_name} · {threat.player.team}</small>
+                    </div>
+                    <strong>{threat.threat_score}/100</strong>
+                    <small>
+                      ceiling {threat.ceiling_proxy.toFixed(1)} · local starter{" "}
+                      {threat.local_exposure
+                        ? threat.local_exposure.starter_ownership.toFixed(0) + "%"
+                        : "—"}
+                    </small>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="counterplay-layout secondary">
+            <section>
+              <span>LOCAL LEAGUE EXPOSURE</span>
+              <div className="counterplay-exposure">
+                {counterPlay.local_exposure.slice(0, 12).map((item) => (
+                  <Link key={item.player_id} href={"/research?player=" + item.player_id}>
+                    <b>{item.player?.name ?? "Player " + item.player_id}</b>
+                    <small>
+                      squad {item.squad_ownership.toFixed(0)}% · starters{" "}
+                      {item.starter_ownership.toFixed(0)}% · captains{" "}
+                      {item.captain_share.toFixed(0)}%
+                    </small>
+                    <strong>{item.effective_exposure.toFixed(0)}% local exposure</strong>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <span>RIVAL TRANSFER VECTORS</span>
+              <div className="counterplay-vectors">
+                {counterPlay.rival_vectors.map((rival) => (
+                  <article key={rival.entry_id}>
+                    <header>
+                      <b>{rival.name}</b>
+                      <small>
+                        gap {rival.gap >= 0 ? "+" : ""}{rival.gap} · £{rival.bank.toFixed(1)}m bank
+                      </small>
+                    </header>
+                    {rival.transfer_vectors.length ? (
+                      rival.transfer_vectors.map((vector) => (
+                        <p key={vector.out.id + "-" + vector.in.id}>
+                          {vector.out.name} → {vector.in.name} ·{" "}
+                          <b>{(vector.model_share * 100).toFixed(0)}% relative vector weight</b>
+                        </p>
+                      ))
+                    ) : (
+                      <p>No current transfer vector clears that rival’s football threshold.</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <details className="counterplay-caveats" open>
+            <summary>Simulation assumptions & limitations</summary>
+            {counterPlay.caveats.map((item, index) => (
+              <p key={"counter-caveat-" + index}>{item}</p>
+            ))}
+          </details>
         </section>
       ) : null}
 
