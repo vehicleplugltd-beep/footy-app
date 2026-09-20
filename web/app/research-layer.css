@@ -560,3 +560,20 @@
     grid-column: 1 / -1;
   }
 }
+
+.counterplay-full-list {
+  margin-top: 6px;
+  border: 1px solid #e4e8ed;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: #fafbfc;
+}
+.counterplay-full-list summary {
+  cursor: pointer;
+  color: #2563eb;
+  font-size: 8px;
+  font-weight: 900;
+}
+.counterplay-full-list[open] summary {
+  margin-bottom: 7px;
+}
