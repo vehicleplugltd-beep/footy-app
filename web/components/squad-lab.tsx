@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { RankedPlayer } from "@/lib/fpl";
 
@@ -103,7 +104,7 @@ function PitchCard({ player }: { player: RankedPlayer }) {
   return (
     <div className="lab-pitch-player">
       <div className="lab-shirt">{player.team}</div>
-      <strong>{player.name}</strong>
+      <Link href={"/research?player=" + player.id}>{player.name}</Link>
       <small>{player.assistantScore.toFixed(1)} · £{player.price.toFixed(1)}</small>
     </div>
   );
@@ -134,6 +135,7 @@ export function SquadLab({
   const [team, setTeam] = useState("ALL");
   const [maxPrice, setMaxPrice] = useState(15);
   const [sort, setSort] = useState<SortKey>("score");
+  const [showAllPool, setShowAllPool] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>(initialPlayerIds);
   const [message, setMessage] = useState<string | null>(null);
   const [leagueStrategy, setLeagueStrategy] = useState<LeagueStrategy | null>(null);
@@ -398,40 +400,60 @@ export function SquadLab({
 
           <div className="player-db-head">
             <span>{filtered.length} matching players</span>
-            <span>Tap to add/remove</span>
+            <Link href="/research#players">Full player research →</Link>
           </div>
 
           <div className="player-db-list">
-            {filtered.slice(0, 160).map((player) => {
+            {(showAllPool ? filtered : filtered.slice(0, 160)).map((player) => {
               const picked = selectedIds.includes(player.id);
               return (
-                <button
-                  type="button"
-                  className={picked ? "player-db-row selected" : "player-db-row"}
-                  key={player.id}
-                  onClick={() =>
-                    picked
-                      ? setSelectedIds((ids) => ids.filter((id) => id !== player.id))
-                      : addPlayer(player)
-                  }
-                >
-                  <div className="player-db-name">
-                    <b>{player.name}</b>
-                    <small>{player.team} · {player.position} · {signal(player)}</small>
-                  </div>
-                  <div><span>Footy</span><strong>{player.assistantScore.toFixed(1)}</strong></div>
-                  <div><span>Form</span><strong>{player.form.toFixed(1)}</strong></div>
-                  <div><span>xGI/90</span><strong>{player.xgiPer90.toFixed(2)}</strong></div>
-                  <div><span>Process</span><strong>{player.processBoost >= 0 ? "+" : ""}{(player.processBoost * 100).toFixed(0)}%</strong></div>
-                  <div><span>ATT/DEF</span><strong>{player.teamAttackIndex.toFixed(2)} / {player.teamDefenceIndex.toFixed(2)}</strong></div>
-                  <div><span>Next</span><strong>{player.opponent ?? "—"}</strong></div>
-                  <div><span>Price</span><strong>£{player.price.toFixed(1)}</strong></div>
-                  <div><span>Own</span><strong>{player.selectedBy.toFixed(1)}%</strong></div>
-                  <i>{picked ? "−" : "+"}</i>
-                </button>
+                <div className="player-db-row-shell" key={player.id}>
+                  <button
+                    type="button"
+                    className={picked ? "player-db-row selected" : "player-db-row"}
+                    onClick={() =>
+                      picked
+                        ? setSelectedIds((ids) => ids.filter((id) => id !== player.id))
+                        : addPlayer(player)
+                    }
+                    aria-label={
+                      (picked ? "Remove " : "Add ") + player.name + " from scenario"
+                    }
+                  >
+                    <div className="player-db-name">
+                      <b>{player.name}</b>
+                      <small>{player.team} · {player.position} · {signal(player)}</small>
+                    </div>
+                    <div><span>Footy</span><strong>{player.assistantScore.toFixed(1)}</strong></div>
+                    <div><span>Form</span><strong>{player.form.toFixed(1)}</strong></div>
+                    <div><span>xGI/90</span><strong>{player.xgiPer90.toFixed(2)}</strong></div>
+                    <div><span>Process</span><strong>{player.processBoost >= 0 ? "+" : ""}{(player.processBoost * 100).toFixed(0)}%</strong></div>
+                    <div><span>ATT/DEF</span><strong>{player.teamAttackIndex.toFixed(2)} / {player.teamDefenceIndex.toFixed(2)}</strong></div>
+                    <div><span>Next</span><strong>{player.opponent ?? "—"}</strong></div>
+                    <div><span>Price</span><strong>£{player.price.toFixed(1)}</strong></div>
+                    <div><span>Own</span><strong>{player.selectedBy.toFixed(1)}%</strong></div>
+                    <i>{picked ? "−" : "+"}</i>
+                  </button>
+                  <Link
+                    className="player-db-profile"
+                    href={"/research?player=" + player.id}
+                  >
+                    Analysis →
+                  </Link>
+                </div>
               );
             })}
           </div>
+
+          {filtered.length > 160 ? (
+            <button
+              type="button"
+              className="player-db-show-all"
+              onClick={() => setShowAllPool((value) => !value)}
+            >
+              {showAllPool ? "Show first 160" : "Show all " + filtered.length + " players"}
+            </button>
+          ) : null}
         </div>
 
         <aside className="lab-squad-panel">
