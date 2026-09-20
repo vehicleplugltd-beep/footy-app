@@ -7,6 +7,7 @@ type SnapshotRow = {
 type MatchRow = {
   match_id: string;
   kickoff_at: string;
+  status: string | null;
 };
 
 type MetricRow = Record<string, unknown> & {
@@ -165,7 +166,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
       "footy_fpl_snapshots?select=snapshot_key,retrieved_at,payload&order=retrieved_at.desc",
     ),
     rest<MatchRow>(
-      `footy_matches?select=match_id,kickoff_at&league=eq.ENG-Premier%20League&season=eq.${CURRENT_SEASON}&order=kickoff_at.asc`,
+      `footy_matches?select=match_id,kickoff_at,status&league=eq.ENG-Premier%20League&season=eq.${CURRENT_SEASON}&order=kickoff_at.asc`,
     ),
     rest<LeagueRow>(
       "footy_fpl_leagues?select=league_id,last_synced_at,last_deep_synced_at,sync_status",
@@ -226,7 +227,15 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         .at(-1) ?? null
     : null;
   const coveredIds = new Set(metrics.map((row) => row.match_id));
-  const uncoveredMatches = matches.filter((match) => !coveredIds.has(match.match_id));
+  // Process feeds are post-match evidence. Do not mark an in-play or future
+  // fixture as a data-quality failure simply because its underlying metrics
+  // do not exist yet.
+  const finishedMatches = matches.filter(
+    (match) => String(match.status ?? "").toLowerCase() === "finished",
+  );
+  const uncoveredMatches = finishedMatches.filter(
+    (match) => !coveredIds.has(match.match_id),
+  );
   const latestLeagueSync = newest(
     leagues.flatMap((row) => [row.last_synced_at, row.last_deep_synced_at]),
   );
@@ -351,7 +360,7 @@ export async function getFootyDataHealth(): Promise<FootyDataHealth> {
         source: "Understat + verified FPL-Core enrichment",
         retrievedAt: processRetrievedAt,
         target: "Automatic refresh after main match windows",
-        coverage: `${metrics.length} team-match rows across ${coveredIds.size} current-season matches; ${uncoveredMatches.length} match records currently uncovered`,
+        coverage: `${metrics.length} team-match rows across ${coveredIds.size} current-season matches; ${uncoveredMatches.length}/${finishedMatches.length} finished matches currently uncovered`,
         supports: [
           "attack / defence strength",
           "process-vs-results regression",
