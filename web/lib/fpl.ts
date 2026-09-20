@@ -946,7 +946,6 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     baseError,
     dataRetrievedAt,
     futurePlan,
-    managerFuturePlan,
     chipRadar,
   };
 }
@@ -1138,6 +1137,7 @@ export async function getLeagueManagerEdgeAnalysis(
     playerTrends,
     teamTrends,
     futurePlan,
+    managerFuturePlan,
     chipRadar,
   };
 }
