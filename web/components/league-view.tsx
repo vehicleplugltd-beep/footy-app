@@ -586,7 +586,7 @@ export function LeagueView({
               Footy combines your squad, rival ownership, captaincy, chip state,
               free transfers and underlying football process before ranking an actual move.
             </p>
-            <Link href="/squad-lab">Open Player Database + Squad Lab →</Link>
+            <Link href="/squad-lab">Open Build & Test →</Link>
           </div>
 
           <div className="decision-gate-preview">
@@ -639,7 +639,7 @@ export function LeagueView({
                     <small>Chips, hits, transfer activity and reconstructed free-transfer bank.</small>
                   </div>
                   <div className="locked-move">
-                    <span>Squad Lab</span>
+                    <span>Build & Test</span>
                     <strong>Included</strong>
                     <small>Simulate recommendations on the 2D pitch before doing anything in FPL.</small>
                   </div>
@@ -833,9 +833,9 @@ export function LeagueView({
 
                 <Link
                   className="open-squad-lab"
-                  href={`/squad-lab?team=${selected.entry_id}&league=${leagueId}`}
+                  href={`/team/${selected.entry_id}?league=${leagueId}#build-test`}
                 >
-                  Simulate these moves in Squad Lab →
+                  Build & test these moves on your pitch →
                 </Link>
 
                 <div className="beta-limit-note">
