@@ -8,6 +8,7 @@ import type {
   ScoutIntelligencePayload,
   ScoutPlayerProfile,
 } from "@/lib/fpl";
+import { footyQuip } from "@/lib/footy-voice";
 
 type Standing = {
   entry_id: number;
@@ -267,12 +268,21 @@ export function TeamRoomDashboard({
       : standings.slice(0, 8);
 
   const resourceRows = manager?.resource_map ?? [];
+  const squadQuip =
+    squadFuture != null && squadFuture >= 65
+      ? footyQuip("strongSquad")
+      : footyQuip("weakSquad");
+  const actionQuip = transfer
+    ? footyQuip("move", { player: transfer.in.name })
+    : footyQuip("hold");
 
   return (
     <div className="team-room-dashboard">
       {error ? (
         <div className="team-room-error">{error}</div>
       ) : null}
+
+      <blockquote className="footy-quip team-room-quip">{squadQuip}</blockquote>
 
       <section className="team-room-scoreboard">
         <div>
@@ -384,6 +394,7 @@ export function TeamRoomDashboard({
             </div>
           </div>
 
+          <blockquote className="footy-quip compact">{actionQuip}</blockquote>
           <div className="team-room-suggestion">
             <div>
               <span>TRANSFER</span>
@@ -414,6 +425,11 @@ export function TeamRoomDashboard({
                 {captain?.rationale ??
                   "Expected output remains the priority."}
               </small>
+              {captain?.player.name ? (
+                <em className="team-room-inline-quip">
+                  {footyQuip("captain", { player: captain.player.name })}
+                </em>
+              ) : null}
             </div>
 
             <div>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { TeamConnectForm } from "@/components/team-connect-form";
 import { FrontOffice } from "@/components/front-office";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
+import { footyQuip } from "@/lib/footy-voice";
 
 export default async function Home({
   searchParams,
@@ -51,6 +52,7 @@ export default async function Home({
             market data and underlying football process into a plan you can
             inspect and test.
           </p>
+          <blockquote className="footy-quip">{footyQuip("hq")}</blockquote>
         </div>
 
         <div className="hq-connect-form">

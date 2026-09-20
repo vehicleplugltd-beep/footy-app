@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FplTeamDiscovery } from "@/lib/fpl-team";
 import type { ScoutIntelligencePayload, ScoutPlayerProfile } from "@/lib/fpl";
+import { footyQuip } from "@/lib/footy-voice";
 
 function statusLabel(profile: ScoutPlayerProfile) {
   if (profile.epa.undervalued) return "UNDERVALUED";
@@ -174,6 +175,9 @@ export function FrontOffice({
               </small>
             </div>
 
+            <blockquote className="footy-quip compact">
+              {footyQuip("league")}
+            </blockquote>
             <div className="hq-league-list">
               {(team.miniLeagues.length
                 ? team.miniLeagues
@@ -259,6 +263,7 @@ export function FrontOffice({
                 <span>WATCHLIST</span>
                 <strong>Not necessarily now</strong>
                 <small>Players whose better window may open later.</small>
+                <em className="hq-inline-quip">{footyQuip("watchlist")}</em>
               </header>
               <div>
                 {watchlist.map((profile) => (

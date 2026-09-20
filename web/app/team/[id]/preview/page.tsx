@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { NextMoveCommand } from "@/components/next-move-command";
 import { BuildTestWorkspace } from "@/components/build-test-workspace";
+import { footyQuip } from "@/lib/footy-voice";
 
 export default async function PreviewPage({
   params,
@@ -77,6 +78,7 @@ export default async function PreviewPage({
           the starting point, then test your own combinations against the same
           player, fixture and mini-league data.
         </p>
+        <blockquote className="footy-quip">{footyQuip("preview")}</blockquote>
       </header>
 
       <section className="preview-suggestion">
