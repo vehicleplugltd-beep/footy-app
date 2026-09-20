@@ -872,6 +872,25 @@ function buildCounterPlay(
       return b.mean_score - a.mean_score;
     });
 
+  const bestScenario = rankedScenarios[0] ?? baseline;
+  const bestProbabilityDelta =
+    bestScenario?.objective_probability != null && baseline
+      ? bestScenario.objective_probability - baseline.objective_probability
+      : 0;
+  const gameTheoryMagnitude = Math.abs(bestProbabilityDelta);
+  const gameTheoryBand =
+    gameTheoryMagnitude < 0.01
+      ? ("NEUTRAL" as const)
+      : gameTheoryMagnitude < 0.03
+        ? ("MATERIAL" as const)
+        : ("DECISIVE" as const);
+  const gameTheoryExplanation =
+    gameTheoryBand === "NEUTRAL"
+      ? `CounterPlay changes the manager-specific objective by only ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Football quality, multi-GW value and squad structure should drive the decision.`
+      : gameTheoryBand === "MATERIAL"
+        ? `CounterPlay moves the manager-specific objective by ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Use it to break close football calls, not to rescue a weak move.`
+        : `CounterPlay moves the manager-specific objective by ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Rival context is large enough to materially alter which football-qualified option is preferred.`;
+
   const playerById = new Map<number, RankedPlayer>();
   for (const team of [analysis.manager, ...analysis.rivals]) {
     for (const player of team.squad) playerById.set(player.id, player);
@@ -974,6 +993,13 @@ function buildCounterPlay(
           ceiling_95: baseline.ceiling_95,
         }
       : null,
+    game_theory_impact: {
+      band: gameTheoryBand,
+      probability_delta: bestProbabilityDelta,
+      threshold_neutral: 0.01,
+      threshold_decisive: 0.03,
+      explanation: gameTheoryExplanation,
+    },
     scenarios: rankedScenarios.slice(0, 7),
     recommended_scenario: rankedScenarios[0] ?? null,
     local_exposure: localMatrix,
@@ -1223,9 +1249,32 @@ function buildPortfolioPlan(
   leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
   managerHistory: Awaited<ReturnType<typeof getRivalResourceHistory>> | null,
   resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
+  counterPlay: ReturnType<typeof buildCounterPlay>,
 ) {
   const portfolio = analysis.manager.portfolio;
-  const transfer = leagueStrategy.transfer_moves[0] ?? null;
+  const footballTransfer = leagueStrategy.transfer_moves[0] ?? null;
+  const counterScenario = counterPlay.recommended_scenario ?? null;
+  const counterTransfer =
+    counterScenario?.transfer
+      ? leagueStrategy.transfer_moves.find(
+          (move) =>
+            move.out.id === counterScenario.transfer?.out.id &&
+            move.in.id === counterScenario.transfer?.in.id,
+        ) ?? null
+      : null;
+  const impactBand = counterPlay.game_theory_impact.band;
+  const materialCloseCall =
+    impactBand === "MATERIAL" &&
+    footballTransfer &&
+    counterTransfer &&
+    Math.abs(counterTransfer.raw_gain - footballTransfer.raw_gain) <= 0.75;
+  const gameTheoryTiebreak =
+    Boolean(counterTransfer) &&
+    (impactBand === "DECISIVE" || Boolean(materialCloseCall));
+  const transfer =
+    gameTheoryTiebreak && counterTransfer
+      ? counterTransfer
+      : footballTransfer;
   const freeTransfers = managerHistory?.estimatedFreeTransfers ?? null;
   const firstTwoEvents = new Set(
     analysis.futurePlan.slice(0, 2).map((item) => item.name),
@@ -1289,6 +1338,13 @@ function buildPortfolioPlan(
     );
   }
 
+  why.push(counterPlay.game_theory_impact.explanation);
+  if (gameTheoryTiebreak && footballTransfer && transfer) {
+    why.push(
+      `Game theory acts only as a tie-break between moves that already clear the football threshold: ${transfer.out.name} → ${transfer.in.name} is preferred over ${footballTransfer.out.name} → ${footballTransfer.in.name} in this league context.`,
+    );
+  }
+
   const failureModes = [
     ...portfolio.risks,
     analysis.freshness.nearDeadline
@@ -1323,6 +1379,32 @@ function buildPortfolioPlan(
   return {
     action,
     headline,
+    decision_driver:
+      gameTheoryTiebreak
+        ? "GAME_THEORY_TIEBREAK"
+        : action === "TRANSFER"
+          ? "FOOTBALL_PORTFOLIO"
+          : "PORTFOLIO_STRUCTURE",
+    game_theory: {
+      ...counterPlay.game_theory_impact,
+      used_as_tiebreak: gameTheoryTiebreak,
+      football_primary_transfer: footballTransfer
+        ? {
+            out: footballTransfer.out.name,
+            in: footballTransfer.in.name,
+            raw_gain: footballTransfer.raw_gain,
+            horizon_gain: footballTransfer.horizon_gain,
+          }
+        : null,
+      selected_transfer: transfer
+        ? {
+            out: transfer.out.name,
+            in: transfer.in.name,
+            raw_gain: transfer.raw_gain,
+            horizon_gain: transfer.horizon_gain,
+          }
+        : null,
+    },
     portfolio,
     free_transfers: freeTransfers,
     hit_cost_for_one_extra_move: hitCostForExtraMove,
@@ -1734,6 +1816,7 @@ export async function GET(
       leagueStrategy,
       managerHistory,
       resourceAdvice,
+      counterPlay,
     );
     const decisionPath = buildDecisionPath(
       analysis,
