@@ -756,6 +756,14 @@ export function TeamRoomDashboard({
               <small>reliable current substitutes</small>
             </div>
             <div>
+              <span>BENCH VALUE</span>
+              <strong>£{portfolioPlan.portfolio.bench.spend.toFixed(1)}m</strong>
+              <small>
+                {Math.round(portfolioPlan.portfolio.bench.spendShare * 100)}% of squad value ·{" "}
+                {portfolioPlan.portfolio.bench.currentModelScore.toFixed(1)} model points
+              </small>
+            </div>
+            <div>
               <span>6GW XI</span>
               <strong>{portfolioPlan.portfolio.horizon.sixGwAverageBestXi.toFixed(1)}</strong>
               <small>formation-constrained model average</small>
