@@ -2646,6 +2646,14 @@ export type ScoutPlayerProfile = {
   coreSources: string[];
   evidence: PlayerProcessEvidence | null;
   decisionConfidence: "HIGH" | "MEDIUM" | "LOW";
+  riskProfile: {
+    downsideRisk: number;
+    floor: number;
+    ceiling: number;
+    volatility: number;
+    assetType: "FLOOR" | "BALANCED" | "CEILING";
+    drivers: string[];
+  };
 };
 
 export type ScoutTeamProfile = {
@@ -2751,6 +2759,92 @@ type FplElementSummary = {
 function average(values: number[]) {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildPlayerRiskProfile(
+  player: RankedPlayer,
+  evidence: PlayerProcessEvidence | null,
+) {
+  const minutesReliability = evidence
+    ? clamp(evidence.minutes7 / Math.max(1, 180), 0, 1)
+    : player.startReliability;
+  const rotationRisk = 1 - clamp(
+    player.startReliability * 0.7 + minutesReliability * 0.3,
+    0,
+    1,
+  );
+  const attackingVolatility =
+    player.position === "MID" || player.position === "FWD"
+      ? Math.min(2.4, player.xgiPer90 * 2.4)
+      : Math.min(1.4, player.xgiPer90 * 1.5);
+  const cleanSheetVolatility =
+    player.position === "GKP" || player.position === "DEF" ? 1.0 : 0.25;
+  const fixtureVariance = Math.max(
+    0,
+    (player.fixtureDifficulty - 2.5) * 0.28,
+  );
+  const setPieceFloor = player.setPieceRole ? 0.22 : 0;
+  const volatility = clamp(
+    1.15 +
+      rotationRisk * 2.9 +
+      attackingVolatility +
+      cleanSheetVolatility +
+      fixtureVariance -
+      setPieceFloor,
+    1.0,
+    5.8,
+  );
+  const mean = Math.max(0, player.assistantScore);
+  const floor = Math.max(-1, mean - volatility * 1.28);
+  const ceiling = mean + volatility * 1.65;
+  const downsideRisk = Math.round(
+    clamp(
+      rotationRisk * 55 +
+        (1 - player.availability / 100) * 25 +
+        Math.max(0, player.fixtureDifficulty - 3) * 6 +
+        (evidence?.loadRisk ?? 0) * 120,
+      0,
+      100,
+    ),
+  );
+
+  const assetType: "FLOOR" | "BALANCED" | "CEILING" =
+    downsideRisk <= 28 &&
+    player.startReliability >= 0.9 &&
+    volatility <= 2.6
+      ? "FLOOR"
+      : ceiling - mean >= 3.6 &&
+          (player.xgiPer90 >= 0.45 || rotationRisk >= 0.18)
+        ? "CEILING"
+        : "BALANCED";
+
+  const drivers: string[] = [];
+  if (player.startReliability >= 0.9) {
+    drivers.push("High start reliability supports the downside floor.");
+  } else {
+    drivers.push("Rotation/early-sub uncertainty widens the downside distribution.");
+  }
+  if (player.xgiPer90 >= 0.45) {
+    drivers.push("Strong attacking involvement raises the upside tail.");
+  }
+  if (player.setPieceRole) {
+    drivers.push(player.setPieceRole + " adds repeatable set-piece involvement.");
+  }
+  if ((evidence?.loadRisk ?? 0) >= 0.08) {
+    drivers.push("Recent multi-competition workload increases rotation risk.");
+  }
+  if (player.position === "GKP" || player.position === "DEF") {
+    drivers.push("Clean-sheet scoring introduces additional binary fixture variance.");
+  }
+
+  return {
+    downsideRisk,
+    floor,
+    ceiling,
+    volatility,
+    assetType,
+    drivers,
+  };
 }
 
 function bestRollingWindow(
@@ -3546,6 +3640,7 @@ export async function getScoutIntelligence(
       ],
       evidence: playerEvidence,
       decisionConfidence,
+      riskProfile: buildPlayerRiskProfile(basePlayer, playerEvidence),
     };
   });
 
