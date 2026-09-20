@@ -237,6 +237,7 @@ export type RankedPlayer = {
   fixtureFactor: number;
   trendFactor: number;
   startReliability: number;
+  recentMinutesSd: number;
   teamAttackIndex: number;
   teamDefenceIndex: number;
   opponent: string | null;
@@ -876,6 +877,7 @@ export type PlayerProcessEvidence = {
   regressedXgPer90: number;
   regressedXaPer90: number;
   regressedXgiPer90: number;
+  recentMinutesSd: number;
   currentEvidenceWeight: number;
   clubChangedSincePrior: boolean;
 };
@@ -929,6 +931,15 @@ function playerRate90(
     minutes += played;
   }
   return minutes > 0 ? (numerator * 90) / minutes : 0;
+}
+
+function standardDeviation(values: number[]) {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    values.length;
+  return Math.sqrt(Math.max(0, variance));
 }
 
 function playerMinutesInWindow(
@@ -1126,6 +1137,9 @@ async function footyPlayerProcesses() {
       regressedXgPer90,
       regressedXaPer90,
       regressedXgiPer90,
+      recentMinutesSd: standardDeviation(
+        recent.map((row) => Math.max(0, num(row.minutes))),
+      ),
       currentEvidenceWeight,
       clubChangedSincePrior,
     });
@@ -1175,6 +1189,7 @@ function rankPlayers(
   process: Map<string, TeamProcess>,
   useExpectedNext = true,
   includeUnavailable = false,
+  playerProcesses?: Map<number, PlayerProcessEvidence>,
 ): RankedPlayer[] {
   const teams = new Map(bootstrap.teams.map((team) => [team.id, team]));
   const positions = new Map(
@@ -1184,6 +1199,7 @@ function rankPlayers(
   return bootstrap.elements
     .map((player) => {
       const team = teams.get(player.team);
+      const playerProcess = playerProcesses?.get(player.code) ?? null;
       const teamFixtures = fixturesForTeam(player.team, eventId, fixtures);
       const teamProcess = team
         ? process.get(canonicalTeam(team.name))
@@ -1393,6 +1409,7 @@ function rankPlayers(
         fixtureFactor,
         trendFactor,
         startReliability,
+        recentMinutesSd: playerProcess?.recentMinutesSd ?? 0,
         teamAttackIndex: teamProcess?.attackIndex ?? 1,
         teamDefenceIndex: teamProcess?.defenceIndex ?? 1,
         opponent: opponent || null,
@@ -2381,13 +2398,19 @@ export async function getLeagueManagerEdgeAnalysis(
     throw new Error("A valid FPL entry ID is required.");
   }
 
-  const [bootstrapSnapshot, fixturesSnapshot, process, volatilitySnapshot] =
-    await Promise.all([
-      cachedFpl<Bootstrap>("bootstrap-static"),
-      cachedFpl<Fixture[]>("fixtures"),
-      footyProcesses(),
-      cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
-    ]);
+  const [
+    bootstrapSnapshot,
+    fixturesSnapshot,
+    process,
+    volatilitySnapshot,
+    playerProcesses,
+  ] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
+    footyProcesses(),
+    cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
+    footyPlayerProcesses(),
+  ]);
 
   let bootstrap: Bootstrap | null = null;
   let fixtures: Fixture[] | null = null;
@@ -2429,6 +2452,9 @@ export async function getLeagueManagerEdgeAnalysis(
     fixtures,
     next?.id ?? current?.id ?? null,
     process,
+    true,
+    false,
+    playerProcesses,
   );
   const { futurePlan, chipRadar } = buildFuturePlan(
     bootstrap,
@@ -2446,7 +2472,15 @@ export async function getLeagueManagerEdgeAnalysis(
     .map((event) => event.id);
   const horizonRankings = upcomingEventIds.length
     ? upcomingEventIds.map((eventId) =>
-        rankPlayers(bootstrap!, fixtures!, eventId, process, false),
+        rankPlayers(
+          bootstrap!,
+          fixtures!,
+          eventId,
+          process,
+          false,
+          false,
+          playerProcesses,
+        ),
       )
     : [ranked];
 
