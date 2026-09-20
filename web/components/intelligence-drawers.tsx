@@ -582,6 +582,7 @@ export function ManagerIntelDrawer({
 
   useEffect(() => {
     if (!standing) return;
+    const standingId = standing.entry_id;
     const controller = new AbortController();
 
     async function load() {
@@ -589,7 +590,7 @@ export function ManagerIntelDrawer({
         setPayload(null);
         setError(null);
         const response = await fetch(
-          "/api/league/" + leagueId + "/manager/" + standing.entry_id + "?staff=1",
+          "/api/league/" + leagueId + "/manager/" + standingId + "?staff=1",
           { cache: "no-store", signal: controller.signal },
         );
         const body = await response.json();
