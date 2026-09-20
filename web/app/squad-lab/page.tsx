@@ -30,7 +30,6 @@ export default async function SquadLabPage({
         <div className="nav-links">
           {teamId ? <Link href={`/team/${teamId}`}>My team</Link> : <Link href="/">Find team</Link>}
           <Link href="/results">Receipts</Link>
-          <Link href="/pro">Player Pass</Link>
         </div>
       </nav>
 
