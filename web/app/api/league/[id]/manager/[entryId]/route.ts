@@ -45,6 +45,8 @@ type LocalExposure = {
   effective_exposure: number;
 };
 
+type CounterPosture = "PROTECT" | "HYBRID" | "ATTACK";
+
 async function localPlayerDirectory() {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -702,6 +704,25 @@ function simulateTeamScore(
   return score;
 }
 
+function counterObjectiveProbability(
+  posture: CounterPosture,
+  attackProbability: number | null,
+  protectProbability: number | null,
+  controlProbability: number,
+) {
+  if (posture === "PROTECT") return protectProbability ?? controlProbability;
+  if (posture === "ATTACK") return attackProbability ?? controlProbability;
+  // HYBRID rewards plans that are simultaneously strong above and below.
+  // The geometric mean penalises a path that achieves one side by giving away
+  // too much on the other, unlike a simple midpoint average.
+  if (attackProbability != null && protectProbability != null) {
+    return Math.sqrt(
+      Math.max(0, attackProbability) * Math.max(0, protectProbability),
+    );
+  }
+  return attackProbability ?? protectProbability ?? controlProbability;
+}
+
 function buildCounterPlay(
   managerStanding: LeagueEntry,
   targetStanding: LeagueEntry | null,
@@ -716,6 +737,8 @@ function buildCounterPlay(
     history: Awaited<ReturnType<typeof getRivalResourceHistory>>;
   }>,
   playerDirectory: Map<number, { id: number; name: string; team: string }>,
+  posture: CounterPosture,
+  postureSource: "USER" | "INFERRED",
 ) {
   const rivalByEntry = new Map(
     analysis.rivals.map((team) => [team.entryId, team]),
@@ -745,7 +768,7 @@ function buildCounterPlay(
       ? selectedRivals.find(
           (item) => item.standing.entry_id === targetStanding.entry_id,
         ) ?? null
-      : selectedRivals[0] ?? null;
+      : null;
   const primaryChaser =
     chaserStandings.length > 0
       ? selectedRivals.find(
@@ -854,6 +877,19 @@ function buildCounterPlay(
     const targetOwns = target?.team.squad.some(
       (player) => player.id === move.in.id,
     );
+    const chaserOwns = primaryChaser?.team.squad.some(
+      (player) => player.id === move.in.id,
+    );
+    const candidateStyle =
+      target
+        ? targetOwns
+          ? ("BLOCK" as const)
+          : ("ATTACK" as const)
+        : primaryChaser
+          ? chaserOwns
+            ? ("BLOCK" as const)
+            : ("BALANCED" as const)
+          : ("BALANCED" as const);
     candidates.push({
       id: `transfer-${move.in.id}`,
       label: `${move.out.name} → ${move.in.name}`,
@@ -862,7 +898,7 @@ function buildCounterPlay(
         leagueStrategy.captain_moves[0]?.player ??
         analysis.manager.recommendedCaptain ??
         null,
-      style: targetOwns ? "BLOCK" : "ATTACK",
+      style: candidateStyle,
     });
   }
 
@@ -876,12 +912,25 @@ function buildCounterPlay(
     const targetOwns = target?.team.squad.some(
       (player) => player.id === captainMove.player.id,
     );
+    const chaserOwns = primaryChaser?.team.squad.some(
+      (player) => player.id === captainMove.player.id,
+    );
+    const candidateStyle =
+      target
+        ? targetOwns
+          ? ("BLOCK" as const)
+          : ("ATTACK" as const)
+        : primaryChaser
+          ? chaserOwns
+            ? ("BLOCK" as const)
+            : ("BALANCED" as const)
+          : ("BALANCED" as const);
     candidates.push({
       id: `captain-${captainMove.player.id}`,
       label: `Captain ${captainMove.player.name}`,
       transfer: null,
       captain: captainMove.player,
-      style: targetOwns ? "BLOCK" : "ATTACK",
+      style: candidateStyle,
     });
   }
 
@@ -940,14 +989,19 @@ function buildCounterPlay(
     const mean = scoreSum / iterations;
     const variance = Math.max(0, squareSum / iterations - mean * mean);
     const sd = Math.sqrt(variance);
-    const objectiveProbability =
-      leagueStrategy.mode === "PROTECT"
-        ? primaryChaser
-          ? stayAheadChaser / iterations
-          : controlAll / iterations
-        : target
-          ? beatTarget / iterations
-          : controlAll / iterations;
+    const attackProbability = target
+      ? beatTarget / iterations
+      : null;
+    const protectProbability = primaryChaser
+      ? stayAheadChaser / iterations
+      : null;
+    const controlProbability = controlAll / iterations;
+    const objectiveProbability = counterObjectiveProbability(
+      posture,
+      attackProbability,
+      protectProbability,
+      controlProbability,
+    );
 
     return {
       ...candidate,
@@ -989,17 +1043,20 @@ function buildCounterPlay(
         b.objective_probability - a.objective_probability;
       if (Math.abs(probabilityGap) > 0.01) return probabilityGap;
 
-      // If objective probability is effectively tied, strategy mode decides
-      // which tail matters. Protecting a lead prefers floor/tighter variance;
-      // chasing a gap prefers ceiling/upside. Raw mean only breaks the final tie.
-      if (leagueStrategy.mode === "PROTECT") {
+      // Posture only breaks close, football-qualified calls.
+      if (posture === "PROTECT") {
         const floorGap = b.floor_5 - a.floor_5;
         if (Math.abs(floorGap) > 0.15) return floorGap;
         const volatilityGap = a.volatility - b.volatility;
         if (Math.abs(volatilityGap) > 0.05) return volatilityGap;
-      } else {
+      } else if (posture === "ATTACK") {
         const ceilingGap = b.ceiling_95 - a.ceiling_95;
         if (Math.abs(ceilingGap) > 0.15) return ceilingGap;
+      } else {
+        const meanGap = b.mean_score - a.mean_score;
+        if (Math.abs(meanGap) > 0.15) return meanGap;
+        const floorGap = b.floor_5 - a.floor_5;
+        if (Math.abs(floorGap) > 0.15) return floorGap;
       }
       return b.mean_score - a.mean_score;
     });
@@ -1490,13 +1547,19 @@ function buildCounterPlay(
     resourceByEntry.get(managerStanding.entry_id) ?? null;
   const managerPaths = new Map<string, StatefulPath>();
   for (const candidate of candidates) {
+    const futureStyle =
+      posture === "PROTECT"
+        ? "BLOCK"
+        : posture === "ATTACK"
+          ? "ATTACK"
+          : candidate.style;
     managerPaths.set(
       candidate.id,
       buildStatefulPath(
         analysis.manager,
         candidate.transfer,
         candidate.captain?.id ?? null,
-        candidate.style,
+        futureStyle,
         managerHistory,
         true,
       ),
@@ -1694,14 +1757,19 @@ function buildCounterPlay(
         item.squareSum / pathIterations - mean * mean,
       );
       const volatility = Math.sqrt(variance);
-      const objectiveProbability =
-        leagueStrategy.mode === "PROTECT"
-          ? primaryChaser
-            ? item.stayAheadChaser / pathIterations
-            : item.controlAll / pathIterations
-          : target
-            ? item.beatTarget / pathIterations
-            : item.controlAll / pathIterations;
+      const attackProbability = target
+        ? item.beatTarget / pathIterations
+        : null;
+      const protectProbability = primaryChaser
+        ? item.stayAheadChaser / pathIterations
+        : null;
+      const controlProbability = item.controlAll / pathIterations;
+      const objectiveProbability = counterObjectiveProbability(
+        posture,
+        attackProbability,
+        protectProbability,
+        controlProbability,
+      );
       pathRaw.get(horizonLength)!.push({
         id: candidate.id,
         label: candidate.label,
@@ -1732,14 +1800,19 @@ function buildCounterPlay(
           const probabilityGap =
             b.objective_probability - a.objective_probability;
           if (Math.abs(probabilityGap) > 0.01) return probabilityGap;
-          if (leagueStrategy.mode === "PROTECT") {
+          if (posture === "PROTECT") {
             const floorGap = b.floor_5 - a.floor_5;
             if (Math.abs(floorGap) > 0.15) return floorGap;
             const volatilityGap = a.volatility - b.volatility;
             if (Math.abs(volatilityGap) > 0.05) return volatilityGap;
-          } else {
+          } else if (posture === "ATTACK") {
             const ceilingGap = b.ceiling_95 - a.ceiling_95;
             if (Math.abs(ceilingGap) > 0.15) return ceilingGap;
+          } else {
+            const meanGap = b.mean_score - a.mean_score;
+            if (Math.abs(meanGap) > 0.15) return meanGap;
+            const floorGap = b.floor_5 - a.floor_5;
+            if (Math.abs(floorGap) > 0.15) return floorGap;
           }
           return b.mean_score - a.mean_score;
         });
@@ -1861,10 +1934,20 @@ function buildCounterPlay(
     managers_in_local_matrix: snapshots.length,
     iterations,
     strategy_mode: leagueStrategy.mode,
+    posture,
+    posture_source: postureSource,
     objective:
-      leagueStrategy.mode === "PROTECT"
-        ? "Maximise probability of staying ahead of the nearest chasing pressure."
-        : "Maximise probability of overtaking the nearest target above without ignoring downside from chasers.",
+      posture === "PROTECT"
+        ? "Protect: maximise the probability of staying ahead of the nearest chasing pressure, with downside floor and tighter variance breaking close calls."
+        : posture === "ATTACK"
+          ? target
+            ? "Attack: maximise the probability of overtaking the nearest target above, with upside ceiling breaking close calls."
+            : "Attack: there is no target above, so maximise overall league-control probability and use upside ceiling to break close calls."
+          : target && primaryChaser
+            ? "Hybrid: balance overtaking the nearest target and staying ahead of the nearest chaser. The joint objective penalises paths that improve one side by sacrificing too much on the other."
+            : target
+              ? "Hybrid: there is no immediate chaser pressure, so the objective reduces to overtaking the nearest target while keeping football quality primary."
+              : "Hybrid: there is no target above, so the objective reduces to protecting league control while keeping expected football output central.",
     baseline: baseline
       ? {
           objective_probability: baseline.objective_probability,
@@ -1892,7 +1975,7 @@ function buildCounterPlay(
       "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
       "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
-      "When objective probabilities are within one percentage point, PROTECT mode uses downside floor/tighter variance as the tie-break; CHASE/RECOVER uses upside ceiling. Raw expected score only breaks the final tie.",
+      "When objective probabilities are within one percentage point, Protect uses downside floor/tighter variance, Attack uses upside ceiling, and Hybrid prefers expected score then downside floor. Posture never promotes a move that failed the football-quality gate.",
       "The 1GW/3GW/5GW path is stateful: each deadline carries forward the squad, free-transfer bank, approximate cash balance, hit cost, captaincy and supported chip use before re-evaluating the next football-qualified transfer.",
       "Future manager and rival transfers are model-selected response paths from a bounded football-qualified pool. They are planning weights, not claims about what any manager will do.",
       "Path cash uses current listed prices because exact historical purchase/selling-price profit is not available in the public league snapshot; bank-sensitive moves should therefore be treated as approximate until selling-price state is added.",
@@ -2553,6 +2636,12 @@ export async function GET(
   const { id, entryId } = await params;
   const leagueId = Number(id.replace(/\D/g, ""));
   const managerEntryId = Number(entryId.replace(/\D/g, ""));
+  const url = new URL(request.url);
+  const postureParam = url.searchParams.get("posture")?.toUpperCase() ?? null;
+  const requestedPosture: CounterPosture | null =
+    postureParam === "PROTECT" || postureParam === "HYBRID" || postureParam === "ATTACK"
+      ? postureParam
+      : null;
 
   if (!Number.isInteger(leagueId) || leagueId <= 0) {
     return NextResponse.json(
@@ -2623,6 +2712,13 @@ export async function GET(
       leaderStanding,
       analysis,
     );
+    const inferredPosture: CounterPosture =
+      leagueStrategy.mode === "PROTECT"
+        ? "PROTECT"
+        : leagueStrategy.mode === "RECOVER"
+          ? "ATTACK"
+          : "HYBRID";
+    const selectedPosture = requestedPosture ?? inferredPosture;
 
     const pressureEntries = [
       managerStanding,
@@ -2695,6 +2791,8 @@ export async function GET(
       localSnapshotState.event,
       resourceMap,
       playerDirectory,
+      selectedPosture,
+      requestedPosture ? "USER" : "INFERRED",
     );
     const portfolioPlan = buildPortfolioPlan(
       analysis,
@@ -2734,8 +2832,7 @@ export async function GET(
       },
     };
 
-    const staffOnly =
-      new URL(request.url).searchParams.get("staff") === "1";
+    const staffOnly = url.searchParams.get("staff") === "1";
 
     if (!staffOnly) {
       await persistRecommendationSnapshot(
