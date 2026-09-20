@@ -132,6 +132,13 @@ type ManagerResponse = {
       floor_5: number;
       ceiling_95: number;
     } | null;
+    game_theory_impact: {
+      band: "NEUTRAL" | "MATERIAL" | "DECISIVE";
+      probability_delta: number;
+      threshold_neutral: number;
+      threshold_decisive: number;
+      explanation: string;
+    };
     recommended_scenario: {
       id: string;
       label: string;
@@ -214,6 +221,27 @@ type ManagerResponse = {
     action: "BANK" | "HOLD" | "TRANSFER" | "STRUCTURAL_REPAIR" | "CHIP_PREP";
     headline: string;
     portfolio: PortfolioHealth;
+    decision_driver: "GAME_THEORY_TIEBREAK" | "FOOTBALL_PORTFOLIO" | "PORTFOLIO_STRUCTURE";
+    game_theory: {
+      band: "NEUTRAL" | "MATERIAL" | "DECISIVE";
+      probability_delta: number;
+      threshold_neutral: number;
+      threshold_decisive: number;
+      explanation: string;
+      used_as_tiebreak: boolean;
+      football_primary_transfer: {
+        out: string;
+        in: string;
+        raw_gain: number;
+        horizon_gain: number;
+      } | null;
+      selected_transfer: {
+        out: string;
+        in: string;
+        raw_gain: number;
+        horizon_gain: number;
+      } | null;
+    };
     free_transfers: number | null;
     hit_cost_for_one_extra_move: number | null;
     chip_signal: {
@@ -549,7 +577,9 @@ export function TeamRoomDashboard({
                       " · portfolio " +
                       portfolioPlan.portfolio.score +
                       "/100 · " +
-                      portfolioPlan.portfolio.status
+                      portfolioPlan.portfolio.status +
+                      " · game theory " +
+                      portfolioPlan.game_theory.band.toLowerCase()
                     : transfer
                       ? "+" +
                         transfer.raw_gain.toFixed(1) +
@@ -733,6 +763,29 @@ export function TeamRoomDashboard({
             </small>
           </div>
 
+          <div className={"portfolio-driver portfolio-driver-" + portfolioPlan.game_theory.band.toLowerCase()}>
+            <div>
+              <span>DECISION DRIVER</span>
+              <strong>
+                {portfolioPlan.decision_driver === "GAME_THEORY_TIEBREAK"
+                  ? "GAME THEORY TIE-BREAK"
+                  : portfolioPlan.decision_driver === "FOOTBALL_PORTFOLIO"
+                    ? "FOOTBALL + PORTFOLIO"
+                    : "PORTFOLIO STRUCTURE"}
+              </strong>
+            </div>
+            <div>
+              <span>GAME THEORY IMPACT</span>
+              <strong>{portfolioPlan.game_theory.band}</strong>
+              <small>
+                {(portfolioPlan.game_theory.probability_delta >= 0 ? "+" : "") +
+                  (portfolioPlan.game_theory.probability_delta * 100).toFixed(1)}
+                pp vs hold baseline
+              </small>
+            </div>
+            <p>{portfolioPlan.game_theory.explanation}</p>
+          </div>
+
           <div className="portfolio-health-grid">
             <div>
               <span>FREE TRANSFERS</span>
@@ -899,6 +952,11 @@ export function TeamRoomDashboard({
           </div>
 
           <p className="counterplay-objective">{counterPlay.objective}</p>
+          <div className={"counterplay-impact counterplay-impact-" + counterPlay.game_theory_impact.band.toLowerCase()}>
+            <span>GAME THEORY IMPACT</span>
+            <strong>{counterPlay.game_theory_impact.band}</strong>
+            <p>{counterPlay.game_theory_impact.explanation}</p>
+          </div>
 
           <div className="counterplay-hero-grid">
             <div>
