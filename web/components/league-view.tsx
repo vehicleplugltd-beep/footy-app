@@ -23,6 +23,49 @@ type LeaguePayload = {
   };
 };
 
+
+type EdgePlayer = {
+  id: number;
+  name: string;
+  team: string;
+  position: string;
+  price: number;
+  assistantScore: number;
+  opponent: string | null;
+  processBoost: number;
+};
+
+type EdgeSuggestion = {
+  player: EdgePlayer;
+  replacement: EdgePlayer | null;
+  reason: string;
+};
+
+type EdgeTeamAnalysis = {
+  teamName: string;
+  managerName: string;
+  currentCaptain: EdgePlayer | null;
+  recommendedCaptain: EdgePlayer | null;
+  weakLinks: EdgeSuggestion[];
+};
+
+type ManagerEdgePayload = {
+  manager_standing: Standing;
+  rival_standing: Standing | null;
+  analysis: {
+    nextEvent: { id: number; name: string; deadline_time: string } | null;
+    manager: EdgeTeamAnalysis;
+    rival: EdgeTeamAnalysis | null;
+    overlap: {
+      count: number;
+      common: EdgePlayer[];
+      managerOnly: EdgePlayer[];
+      rivalOnly: EdgePlayer[];
+    };
+  };
+  generated_at: string;
+};
+
 function rankDelta(row: Standing) {
   if (!row.last_rank || row.last_rank === row.rank) return 0;
   return row.last_rank - row.rank;
@@ -69,6 +112,9 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
+  const [edgePreview, setEdgePreview] = useState<ManagerEdgePayload | null>(null);
+  const [edgePreviewError, setEdgePreviewError] = useState<string | null>(null);
+  const [edgePreviewLoading, setEdgePreviewLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -122,6 +168,12 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
     }
   }, [selectedEntryId, sortedRows]);
 
+
+  useEffect(() => {
+    setEdgePreview(null);
+    setEdgePreviewError(null);
+  }, [selectedEntryId]);
+
   const recap = useMemo(() => {
     if (!sortedRows.length) return null;
     const leader = sortedRows[0];
@@ -164,6 +216,41 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
     selected && rivalAbove ? Math.max(0, rivalAbove.total - selected.total) : 0;
   const cushionBelow =
     selected && rivalBelow ? Math.max(0, selected.total - rivalBelow.total) : 0;
+
+  async function loadEdgePreview() {
+    if (!selected) return;
+
+    try {
+      setEdgePreviewLoading(true);
+      setEdgePreviewError(null);
+      const response = await fetch(
+        `/api/league/${leagueId}/manager/${selected.entry_id}`,
+        {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        },
+      );
+      const data = (await response.json()) as ManagerEdgePayload & {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Footy could not build this manager preview.",
+        );
+      }
+
+      setEdgePreview(data);
+    } catch (error) {
+      setEdgePreviewError(
+        error instanceof Error
+          ? error.message
+          : "Footy could not build this manager preview.",
+      );
+    } finally {
+      setEdgePreviewLoading(false);
+    }
+  }
 
   async function share() {
     const title = payload?.league?.name
@@ -416,7 +503,7 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
           </div>
 
           <div className="decision-gate-preview">
-            <span>DECISION LAYER · DATA GATED</span>
+            <span>FOUNDING BETA · REAL SQUAD DATA</span>
             <div className="decision-context">
               <div>
                 <span>Current mode</span>
@@ -432,32 +519,142 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
               </div>
             </div>
 
-            <div className="locked-moves">
-              <div className="locked-move">
-                <span>Transfer ranking</span>
-                <strong>Requires your current squad</strong>
-                <small>
-                  Compare each move against the rival gap, fixture horizon and
-                  overlapping ownership.
-                </small>
+            {!edgePreview ? (
+              <>
+                <p className="beta-preview-intro">
+                  Footy can now load this manager&apos;s public squad and compare
+                  it with the nearest rival using the existing underlying-process
+                  player model. League-win probability is deliberately excluded
+                  until that simulation layer is ready.
+                </p>
+                <button
+                  className="beta-preview-button"
+                  type="button"
+                  onClick={loadEdgePreview}
+                  disabled={edgePreviewLoading}
+                >
+                  {edgePreviewLoading
+                    ? "Building squad preview…"
+                    : "Generate founding beta preview"}
+                </button>
+                {edgePreviewError ? (
+                  <p className="beta-preview-error">{edgePreviewError}</p>
+                ) : null}
+
+                <div className="locked-moves">
+                  <div className="locked-move">
+                    <span>Squad comparison</span>
+                    <strong>Now available in beta</strong>
+                    <small>
+                      Current captain, model captain, transfer upgrades and
+                      direct-rival squad overlap.
+                    </small>
+                  </div>
+                  <div className="locked-move">
+                    <span>League-win probability</span>
+                    <strong>Still locked</strong>
+                    <small>
+                      No percentage will be shown until the simulation is
+                      implemented and frozen/tested against historical outcomes.
+                    </small>
+                  </div>
+                  <div className="locked-move">
+                    <span>Chip leverage</span>
+                    <strong>Still locked</strong>
+                    <small>
+                      Requires reliable chip-history sync across the relevant
+                      rivals before Footy ranks a chip window.
+                    </small>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="beta-analysis">
+                <div className="beta-analysis-top">
+                  <div>
+                    <span>Next Gameweek captain</span>
+                    <strong>
+                      {edgePreview.analysis.manager.recommendedCaptain?.name ??
+                        "No clear call"}
+                    </strong>
+                    <small>
+                      Current:{" "}
+                      {edgePreview.analysis.manager.currentCaptain?.name ?? "—"}
+                    </small>
+                  </div>
+                  <div>
+                    <span>Squad overlap</span>
+                    <strong>{edgePreview.analysis.overlap.count}/15</strong>
+                    <small>
+                      vs{" "}
+                      {edgePreview.rival_standing?.entry_name ??
+                        "nearest rival"}
+                    </small>
+                  </div>
+                </div>
+
+                <div className="beta-analysis-section">
+                  <span>Transfer upgrades</span>
+                  <div className="beta-move-grid">
+                    {edgePreview.analysis.manager.weakLinks
+                      .slice(0, 3)
+                      .map(({ player, replacement, reason }) => (
+                        <article key={player.id}>
+                          <strong>
+                            {player.name} <i>→</i>{" "}
+                            {replacement?.name ?? "HOLD"}
+                          </strong>
+                          <small>{reason}</small>
+                          {replacement ? (
+                            <b>
+                              {replacement.team}
+                              {replacement.opponent
+                                ? " · vs " + replacement.opponent
+                                : ""}
+                            </b>
+                          ) : null}
+                        </article>
+                      ))}
+                  </div>
+                </div>
+
+                <div className="beta-analysis-split">
+                  <div>
+                    <span>Your rival-only threats</span>
+                    {edgePreview.analysis.overlap.rivalOnly
+                      .slice(0, 4)
+                      .map((player) => (
+                        <small key={player.id}>
+                          {player.name} · {player.team}
+                        </small>
+                      ))}
+                    {!edgePreview.analysis.overlap.rivalOnly.length ? (
+                      <small>No unique rival players in the current squad.</small>
+                    ) : null}
+                  </div>
+                  <div>
+                    <span>Your differentials vs this rival</span>
+                    {edgePreview.analysis.overlap.managerOnly
+                      .slice(0, 4)
+                      .map((player) => (
+                        <small key={player.id}>
+                          {player.name} · {player.team}
+                        </small>
+                      ))}
+                    {!edgePreview.analysis.overlap.managerOnly.length ? (
+                      <small>Your squads currently fully overlap.</small>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="beta-limit-note">
+                  <strong>Not yet claimed:</strong> this is squad intelligence,
+                  not a league-win probability model. Probability deltas and
+                  chip leverage stay locked until they can be properly frozen
+                  and scored in Receipts.
+                </div>
               </div>
-              <div className="locked-move">
-                <span>Captain leverage</span>
-                <strong>Requires rival captain exposure</strong>
-                <small>
-                  Distinguish a sensible cover captain from a genuine chase
-                  opportunity.
-                </small>
-              </div>
-              <div className="locked-move">
-                <span>Chip timing</span>
-                <strong>Requires chip history + future fixtures</strong>
-                <small>
-                  Judge a chip by the mini-league swing it can create, not by a
-                  generic “best Gameweek” label.
-                </small>
-              </div>
-            </div>
+            )}
           </div>
         </section>
       ) : null}
