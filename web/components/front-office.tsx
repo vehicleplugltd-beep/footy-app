@@ -3,7 +3,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FplTeamDiscovery } from "@/lib/fpl-team";
-import type { ScoutIntelligencePayload, ScoutPlayerProfile } from "@/lib/fpl";
+import type {
+  ScoutIntelligencePayload,
+  ScoutPlayerProfile,
+  ScoutTeamProfile,
+} from "@/lib/fpl";
+import {
+  PlayerIntelDrawer,
+  TeamIntelDrawer,
+} from "@/components/intelligence-drawers";
 import { footyQuip } from "@/lib/footy-voice";
 
 function statusLabel(profile: ScoutPlayerProfile) {
@@ -15,11 +23,18 @@ function statusLabel(profile: ScoutPlayerProfile) {
 
 function PlayerRow({
   profile,
+  onOpen,
 }: {
   profile: ScoutPlayerProfile;
+  onOpen: (profile: ScoutPlayerProfile) => void;
 }) {
   return (
-    <article className="hq-player-row">
+    <button
+      type="button"
+      className="hq-player-row"
+      onClick={() => onOpen(profile)}
+      aria-label={"Open " + profile.player.name + " profile"}
+    >
       <div className="hq-player-name">
         <span>{statusLabel(profile)}</span>
         <strong>{profile.player.name}</strong>
@@ -43,7 +58,7 @@ function PlayerRow({
         </b>
         <small>EPA</small>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -54,6 +69,10 @@ export function FrontOffice({
 }) {
   const [data, setData] = useState<ScoutIntelligencePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlayer, setSelectedPlayer] =
+    useState<ScoutPlayerProfile | null>(null);
+  const [selectedTeam, setSelectedTeam] =
+    useState<ScoutTeamProfile | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -253,7 +272,14 @@ export function FrontOffice({
               </header>
               <div>
                 {essentials.map((profile) => (
-                  <PlayerRow key={profile.player.id} profile={profile} />
+                  <PlayerRow
+                    key={profile.player.id}
+                    profile={profile}
+                    onOpen={(item) => {
+                      setSelectedTeam(null);
+                      setSelectedPlayer(item);
+                    }}
+                  />
                 ))}
               </div>
             </section>
@@ -267,7 +293,14 @@ export function FrontOffice({
               </header>
               <div>
                 {watchlist.map((profile) => (
-                  <PlayerRow key={profile.player.id} profile={profile} />
+                  <PlayerRow
+                    key={profile.player.id}
+                    profile={profile}
+                    onOpen={(item) => {
+                      setSelectedTeam(null);
+                      setSelectedPlayer(item);
+                    }}
+                  />
                 ))}
               </div>
             </section>
@@ -282,13 +315,39 @@ export function FrontOffice({
               </header>
               <div>
                 {transfers.map((profile) => (
-                  <PlayerRow key={profile.player.id} profile={profile} />
+                  <PlayerRow
+                    key={profile.player.id}
+                    profile={profile}
+                    onOpen={(item) => {
+                      setSelectedTeam(null);
+                      setSelectedPlayer(item);
+                    }}
+                  />
                 ))}
               </div>
             </section>
           </div>
         ) : null}
       </section>
+
+      <PlayerIntelDrawer
+        profile={selectedPlayer}
+        teams={data?.teams ?? []}
+        onClose={() => setSelectedPlayer(null)}
+        onOpenTeam={(club) => {
+          setSelectedPlayer(null);
+          setSelectedTeam(club);
+        }}
+      />
+      <TeamIntelDrawer
+        team={selectedTeam}
+        players={data?.players ?? []}
+        onClose={() => setSelectedTeam(null)}
+        onOpenPlayer={(profile) => {
+          setSelectedTeam(null);
+          setSelectedPlayer(profile);
+        }}
+      />
     </div>
   );
 }

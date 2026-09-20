@@ -7,7 +7,13 @@ import type { FplPitchPlayer } from "@/lib/fpl-team";
 import type {
   ScoutIntelligencePayload,
   ScoutPlayerProfile,
+  ScoutTeamProfile,
 } from "@/lib/fpl";
+import {
+  ManagerIntelDrawer,
+  PlayerIntelDrawer,
+  TeamIntelDrawer,
+} from "@/components/intelligence-drawers";
 import { footyQuip } from "@/lib/footy-voice";
 
 type Standing = {
@@ -121,6 +127,12 @@ export function TeamRoomDashboard({
   const [manager, setManager] =
     useState<ManagerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlayer, setSelectedPlayer] =
+    useState<ScoutPlayerProfile | null>(null);
+  const [selectedTeam, setSelectedTeam] =
+    useState<ScoutTeamProfile | null>(null);
+  const [selectedManager, setSelectedManager] =
+    useState<Standing | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -331,7 +343,16 @@ export function TeamRoomDashboard({
         <div className="team-room-player-table">
           {squadRatings.map(
             ({ pick, profile, now, future }) => (
-              <article key={pick.id}>
+              <button
+                type="button"
+                key={pick.id}
+                className="team-room-player-row"
+                onClick={() => {
+                  setSelectedTeam(null);
+                  setSelectedPlayer(profile);
+                }}
+                aria-label={"Open " + pick.name + " player profile"}
+              >
                 <div className="team-room-player-name">
                   <strong>{pick.name}</strong>
                   <small>
@@ -373,7 +394,7 @@ export function TeamRoomDashboard({
                       "No current blocker"}
                   </small>
                 </div>
-              </article>
+              </button>
             ),
           )}
         </div>
@@ -510,18 +531,21 @@ export function TeamRoomDashboard({
 
           <div className="team-room-standings">
             {standingsWindow.map((row) => (
-              <div
+              <button
+                type="button"
                 key={row.entry_id}
                 className={
                   row.entry_id === teamId ? "you" : ""
                 }
+                onClick={() => setSelectedManager(row)}
+                aria-label={"Open " + row.entry_name + " opposition profile"}
               >
                 <span>#{row.rank}</span>
                 <strong>{row.entry_name}</strong>
                 <small>
                   {row.total} pts · GW {row.event_total}
                 </small>
-              </div>
+              </button>
             ))}
           </div>
         </article>
@@ -539,11 +563,14 @@ export function TeamRoomDashboard({
         <div className="team-room-rivals">
           {resourceRows.slice(0, 6).map(
             ({ standing, history }) => (
-              <article
+              <button
+                type="button"
                 key={standing.entry_id}
                 className={
                   standing.entry_id === teamId ? "you" : ""
                 }
+                onClick={() => setSelectedManager(standing)}
+                aria-label={"Open " + standing.entry_name + " opposition profile"}
               >
                 <div>
                   <strong>{standing.entry_name}</strong>
@@ -563,7 +590,7 @@ export function TeamRoomDashboard({
                   <span>Chips left</span>
                   <b>{history.currentHalfRemaining.length}</b>
                 </div>
-              </article>
+              </button>
             ),
           )}
         </div>
@@ -593,6 +620,30 @@ export function TeamRoomDashboard({
           Open Preview →
         </Link>
       </section>
+
+      <PlayerIntelDrawer
+        profile={selectedPlayer}
+        teams={scout?.teams ?? []}
+        onClose={() => setSelectedPlayer(null)}
+        onOpenTeam={(club) => {
+          setSelectedPlayer(null);
+          setSelectedTeam(club);
+        }}
+      />
+      <TeamIntelDrawer
+        team={selectedTeam}
+        players={scout?.players ?? []}
+        onClose={() => setSelectedTeam(null)}
+        onOpenPlayer={(profile) => {
+          setSelectedTeam(null);
+          setSelectedPlayer(profile);
+        }}
+      />
+      <ManagerIntelDrawer
+        leagueId={leagueId}
+        standing={selectedManager}
+        onClose={() => setSelectedManager(null)}
+      />
     </div>
   );
 }
