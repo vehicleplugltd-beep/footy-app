@@ -128,13 +128,15 @@ export default async function TeamPage({
         </section>
       ) : null}
 
-      <div id="today">
-        <NextMoveCommand
-          teamId={team.id}
-          leagueId={leagueId}
-          leagueName={selectedLeague?.name ?? null}
-        />
-      </div>
+      {selectedLeague ? (
+        <div id="today">
+          <NextMoveCommand
+            teamId={team.id}
+            leagueId={leagueId}
+            leagueName={selectedLeague.name}
+          />
+        </div>
+      ) : null}
 
       <section className="shell minimal-squad-layout" id="squad">
         <div className="team-pitch-panel minimal-panel">
