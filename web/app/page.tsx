@@ -11,7 +11,7 @@ export default function Home() {
         </div>
         <div className="nav-links">
           <a href="#how-it-works">How it works</a>
-          <a href="#pricing">Season passes</a>
+          <a href="#free">Everything free</a>
           <Link href="/results">Receipts</Link>
         </div>
       </nav>
@@ -167,49 +167,26 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="shell league-edge-pricing" id="pricing">
+      <section className="shell league-edge-pricing" id="free">
         <div className="league-edge-section-head">
-          <span className="eyebrow">One season. One price.</span>
-          <h2>Founding passes</h2>
-          <p>No auto-renew. Founding checkout opens only when the paid features are ready to deliver.</p>
+          <span className="eyebrow">Free while we build and test</span>
+          <h2>One Footy. Everything included.</h2>
+          <p>No passes, no checkout and no locked decision layer. Use the full product while we prove what actually helps people win mini-leagues.</p>
         </div>
         <div className="edge-price-grid">
-          <article>
-            <span>FREE</span>
-            <h3>£0</h3>
-            <p>League connect, standings and weekly recap.</p>
+          <article className="featured">
+            <span>FULL FOOTY ACCESS</span>
+            <h3>£0 <small>for now</small></h3>
+            <p>Everything we have built is included while Footy is being tested in the real world.</p>
             <ul>
-              <li>Team connect + league discovery</li>
-              <li>Live standings snapshot</li>
-              <li>Weekly recap</li>
-              <li>Shareable league link</li>
+              <li>Team-first onboarding + 2D squad</li>
+              <li>Mini-league command centre</li>
+              <li>League-specific transfers + captaincy</li>
+              <li>Rival Arsenal: chips, hits and free transfers</li>
+              <li>Player Database + Squad Lab</li>
+              <li>Freshness, trends and Receipts</li>
             </ul>
             <TeamConnectForm compact />
-          </article>
-          <article className="featured">
-            <span>FOUNDING PLAYER PASS</span>
-            <h3>£9.99 <small>this season</small></h3>
-            <p>For the manager who wants the move that improves their league position.</p>
-            <ul>
-              <li>Move ranking</li>
-              <li>Chase / protect mode</li>
-              <li>Rival chip tracker</li>
-              <li>Chip planner</li>
-              <li>Receipts detail</li>
-            </ul>
-            <Link href="/pro">See Player Pass →</Link>
-          </article>
-          <article>
-            <span>FOUNDING LEAGUE PASS</span>
-            <h3>£29 <small>up to 12 managers</small></h3>
-            <p>For the commissioner who wants the whole league involved.</p>
-            <ul>
-              <li>Player Pass features</li>
-              <li>12 league seats</li>
-              <li>Commissioner tools</li>
-              <li>Recap badge</li>
-            </ul>
-            <Link href="/pro">See League Pass →</Link>
           </article>
         </div>
       </section>
