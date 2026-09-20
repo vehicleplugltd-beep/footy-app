@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type Standing = {
   id: number;
-  entry: number;
+  entry_id: number;
   entry_name: string;
   player_name: string;
   rank: number;
@@ -194,7 +194,7 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
           {rows.slice(0, 50).map((row) => {
             const delta = rankDelta(row);
             return (
-              <div className="league-row" key={row.entry}>
+              <div className="league-row" key={row.entry_id}>
                 <span className="league-rank">{row.rank}</span>
                 <div>
                   <strong>{row.entry_name}</strong>
