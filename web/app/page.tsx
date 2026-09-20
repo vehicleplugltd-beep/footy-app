@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LeagueConnectForm } from "@/components/league-connect-form";
+import { TeamConnectForm } from "@/components/team-connect-form";
 
 export default function Home() {
   return (
@@ -25,15 +25,15 @@ export default function Home() {
             <span>Not the world.</span>
           </h1>
           <p>
-            Paste your classic league ID. Footy shows who is winning, why, and
-            what each manager should do next to beat the people they actually
-            care about.
+            Enter your FPL Team ID. Footy finds your team, shows it on the pitch,
+            discovers the mini-leagues you already belong to, and then opens the
+            battle around your own manager.
           </p>
-          <LeagueConnectForm />
+          <TeamConnectForm />
           <div className="league-edge-proof">
             <span>✓ No FPL password</span>
-            <span>✓ Automatic weekly sync</span>
-            <span>✓ Group-chat recap</span>
+            <span>✓ Visual squad view</span>
+            <span>✓ Finds your mini-leagues</span>
           </div>
         </div>
 
@@ -98,23 +98,23 @@ export default function Home() {
         <div className="league-edge-steps">
           <article>
             <span>1</span>
-            <h3>Paste your league ID</h3>
-            <p>Footy connects to the public classic-league data. No login needed.</p>
+            <h3>Enter your FPL team</h3>
+            <p>Use your Team ID or paste your public FPL team URL. No login needed.</p>
           </article>
           <article>
             <span>2</span>
-            <h3>We track the battle</h3>
-            <p>Standings, squads, captains, chips and Gameweek movement sync automatically.</p>
+            <h3>See your squad + leagues</h3>
+            <p>Your current XI appears on a 2D pitch and Footy finds the mini-leagues already attached to your team.</p>
           </article>
           <article>
             <span>3</span>
-            <h3>Paid beta: rank your moves</h3>
-            <p>Transfers, captaincy and chips will be judged by how they change your chance of winning this league.</p>
+            <h3>Choose the battle</h3>
+            <p>Select a mini-league and Footy opens directly on your manager, nearest rivals and decision context.</p>
           </article>
           <article>
             <span>4</span>
-            <h3>Share the recap</h3>
-            <p>After final scoring, Footy builds the weekly league recap automatically.</p>
+            <h3>Decide, prove, recap</h3>
+            <p>Fresh recommendations are frozen before the deadline, scored afterwards and turned into the weekly recap.</p>
           </article>
         </div>
       </section>
@@ -153,26 +153,17 @@ export default function Home() {
           <span className="eyebrow">Receipts</span>
           <h2>No pretending we knew it afterwards.</h2>
           <p>
-            Footy freezes league-win probabilities and top moves before the
-            deadline. After scoring finalises, we record what happened and keep
+            Footy freezes its latest pre-deadline captain and transfer shortlist.
+            After the Gameweek, we score what the manager actually did and keep
             the misses visible.
           </p>
         </div>
         <div className="receipt-demo">
           <span>GW6 · frozen before deadline</span>
-          <div>
-            <strong>Bench Warmers FC</strong>
-            <b>41%</b>
-          </div>
-          <div>
-            <strong>Expected Toulouse</strong>
-            <b>27%</b>
-          </div>
-          <div>
-            <strong>No Kane No Gain</strong>
-            <b>18%</b>
-          </div>
-          <small>Illustrative layout — real receipts appear from connected leagues.</small>
+          <div><strong>Captain shortlist</strong><b>Top 3</b></div>
+          <div><strong>Transfer shortlist</strong><b>Top 3</b></div>
+          <div><strong>Post-GW</strong><b>Scored</b></div>
+          <small>Real receipts are created automatically from connected managers.</small>
         </div>
       </section>
 
@@ -188,12 +179,12 @@ export default function Home() {
             <h3>£0</h3>
             <p>League connect, standings and weekly recap.</p>
             <ul>
-              <li>Classic league connect</li>
+              <li>Team connect + league discovery</li>
               <li>Live standings snapshot</li>
               <li>Weekly recap</li>
               <li>Shareable league link</li>
             </ul>
-            <LeagueConnectForm compact />
+            <TeamConnectForm compact />
           </article>
           <article className="featured">
             <span>FOUNDING PLAYER PASS</span>
@@ -228,7 +219,7 @@ export default function Home() {
           Footy is unofficial and not affiliated with the Premier League or
           Fantasy Premier League. Probabilities are estimates, not guarantees.
         </p>
-        <p>CONNECT → COMPARE → DECIDE → RECAP</p>
+        <p>TEAM → LEAGUE → RIVALS → DECIDE → RECAP</p>
       </footer>
     </main>
   );

@@ -126,7 +126,15 @@ function getBattleMode(row: Standing, leader: Standing) {
   };
 }
 
-export function LeagueView({ leagueId }: { leagueId: string }) {
+export function LeagueView({
+  leagueId,
+  initialEntryId,
+  initialRank,
+}: {
+  leagueId: string;
+  initialEntryId?: number;
+  initialRank?: number;
+}) {
   const [payload, setPayload] = useState<LeaguePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,7 +150,11 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`/api/league/${leagueId}`, {
+        const query = new URLSearchParams();
+        if (initialEntryId) query.set("team", String(initialEntryId));
+        if (initialRank) query.set("rank", String(initialRank));
+        const suffix = query.size ? `?${query.toString()}` : "";
+        const response = await fetch(`/api/league/${leagueId}${suffix}`, {
           signal: controller.signal,
           headers: { Accept: "application/json" },
           cache: "no-store",
@@ -173,7 +185,7 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
 
     void load();
     return () => controller.abort();
-  }, [leagueId]);
+  }, [initialEntryId, initialRank, leagueId]);
 
   const rows = payload?.standings?.results ?? [];
   const sortedRows = useMemo(
@@ -182,10 +194,10 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
   );
 
   useEffect(() => {
-    if (!selectedEntryId && sortedRows[0]) {
-      setSelectedEntryId(sortedRows[0].entry_id);
-    }
-  }, [selectedEntryId, sortedRows]);
+    if (selectedEntryId || !sortedRows[0]) return;
+    const ownTeam = initialEntryId && sortedRows.find((row) => row.entry_id === initialEntryId);
+    setSelectedEntryId(ownTeam?.entry_id ?? sortedRows[0].entry_id);
+  }, [initialEntryId, selectedEntryId, sortedRows]);
 
 
   useEffect(() => {
@@ -375,7 +387,11 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
           <div className="league-command-head">
             <div>
               <span className="eyebrow">League command centre</span>
-              <h2>Pick your manager. See your battle.</h2>
+              <h2>
+                {initialEntryId && selected.entry_id === initialEntryId
+                  ? "Your manager. Your battle."
+                  : "Pick a manager. See the battle."}
+              </h2>
               <p>
                 This starts with real standings data, then the Founding beta can
                 refresh official FPL squad data on demand and compare it with

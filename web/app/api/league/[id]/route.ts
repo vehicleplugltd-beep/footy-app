@@ -27,11 +27,14 @@ async function recordEvent(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const leagueId = id.replace(/\D/g, "");
+  const requestUrl = new URL(request.url);
+  const focusEntryId = requestUrl.searchParams.get("team")?.replace(/\D/g, "") || "";
+  const focusRank = requestUrl.searchParams.get("rank")?.replace(/\D/g, "") || "";
 
   if (!leagueId) {
     return NextResponse.json(
@@ -62,7 +65,11 @@ export async function GET(
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ leagueId }),
+      body: JSON.stringify({
+        leagueId,
+        focusEntryId: focusEntryId || null,
+        focusRank: focusRank || null,
+      }),
       cache: "no-store",
     },
   );
@@ -79,6 +86,8 @@ export async function GET(
       status: response.status,
       duration_ms: Date.now() - startedAt,
       error: response.ok ? null : String(data?.error || "unknown").slice(0, 180),
+      focus_entry_id: focusEntryId || null,
+      focus_rank: focusRank || null,
     },
   );
 

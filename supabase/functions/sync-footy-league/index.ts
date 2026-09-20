@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
   let cleanLeagueId = "";
 
   try {
-    const { leagueId } = await req.json();
+    const { leagueId, focusEntryId, focusRank } = await req.json();
     cleanLeagueId = String(leagueId || "").replace(/\D/g, "");
     if (!cleanLeagueId) {
       return new Response(JSON.stringify({ error: "A numeric classic league ID is required." }), {
@@ -77,9 +77,30 @@ Deno.serve(async (req: Request) => {
     }], "league_id");
 
     const payload = await fpl(`leagues-classic/${cleanLeagueId}/standings/`);
-    const results = payload?.standings?.results || [];
-    if (!results.length) {
+    const firstPageResults = payload?.standings?.results || [];
+    if (!firstPageResults.length) {
       throw new Error("No public standings returned for this classic league.");
+    }
+
+    const requestedEntryId = Number(String(focusEntryId || "").replace(/\D/g, ""));
+    const requestedRank = Number(String(focusRank || "").replace(/\D/g, ""));
+    let results = [...firstPageResults];
+
+    if (
+      requestedEntryId > 0 &&
+      !results.some((row: any) => Number(row.entry) === requestedEntryId) &&
+      requestedRank > 50
+    ) {
+      const pageNumber = Math.ceil(requestedRank / 50);
+      const focusPayload = await fpl(
+        `leagues-classic/${cleanLeagueId}/standings/?page_standings=${pageNumber}`,
+      );
+      const focusResults = focusPayload?.standings?.results || [];
+      const byEntry = new Map<number, any>();
+      for (const row of [...firstPageResults, ...focusResults]) {
+        byEntry.set(Number(row.entry), row);
+      }
+      results = [...byEntry.values()];
     }
 
     const now = new Date().toISOString();
@@ -96,7 +117,7 @@ Deno.serve(async (req: Request) => {
       last_error: null,
     }], "league_id");
 
-    const entries = results.slice(0, 50).map((row: any) => ({
+    const entries = results.map((row: any) => ({
       league_id: Number(cleanLeagueId),
       entry_id: Number(row.entry),
       entry_name: String(row.entry_name || ""),
@@ -138,7 +159,11 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify({
       league: { id: Number(cleanLeagueId), name: leagueName },
-      standings: { results: entries, has_next: Boolean(payload?.standings?.has_next) },
+      standings: {
+        results: entries,
+        has_next: Boolean(payload?.standings?.has_next),
+        focused_entry_id: requestedEntryId || null,
+      },
       recap: facts,
       sync_status: "READY",
     }), {
