@@ -120,6 +120,12 @@ function FixtureCard({
           {prediction.evidence.homeDefenceIndex?.toFixed(2) ?? "—"}
         </span>
         <span>
+          xG/xGA {prediction.evidence.homeXg?.toFixed(2) ?? "—"}/
+          {prediction.evidence.homeXga?.toFixed(2) ?? "—"} vs{" "}
+          {prediction.evidence.awayXg?.toFixed(2) ?? "—"}/
+          {prediction.evidence.awayXga?.toFixed(2) ?? "—"}
+        </span>
+        <span>
           Source {Math.round(prediction.evidence.sourceConfidence * 100)}%
         </span>
       </div>
@@ -127,7 +133,13 @@ function FixtureCard({
   );
 }
 
-export function ResearchHub() {
+export function ResearchHub({
+  initialPlayerId,
+  initialClub,
+}: {
+  initialPlayerId?: number;
+  initialClub?: string;
+}) {
   const [data, setData] = useState<ScoutIntelligencePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<ScoutPlayerProfile | null>(null);
@@ -137,6 +149,31 @@ export function ResearchHub() {
   const [club, setClub] = useState("ALL");
   const [sort, setSort] = useState("SIX");
   const [showAllPlayers, setShowAllPlayers] = useState(false);
+
+  useEffect(() => {
+    if (!data) return;
+    if (initialPlayerId) {
+      const profile = data.players.find(
+        (item) => item.player.id === initialPlayerId,
+      );
+      if (profile) {
+        setSelectedTeam(null);
+        setSelectedPlayer(profile);
+        return;
+      }
+    }
+    if (initialClub) {
+      const team = data.teams.find(
+        (item) =>
+          item.team.toLowerCase() === initialClub.toLowerCase() ||
+          item.shortName.toLowerCase() === initialClub.toLowerCase(),
+      );
+      if (team) {
+        setSelectedPlayer(null);
+        setSelectedTeam(team);
+      }
+    }
+  }, [data, initialClub, initialPlayerId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -160,7 +197,7 @@ export function ResearchHub() {
 
   const shortTerm = useMemo(() => {
     if (!data) return [];
-    return [...data.players]
+    return [...data.picks]
       .filter(
         (profile) =>
           profile.player.availability >= 75 &&
@@ -172,8 +209,7 @@ export function ResearchHub() {
           confidenceRank(b.decisionConfidence) - confidenceRank(a.decisionConfidence) ||
           b.score3 - a.score3 ||
           b.epa.epa - a.epa.epa,
-      )
-      .slice(0, 12);
+      );
   }, [data]);
 
   const longTerm = useMemo(() => {
@@ -183,7 +219,9 @@ export function ResearchHub() {
         (profile) =>
           profile.player.availability >= 75 &&
           profile.player.startReliability >= 0.7 &&
-          profile.horizon.length >= 3,
+          profile.horizon.length >= 3 &&
+          profile.status === "FUTURE_TARGET" &&
+          profile.decisionConfidence !== "LOW",
       )
       .sort(
         (a, b) =>
@@ -191,8 +229,7 @@ export function ResearchHub() {
           b.score8 - a.score8 ||
           b.bestWindow.score - a.bestWindow.score ||
           b.epa.epa - a.epa.epa,
-      )
-      .slice(0, 12);
+      );
   }, [data]);
 
   const filteredPlayers = useMemo(() => {
@@ -265,8 +302,8 @@ export function ResearchHub() {
             <h2>Players the current data puts near the front of the queue.</h2>
           </div>
           <small>
-            Role + minutes + regressed process + immediate fixtures + EPA. Low-confidence
-            profiles are pushed down rather than hidden.
+            {shortTerm.length} shortlisted players · role + minutes + regressed process +
+            immediate fixtures + EPA. This section shows the complete Scout shortlist.
           </small>
         </div>
         <div className="research-target-grid">
@@ -288,8 +325,8 @@ export function ResearchHub() {
             <h2>Players whose value survives beyond the next deadline.</h2>
           </div>
           <small>
-            Eight-Gameweek score, best three-Gameweek window, role-adjusted process,
-            availability and replacement-level EPA.
+            {longTerm.length} future-window signals · eight-Gameweek score, best three-Gameweek
+            window, role-adjusted process, availability and replacement-level EPA.
           </small>
         </div>
         <div className="research-target-grid">

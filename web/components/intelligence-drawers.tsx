@@ -1,6 +1,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type {
   ScoutPlayerProfile,
@@ -765,10 +766,10 @@ export function ManagerIntelDrawer({
         {error ? <div className="intel-error">{error}</div> : null}
         <div className="intel-manager-squad">
           {(manager?.squad ?? []).map((player) => (
-            <div key={player.id}>
+            <Link key={player.id} href={"/research?player=" + player.id}>
               <span><b>{player.name}</b><small>{player.team} · {player.position} · £{player.price.toFixed(1)}m</small></span>
               <strong>{player.assistantScore.toFixed(1)}<small>Footy</small></strong>
-            </div>
+            </Link>
           ))}
         </div>
       </section>

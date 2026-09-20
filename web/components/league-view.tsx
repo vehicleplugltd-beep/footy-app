@@ -815,12 +815,12 @@ export function LeagueView({
                   <div>
                     <span>Player trend radar</span>
                     {edgePreview.analysis.playerTrends.map((player) => (
-                      <small key={player.id}>
+                      <Link key={player.id} href={"/research?player=" + player.id}>
                         <b>{player.name}</b> · {player.team} · form {player.form.toFixed(1)}
                         {" · "}
                         {player.transfersNet >= 0 ? "+" : ""}
                         {player.transfersNet.toLocaleString()} transfers
-                      </small>
+                      </Link>
                     ))}
                   </div>
                   <div>
