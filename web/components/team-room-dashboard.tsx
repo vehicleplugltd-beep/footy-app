@@ -1050,7 +1050,7 @@ export function TeamRoomDashboard({
                     <button
                       key={horizon}
                       type="button"
-                      className={counterHorizon === horizon ? "active" : ""}
+                      className={activeCounterHorizon.horizon === horizon ? "active" : ""}
                       onClick={() => setCounterHorizon(horizon)}
                     >
                       {horizon}GW
