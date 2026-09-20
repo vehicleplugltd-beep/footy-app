@@ -82,6 +82,59 @@ type ManagerEdgePayload = {
       defenceIndex: number;
     }>;
   };
+  league_strategy?: {
+    mode: "PROTECT" | "CHASE" | "RECOVER";
+    gap_to_leader: number;
+    rival_entry_id: number | null;
+    rival_name: string | null;
+    caveat: string;
+    captain_moves: Array<{
+      player: EdgePlayer;
+      rival_owns: boolean;
+      league_score: number;
+      rationale: string;
+    }>;
+    transfer_moves: Array<{
+      out: EdgePlayer;
+      in: EdgePlayer;
+      raw_gain: number;
+      league_score: number;
+      rival_owns: boolean;
+      process_adjustment: number;
+      rationale: string;
+    }>;
+  };
+  resource_map?: Array<{
+    standing: Standing;
+    history: {
+      currentEvent: number;
+      currentHalf: 1 | 2;
+      currentHalfRemaining: string[];
+      estimatedFreeTransfers: number;
+      freeTransferEstimateEvent: number;
+      freeTransferConfidence: "HIGH" | "MEDIUM";
+      totalTransfers: number;
+      totalHitCost: number;
+      hitGameweeks: number;
+      recentTransfers: number;
+      recentHitCost: number;
+      activity: "AGGRESSIVE" | "ACTIVE" | "PATIENT";
+      chips: Array<{
+        code: string;
+        label: string;
+        event: number;
+        half: 1 | 2;
+        time: string;
+      }>;
+    };
+  }>;
+  resource_advice?: {
+    status: "ADVANTAGE" | "EVEN" | "THREAT" | "UNKNOWN";
+    chip_edge: string[];
+    chip_threats: string[];
+    free_transfer_edge: number;
+    recommendation: string;
+  } | null;
   generated_at: string;
 };
 
@@ -653,29 +706,90 @@ export function LeagueView({
                 </div>
 
                 <div className="beta-analysis-section">
-                  <span>Transfer upgrades</span>
+                  <span>League-specific transfer ranking</span>
                   <div className="beta-move-grid">
-                    {edgePreview.analysis.manager.weakLinks
-                      .slice(0, 3)
-                      .map(({ player, replacement, reason }) => (
-                        <article key={player.id}>
-                          <strong>
-                            {player.name} <i>→</i>{" "}
-                            {replacement?.name ?? "HOLD"}
-                          </strong>
-                          <small>{reason}</small>
-                          {replacement ? (
+                    {(edgePreview.league_strategy?.transfer_moves ?? []).length
+                      ? edgePreview.league_strategy?.transfer_moves.map((move) => (
+                          <article key={move.out.id}>
+                            <strong>
+                              {move.out.name} <i>→</i> {move.in.name}
+                            </strong>
+                            <small>{move.rationale}</small>
                             <b>
-                              {replacement.team}
-                              {replacement.opponent
-                                ? " · vs " + replacement.opponent
-                                : ""}
+                              {move.in.team}
+                              {move.in.opponent ? " · vs " + move.in.opponent : ""}
+                              {" · "}model gain {move.raw_gain.toFixed(1)}
                             </b>
-                          ) : null}
+                          </article>
+                        ))
+                      : edgePreview.analysis.manager.weakLinks
+                          .slice(0, 3)
+                          .map(({ player, replacement, reason }) => (
+                            <article key={player.id}>
+                              <strong>
+                                {player.name} <i>→</i>{" "}
+                                {replacement?.name ?? "HOLD"}
+                              </strong>
+                              <small>{reason}</small>
+                            </article>
+                          ))}
+                  </div>
+                  {edgePreview.league_strategy ? (
+                    <small className="league-strategy-note">
+                      {edgePreview.league_strategy.caveat}
+                    </small>
+                  ) : null}
+                </div>
+
+                {edgePreview.resource_map?.length ? (
+                  <div className="rival-arsenal">
+                    <div className="rival-arsenal-head">
+                      <div>
+                        <span>Rival Arsenal</span>
+                        <strong>Resources behind the points gap</strong>
+                      </div>
+                      {edgePreview.resource_advice ? (
+                        <b
+                          className={`resource-status ${edgePreview.resource_advice.status.toLowerCase()}`}
+                        >
+                          {edgePreview.resource_advice.status}
+                        </b>
+                      ) : null}
+                    </div>
+
+                    <div className="rival-resource-grid">
+                      {edgePreview.resource_map.map(({ standing, history }) => (
+                        <article key={standing.entry_id}>
+                          <div>
+                            <span>#{standing.rank}</span>
+                            <strong>{standing.entry_name}</strong>
+                          </div>
+                          <b>
+                            {history.estimatedFreeTransfers} FT
+                            <small>
+                              {" "}for GW{history.freeTransferEstimateEvent}
+                            </small>
+                          </b>
+                          <small>
+                            Chips left H{history.currentHalf}:{" "}
+                            {history.currentHalfRemaining.join(", ") || "None"}
+                          </small>
+                          <small>
+                            Last 4 GWs: {history.recentTransfers} transfers ·{" "}
+                            {history.recentHitCost} hit pts ·{" "}
+                            {history.activity.toLowerCase()}
+                          </small>
                         </article>
                       ))}
+                    </div>
+
+                    {edgePreview.resource_advice ? (
+                      <p className="resource-advice">
+                        {edgePreview.resource_advice.recommendation}
+                      </p>
+                    ) : null}
                   </div>
-                </div>
+                ) : null}
 
                 <div className="beta-analysis-split">
                   <div>
@@ -729,6 +843,13 @@ export function LeagueView({
                     ))}
                   </div>
                 </div>
+
+                <Link
+                  className="open-squad-lab"
+                  href={`/squad-lab?team=${selected.entry_id}&league=${leagueId}`}
+                >
+                  Simulate these moves in Squad Lab →
+                </Link>
 
                 <div className="beta-limit-note">
                   <strong>Not yet claimed:</strong> this is squad intelligence,

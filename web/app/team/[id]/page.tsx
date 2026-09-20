@@ -41,7 +41,11 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     <main className="league-edge-app">
       <nav className="nav shell">
         <Link className="brand brand-link" href="/"><span className="brand-mark">F</span><span>Footy</span></Link>
-        <div className="nav-links"><Link href="/results">Receipts</Link><Link href="/pro">Player Pass</Link></div>
+        <div className="nav-links">
+          <Link href={`/squad-lab?team=${team.id}`}>Squad Lab</Link>
+          <Link href="/results">Receipts</Link>
+          <Link href="/pro">Player Pass</Link>
+        </div>
       </nav>
 
       <section className="shell team-discovery-hero">
@@ -92,6 +96,16 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             }) : <div className="league-state">No classic mini-league is currently attached to this team.</div>}
           </div>
         </aside>
+      </section>
+
+      <section className="shell team-flow-note team-lab-cta">
+        <span>SQUAD LAB · EXPLORE BEFORE YOU COMMIT</span>
+        <strong>Build a mock squad with Footy&apos;s player database.</strong>
+        <p>
+          Search all FPL players, filter by price, form, xGI and underlying team
+          process, then test different squad structures on the pitch.
+        </p>
+        <Link href={`/squad-lab?team=${team.id}`}>Open my squad in Squad Lab →</Link>
       </section>
 
       <section className="shell team-flow-note">

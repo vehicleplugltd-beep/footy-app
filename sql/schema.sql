@@ -781,3 +781,29 @@ create index if not exists idx_footy_fpl_reco_deadline
 alter table public.footy_fpl_recommendation_snapshots enable row level security;
 revoke all on table public.footy_fpl_recommendation_snapshots from public, anon, authenticated;
 grant select, insert, update, delete on table public.footy_fpl_recommendation_snapshots to service_role;
+
+
+-- Private Footy owner/admin access. Server/service-role only.
+create table if not exists public.footy_admin_credentials (
+  id text primary key,
+  key_hash text not null,
+  label text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.footy_admin_sessions (
+  token_hash text primary key,
+  credential_id text not null references public.footy_admin_credentials(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+alter table public.footy_admin_credentials enable row level security;
+alter table public.footy_admin_sessions enable row level security;
+
+revoke all on table public.footy_admin_credentials from public, anon, authenticated;
+revoke all on table public.footy_admin_sessions from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_admin_credentials to service_role;
+grant select, insert, update, delete on table public.footy_admin_sessions to service_role;
