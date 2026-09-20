@@ -2334,6 +2334,7 @@ export type LeagueManagerEdgeAnalysis = {
       availability: number;
     }>;
   }>;
+  counterPlayTransferPool: RankedPlayer[];
   chipRadar: ChipSignal[];
 };
 
@@ -2474,8 +2475,44 @@ export async function getLeagueManagerEdgeAnalysis(
     next,
   );
 
+  // CounterPlay needs a bounded future transfer universe, not just today's
+  // shortlisted replacements. Rank a small football-qualified pool by the
+  // weighted 5GW process/fixture score so path simulation can change the squad
+  // again after GW1 without shipping the entire FPL player set to the client.
+  const horizonScoreMaps = horizonRankings.slice(0, 5).map(
+    (rows) => new Map(rows.map((player) => [player.id, player.assistantScore])),
+  );
+  const counterPlayTransferPool = ["GKP", "DEF", "MID", "FWD"].flatMap(
+    (position) =>
+      ranked
+        .filter(
+          (player) =>
+            player.position === position &&
+            player.availability >= 75 &&
+            player.price > 0,
+        )
+        .map((player) => {
+          const weightedHorizon = horizonScoreMaps.reduce(
+            (sum, scores, index) =>
+              sum +
+              (scores.get(player.id) ?? 0) *
+                (index === 0 ? 1 : index === 1 ? 0.82 : index === 2 ? 0.68 : 0.55),
+            0,
+          );
+          return { player, weightedHorizon };
+        })
+        .sort(
+          (a, b) =>
+            b.weightedHorizon - a.weightedHorizon ||
+            b.player.valueScore - a.player.valueScore,
+        )
+        .slice(0, position === "GKP" ? 10 : 16)
+        .map((item) => item.player),
+  );
+
   const relevantPlayerIds = new Set([
     ...manager.squad.map((player) => player.id),
+    ...counterPlayTransferPool.map((player) => player.id),
     ...rivals.flatMap((team) => team.squad.map((player) => player.id)),
     ...manager.weakLinks
       .map((move) => move.replacement?.id ?? null)
@@ -2599,6 +2636,7 @@ export async function getLeagueManagerEdgeAnalysis(
     futurePlan,
     managerFuturePlan,
     counterPlayHorizon,
+    counterPlayTransferPool,
     chipRadar,
   };
 }
