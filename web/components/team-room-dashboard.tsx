@@ -27,6 +27,8 @@ type Standing = {
   total: number;
 };
 
+type CounterPosture = "PROTECT" | "HYBRID" | "ATTACK";
+
 type CounterPathResource = {
   starting_free_transfers: number;
   ending_free_transfers: number;
@@ -153,6 +155,8 @@ type ManagerResponse = {
     managers_in_local_matrix: number;
     iterations: number;
     strategy_mode: "PROTECT" | "CHASE" | "RECOVER";
+    posture: CounterPosture;
+    posture_source: "USER" | "INFERRED";
     objective: string;
     baseline: {
       objective_probability: number;
@@ -400,6 +404,9 @@ export function TeamRoomDashboard({
   const [selectedManager, setSelectedManager] =
     useState<Standing | null>(null);
   const [counterHorizon, setCounterHorizon] = useState<1 | 3 | 5>(3);
+  const [counterPosture, setCounterPosture] = useState<CounterPosture | null>(null);
+  const [counterPostureLoading, setCounterPostureLoading] = useState(false);
+  const [counterPostureError, setCounterPostureError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -468,6 +475,37 @@ export function TeamRoomDashboard({
     return () => controller.abort();
   }, [teamId, leagueId, leagueRank]);
 
+  async function rerunCounterPosture(posture: CounterPosture) {
+    if (counterPostureLoading) return;
+    setCounterPosture(posture);
+    setCounterPostureLoading(true);
+    setCounterPostureError(null);
+    try {
+      const response = await fetch(
+        "/api/league/" +
+          leagueId +
+          "/manager/" +
+          teamId +
+          "?staff=1&posture=" +
+          posture.toLowerCase(),
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ManagerResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error || "CounterPlay could not re-run this posture.");
+      }
+      setManager(body);
+    } catch (err) {
+      setCounterPostureError(
+        err instanceof Error
+          ? err.message
+          : "CounterPlay could not re-run this posture.",
+      );
+    } finally {
+      setCounterPostureLoading(false);
+    }
+  }
+
   const squadRatings = useMemo(() => {
     if (!scout) return [];
 
@@ -532,6 +570,8 @@ export function TeamRoomDashboard({
   const intelligenceLoading = !error && (!scout || !manager);
   const portfolioPlan = manager?.portfolio_plan ?? null;
   const counterPlay = manager?.counterplay ?? null;
+  const activeCounterPosture =
+    counterPosture ?? counterPlay?.posture ?? "HYBRID";
   const counterHorizonKey = String(counterHorizon) as "1" | "3" | "5";
   const activeCounterHorizon =
     counterPlay?.horizon_results?.[counterHorizonKey] ??
@@ -1023,14 +1063,57 @@ export function TeamRoomDashboard({
             <div>
               <span>COUNTERPLAY</span>
               <h2>
-                {counterPlay.strategy_mode} ·{" "}
+                {activeCounterPosture} ·{" "}
                 {counterPlay.recommended_scenario?.label ?? "Hold structure"}
               </h2>
             </div>
             <small>
+              Footy state: {counterPlay.strategy_mode} ·{" "}
               {counterPlay.iterations.toLocaleString()} correlated simulations ·{" "}
-              {counterPlay.managers_in_local_matrix} league squads in local exposure matrix
+              {counterPlay.managers_in_local_matrix} league squads
             </small>
+          </div>
+
+          <div className="counterplay-posture-shell">
+            <div className="counterplay-posture-copy">
+              <span>YOUR POSTURE</span>
+              <strong>Choose how Footy should optimise this league position.</strong>
+              <small>
+                Inferred state: {counterPlay.strategy_mode}. Your posture changes the
+                simulation objective and future path thresholds, not which moves clear
+                the football-quality gate.
+              </small>
+            </div>
+            <div className="counterplay-posture-toggle" aria-label="CounterPlay posture">
+              {(["PROTECT", "HYBRID", "ATTACK"] as const).map((posture) => (
+                <button
+                  key={posture}
+                  type="button"
+                  className={activeCounterPosture === posture ? "active" : ""}
+                  aria-pressed={activeCounterPosture === posture}
+                  disabled={counterPostureLoading}
+                  onClick={() => void rerunCounterPosture(posture)}
+                >
+                  <b>{posture}</b>
+                  <small>
+                    {posture === "PROTECT"
+                      ? "Defend control"
+                      : posture === "ATTACK"
+                        ? "Maximise upside"
+                        : "Balance both sides"}
+                  </small>
+                </button>
+              ))}
+            </div>
+            <div className="counterplay-posture-status" aria-live="polite">
+              {counterPostureLoading
+                ? "Re-running 10,000 correlated simulations…"
+                : counterPostureError
+                  ? counterPostureError
+                  : counterPlay.posture_source === "USER"
+                    ? "Using your selected posture."
+                    : "Using Footy’s inferred posture."}
+            </div>
           </div>
 
           <p className="counterplay-objective">{counterPlay.objective}</p>
