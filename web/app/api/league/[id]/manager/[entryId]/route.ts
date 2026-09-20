@@ -45,6 +45,41 @@ type LocalExposure = {
   effective_exposure: number;
 };
 
+async function localPlayerDirectory() {
+  const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return new Map<number, { id: number; name: string; team: string }>();
+
+  const response = await fetch(
+    `${url}/rest/v1/footy_fpl_snapshots?select=payload&snapshot_key=eq.bootstrap-static&limit=1`,
+    {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) return new Map<number, { id: number; name: string; team: string }>();
+  const rows = (await response.json()) as Array<{
+    payload?: {
+      elements?: Array<{ id: number; web_name: string; team: number }>;
+      teams?: Array<{ id: number; short_name: string }>;
+    };
+  }>;
+  const payload = rows[0]?.payload;
+  const teams = new Map(
+    (payload?.teams ?? []).map((team) => [Number(team.id), team.short_name]),
+  );
+  return new Map(
+    (payload?.elements ?? []).map((player) => [
+      Number(player.id),
+      {
+        id: Number(player.id),
+        name: player.web_name,
+        team: teams.get(Number(player.team)) ?? "—",
+      },
+    ]),
+  );
+}
+
 async function latestLeagueSnapshots(leagueId: number): Promise<{
   event: number | null;
   snapshots: EntrySnapshot[];
@@ -539,6 +574,11 @@ function buildCounterPlay(
   localExposure: Map<number, LocalExposure>,
   snapshots: EntrySnapshot[],
   snapshotEvent: number | null,
+  resourceMap: Array<{
+    standing: LeagueEntry;
+    history: Awaited<ReturnType<typeof getRivalResourceHistory>>;
+  }>,
+  playerDirectory: Map<number, { id: number; name: string; team: string }>,
 ) {
   const rivalByEntry = new Map(
     analysis.rivals.map((team) => [team.entryId, team]),
@@ -575,6 +615,80 @@ function buildCounterPlay(
           (item) => item.standing.entry_id === chaserStandings[0].entry_id,
         ) ?? null
       : null;
+
+  const resourceByEntry = new Map(
+    resourceMap.map((item) => [item.standing.entry_id, item.history]),
+  );
+  const rivalVectorMap = new Map<
+    number,
+    Array<{
+      transfer: { out: RankedPlayer; in: RankedPlayer } | null;
+      label: string;
+      raw_weight: number;
+      model_share: number;
+    }>
+  >();
+
+  for (const rival of selectedRivals) {
+    const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
+    const moveVectors = rival.team.weakLinks
+      .filter(
+        (move) =>
+          move.replacement &&
+          move.timing === "NOW" &&
+          move.gain >= move.minimumGain,
+      )
+      .slice(0, 3)
+      .map((move) => ({
+        transfer: { out: move.player, in: move.replacement! },
+        label: `${move.player.name} → ${move.replacement!.name}`,
+        raw_weight: Math.exp(Math.max(-2, Math.min(2, move.gain / 2))),
+        model_share: 0,
+      }));
+    const holdWeight =
+      history?.estimatedFreeTransfers != null &&
+      history.estimatedFreeTransfers >= 4
+        ? 0.7
+        : 1.0;
+    const vectors = [
+      {
+        transfer: null,
+        label: "HOLD",
+        raw_weight: holdWeight,
+        model_share: 0,
+      },
+      ...moveVectors,
+    ];
+    const totalWeight = vectors.reduce(
+      (sum, vector) => sum + vector.raw_weight,
+      0,
+    );
+    rivalVectorMap.set(
+      rival.standing.entry_id,
+      vectors.map((vector) => ({
+        ...vector,
+        model_share:
+          totalWeight > 0 ? vector.raw_weight / totalWeight : 0,
+      })),
+    );
+  }
+
+  const rivalTransferForIteration = (
+    entryId: number,
+    iteration: number,
+  ) => {
+    const vectors = rivalVectorMap.get(entryId) ?? [];
+    if (!vectors.length) return null;
+    const draw = deterministicUnit(
+      (entryId * 83492791) ^ ((iteration + 7) * 2654435761),
+    );
+    let cumulative = 0;
+    for (const vector of vectors) {
+      cumulative += vector.model_share;
+      if (draw <= cumulative) return vector.transfer;
+    }
+    return vectors[vectors.length - 1]?.transfer ?? null;
+  };
 
   const candidates: Array<{
     id: string;
@@ -654,7 +768,7 @@ function buildCounterPlay(
         const rivalScore = simulateTeamScore(
           rival.team,
           iteration,
-          null,
+          rivalTransferForIteration(rival.standing.entry_id, iteration),
           rival.team.recommendedCaptain ?? rival.team.currentCaptain,
         );
         const managerTotal = managerStart + managerScore;
@@ -740,7 +854,10 @@ function buildCounterPlay(
   const localMatrix = [...localExposure.values()]
     .map((item) => ({
       ...item,
-      player: playerById.get(item.player_id) ?? null,
+      player:
+        playerById.get(item.player_id) ??
+        playerDirectory.get(item.player_id) ??
+        null,
     }))
     .filter((item) => item.player)
     .sort(
@@ -787,25 +904,8 @@ function buildCounterPlay(
   );
 
   const rivalVectors = selectedRivals.map((rival) => {
-    const vectors = rival.team.weakLinks
-      .filter(
-        (move) =>
-          move.replacement &&
-          move.timing === "NOW" &&
-          move.gain >= move.minimumGain,
-      )
-      .slice(0, 3)
-      .map((move) => ({
-        out: move.player,
-        in: move.replacement!,
-        gain: move.gain,
-        horizon_gain: move.horizonGain,
-        relative_weight: Math.exp(Math.max(-2, Math.min(2, move.gain / 2))),
-      }));
-    const weightTotal = vectors.reduce(
-      (sum, vector) => sum + vector.relative_weight,
-      0,
-    );
+    const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
+    const vectors = rivalVectorMap.get(rival.standing.entry_id) ?? [];
     return {
       entry_id: rival.standing.entry_id,
       name: rival.standing.entry_name,
@@ -816,12 +916,16 @@ function buildCounterPlay(
         Number(
           snapshotByEntry.get(rival.standing.entry_id)?.entry_history?.bank ?? 0,
         ) / 10,
+      estimated_free_transfers: history?.estimatedFreeTransfers ?? null,
+      remaining_chips: history?.currentHalfRemaining ?? [],
+      activity: history?.activity ?? null,
       transfer_vectors: vectors.map((vector) => ({
-        ...vector,
-        model_share:
-          weightTotal > 0 ? vector.relative_weight / weightTotal : 0,
+        out: vector.transfer?.out ?? null,
+        in: vector.transfer?.in ?? null,
+        label: vector.label,
+        model_share: vector.model_share,
         caveat:
-          "Model share is a relative Footy transfer-vector weight, not an observed probability of what the rival will do.",
+          "Model share is a relative Footy response weight used inside the simulation, not an observed probability of what the rival will do.",
       })),
     };
   });
@@ -853,7 +957,7 @@ function buildCounterPlay(
       "The 10,000-run simulator is a model distribution, not a guarantee of future results.",
       "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
-      "Rival transfer vectors are model-weighted plausible moves, not claims about a rival's intent.",
+      "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
       "The first CounterPlay release models next-deadline pressure control; 3GW/5GW path simulation is the next extension.",
     ],
   };
@@ -1504,12 +1608,13 @@ export async function GET(
         list.indexOf(value) === index,
     );
 
-    const [analysis, localSnapshotState] = await Promise.all([
+    const [analysis, localSnapshotState, playerDirectory] = await Promise.all([
       getLeagueManagerEdgeAnalysis(
         managerEntryId,
         analysisRivalIds,
       ),
       latestLeagueSnapshots(leagueId),
+      localPlayerDirectory(),
     ]);
     const decisionQuality = await decisionQualityHistory(
       leagueId,
@@ -1594,6 +1699,8 @@ export async function GET(
       localExposure,
       localSnapshotState.snapshots,
       localSnapshotState.event,
+      resourceMap,
+      playerDirectory,
     );
     const portfolioPlan = buildPortfolioPlan(
       analysis,
