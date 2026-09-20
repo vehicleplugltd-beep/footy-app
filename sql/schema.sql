@@ -640,3 +640,91 @@ create policy "alert_events_update_own"
   for update to authenticated
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
+
+
+-- Footy League Edge: automated mini-league product.
+create table if not exists public.footy_fpl_leagues (
+  league_id bigint primary key,
+  league_name text,
+  last_synced_at timestamptz,
+  last_deep_synced_at timestamptz,
+  current_event integer,
+  sync_status text not null default 'PENDING'
+    check (sync_status in ('PENDING','SYNCING','READY','ERROR')),
+  last_error text,
+  connect_count integer not null default 1,
+  first_connected_at timestamptz not null default now(),
+  last_connected_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.footy_fpl_league_entries (
+  league_id bigint not null references public.footy_fpl_leagues(league_id) on delete cascade,
+  entry_id bigint not null,
+  entry_name text not null,
+  player_name text,
+  rank integer,
+  last_rank integer,
+  event_total integer,
+  total integer,
+  synced_at timestamptz not null default now(),
+  primary key (league_id, entry_id)
+);
+
+create index if not exists idx_footy_fpl_league_entries_rank
+  on public.footy_fpl_league_entries(league_id, rank);
+
+create table if not exists public.footy_fpl_entry_snapshots (
+  league_id bigint not null references public.footy_fpl_leagues(league_id) on delete cascade,
+  entry_id bigint not null,
+  event integer not null,
+  picks jsonb not null default '[]'::jsonb,
+  active_chip text,
+  automatic_subs jsonb not null default '[]'::jsonb,
+  entry_history jsonb not null default '{}'::jsonb,
+  synced_at timestamptz not null default now(),
+  primary key (league_id, entry_id, event)
+);
+
+create table if not exists public.footy_fpl_league_recaps (
+  league_id bigint not null references public.footy_fpl_leagues(league_id) on delete cascade,
+  event integer not null,
+  facts jsonb not null,
+  recap_copy text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (league_id, event)
+);
+
+create table if not exists public.footy_fpl_receipts (
+  league_id bigint not null references public.footy_fpl_leagues(league_id) on delete cascade,
+  event integer not null,
+  frozen_at timestamptz not null,
+  probabilities jsonb not null,
+  top_moves jsonb not null default '{}'::jsonb,
+  outcome jsonb,
+  scored_at timestamptz,
+  created_at timestamptz not null default now(),
+  primary key (league_id, event)
+);
+
+alter table public.footy_fpl_leagues enable row level security;
+alter table public.footy_fpl_league_entries enable row level security;
+alter table public.footy_fpl_entry_snapshots enable row level security;
+alter table public.footy_fpl_league_recaps enable row level security;
+alter table public.footy_fpl_receipts enable row level security;
+
+revoke all on table public.footy_fpl_leagues,
+  public.footy_fpl_league_entries,
+  public.footy_fpl_entry_snapshots,
+  public.footy_fpl_league_recaps,
+  public.footy_fpl_receipts
+from public, anon, authenticated;
+
+grant select, insert, update, delete on table public.footy_fpl_leagues,
+  public.footy_fpl_league_entries,
+  public.footy_fpl_entry_snapshots,
+  public.footy_fpl_league_recaps,
+  public.footy_fpl_receipts
+to service_role;
