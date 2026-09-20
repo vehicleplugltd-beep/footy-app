@@ -840,11 +840,25 @@ function buildCounterPlay(
         reason,
       };
     })
-    .sort(
-      (a, b) =>
-        b.objective_probability - a.objective_probability ||
-        b.mean_score - a.mean_score,
-    );
+    .sort((a, b) => {
+      const probabilityGap =
+        b.objective_probability - a.objective_probability;
+      if (Math.abs(probabilityGap) > 0.01) return probabilityGap;
+
+      // If objective probability is effectively tied, strategy mode decides
+      // which tail matters. Protecting a lead prefers floor/tighter variance;
+      // chasing a gap prefers ceiling/upside. Raw mean only breaks the final tie.
+      if (leagueStrategy.mode === "PROTECT") {
+        const floorGap = b.floor_5 - a.floor_5;
+        if (Math.abs(floorGap) > 0.15) return floorGap;
+        const volatilityGap = a.volatility - b.volatility;
+        if (Math.abs(volatilityGap) > 0.05) return volatilityGap;
+      } else {
+        const ceilingGap = b.ceiling_95 - a.ceiling_95;
+        if (Math.abs(ceilingGap) > 0.15) return ceilingGap;
+      }
+      return b.mean_score - a.mean_score;
+    });
 
   const playerById = new Map<number, RankedPlayer>();
   for (const team of [analysis.manager, ...analysis.rivals]) {
@@ -958,6 +972,7 @@ function buildCounterPlay(
       "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
       "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
+      "When objective probabilities are within one percentage point, PROTECT mode uses downside floor/tighter variance as the tie-break; CHASE/RECOVER uses upside ceiling. Raw expected score only breaks the final tie.",
       "The first CounterPlay release models next-deadline pressure control; 3GW/5GW path simulation is the next extension.",
     ],
   };
