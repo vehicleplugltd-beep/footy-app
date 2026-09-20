@@ -393,7 +393,23 @@ export function PlayerIntelDrawer({
           </div>
           <div className="intel-stat-list">
             <p><span>Official xG / 90</span><b>{player.xgPer90.toFixed(2)}</b></p>
+            <p>
+              <span>Verified NPxG / 90</span>
+              <b>
+                {player.nonPenaltyXgiShareMinutes > 0
+                  ? player.npxgPer90.toFixed(2)
+                  : "—"}
+              </b>
+            </p>
             <p><span>Official xA / 90</span><b>{player.xaPer90.toFixed(2)}</b></p>
+            <p>
+              <span>Team non-penalty xGI share</span>
+              <b>
+                {player.nonPenaltyXgiShare == null
+                  ? "—"
+                  : (player.nonPenaltyXgiShare * 100).toFixed(0) + "%"}
+              </b>
+            </p>
             <p><span>Regressed xGI / 90</span><b>{(profile.evidence?.regressedXgiPer90 ?? player.xgiPer90).toFixed(2)}</b></p>
             <p><span>Prior xGI / 90</span><b>{profile.evidence?.priorAvailable ? profile.evidence.priorXgiPer90.toFixed(2) : "—"}</b></p>
             <p><span>Current evidence weight</span><b>{profile.evidence ? Math.round(profile.evidence.currentEvidenceWeight * 100) + "%" : "—"}</b></p>
