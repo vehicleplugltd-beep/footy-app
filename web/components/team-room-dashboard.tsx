@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FplPitchPlayer } from "@/lib/fpl-team";
 import type {
   ScoutIntelligencePayload,
+  PortfolioHealth,
   ScoutPlayerProfile,
   ScoutTeamProfile,
 } from "@/lib/fpl";
@@ -73,6 +74,33 @@ type ManagerResponse = {
     chip_threats: string[];
     recommendation: string;
   } | null;
+  portfolio_plan?: {
+    action: "BANK" | "HOLD" | "TRANSFER" | "STRUCTURAL_REPAIR" | "CHIP_PREP";
+    headline: string;
+    portfolio: PortfolioHealth;
+    free_transfers: number | null;
+    hit_cost_for_one_extra_move: number | null;
+    chip_signal: {
+      chip: string;
+      status: string;
+      eventName: string | null;
+      reason: string;
+    } | null;
+    league_mode: "PROTECT" | "CHASE" | "RECOVER";
+    field_ownership_proxy: {
+      average_squad_ownership: number;
+      high_ownership_assets: number;
+      differentials_under_10: number;
+      caveat: string;
+    };
+    differential_guidance: string;
+    why: string[];
+    failure_modes: string[];
+    underlying: string[];
+    missing: string[];
+    resource_status: string;
+    caveat: string;
+  };
 };
 
 function percentileRating(
@@ -263,6 +291,7 @@ export function TeamRoomDashboard({
     .slice(0, 3);
 
   const intelligenceLoading = !error && (!scout || !manager);
+  const portfolioPlan = manager?.portfolio_plan ?? null;
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
   const captain =
@@ -274,13 +303,14 @@ export function TeamRoomDashboard({
       : null;
   const transferEvidence = intelligenceLoading
     ? "CHECKING"
-    : transfer
-      ? transferInProfile?.decisionConfidence ?? "PENDING"
-      : "THRESHOLD HOLD";
+    : portfolioPlan?.portfolio.status ??
+      (transfer ? transferInProfile?.decisionConfidence ?? "PENDING" : "THRESHOLD HOLD");
   const transferWhy =
+    portfolioPlan?.why.at(-1) ??
     transfer?.rationale ??
     "No replacement currently clears Footy’s value, minutes and timing threshold.";
   const transferFailure =
+    portfolioPlan?.failure_modes[0] ??
     transferInProfile?.risks[0] ??
     (transfer
       ? "Late team news, role changes or a price move can reduce the projected gain."
@@ -305,10 +335,16 @@ export function TeamRoomDashboard({
       ? footyQuip("strongSquad")
       : footyQuip("weakSquad");
   const actionQuip = intelligenceLoading
-    ? "Comparing squad quality, player process and league pressure."
-    : transfer
-      ? footyQuip("move", { player: transfer.in.name })
-      : footyQuip("hold");
+    ? "Comparing squad quality, player process, structure and league pressure."
+    : portfolioPlan?.action === "BANK"
+      ? "The free transfer is an asset too. No need to spend it for the sake of activity."
+      : portfolioPlan?.action === "STRUCTURAL_REPAIR"
+        ? "This is bigger than one player. Fix the squad shape before chasing marginal points."
+        : portfolioPlan?.action === "CHIP_PREP"
+          ? "The calendar is becoming the decision. Preserve the squad shape for the chip window."
+          : transfer
+            ? footyQuip("move", { player: transfer.in.name })
+            : footyQuip("hold");
 
   return (
     <div className="team-room-dashboard">
@@ -347,11 +383,10 @@ export function TeamRoomDashboard({
               <h2>
                 {intelligenceLoading
                   ? "Building your plan…"
-                  : transfer
-                    ? transfer.out.name +
-                      " → " +
-                      transfer.in.name
-                    : "Hold the transfer"}
+                  : portfolioPlan?.headline ??
+                    (transfer
+                      ? transfer.out.name + " → " + transfer.in.name
+                      : "Hold the transfer")}
               </h2>
             </div>
           </div>
@@ -359,28 +394,33 @@ export function TeamRoomDashboard({
           <blockquote className="footy-quip compact">{actionQuip}</blockquote>
           <div className="team-room-suggestion">
             <div>
-              <span>TRANSFER</span>
+              <span>PORTFOLIO ACTION</span>
               <strong>
                 {intelligenceLoading
                   ? "CHECKING"
-                  : transfer
-                    ? transfer.out.name +
-                      " → " +
-                      transfer.in.name
-                    : "HOLD"}
+                  : portfolioPlan?.action.replaceAll("_", " ") ??
+                    (transfer ? transfer.out.name + " → " + transfer.in.name : "HOLD")}
               </strong>
               <small>
                 {intelligenceLoading
-                  ? "Comparing replacements against value, minutes and timing thresholds."
-                  : transfer
-                    ? "+" +
-                      transfer.raw_gain.toFixed(1) +
-                      " now · min +" +
-                      (transfer.minimum_gain ?? 0).toFixed(1) +
-                      " · +" +
-                      (transfer.horizon_gain ?? 0).toFixed(1) +
-                      " horizon"
-                    : "No replacement clears the value and timing threshold."}
+                  ? "Comparing football edge, FT option value, squad structure and timing."
+                  : portfolioPlan
+                    ? (portfolioPlan.free_transfers == null
+                        ? "FT bank uncertain"
+                        : portfolioPlan.free_transfers + "/5 FT") +
+                      " · portfolio " +
+                      portfolioPlan.portfolio.score +
+                      "/100 · " +
+                      portfolioPlan.portfolio.status
+                    : transfer
+                      ? "+" +
+                        transfer.raw_gain.toFixed(1) +
+                        " now · min +" +
+                        (transfer.minimum_gain ?? 0).toFixed(1) +
+                        " · +" +
+                        (transfer.horizon_gain ?? 0).toFixed(1) +
+                        " horizon"
+                      : "No replacement clears the value and timing threshold."}
               </small>
             </div>
 
@@ -540,6 +580,114 @@ export function TeamRoomDashboard({
         </article>
       </section>
 
+      {portfolioPlan ? (
+        <section className="team-room-block portfolio-health">
+          <div className="team-room-block-head">
+            <div>
+              <span>PORTFOLIO HEALTH</span>
+              <h2>
+                {portfolioPlan.portfolio.score}/100 · {portfolioPlan.portfolio.status}
+              </h2>
+            </div>
+            <small>
+              Long-term squad structure, not last week’s points ·{" "}
+              <Link href="/research#long-term">open long-term research →</Link>
+            </small>
+          </div>
+
+          <div className="portfolio-health-grid">
+            <div>
+              <span>FREE TRANSFERS</span>
+              <strong>{portfolioPlan.free_transfers ?? "—"}/5</strong>
+              <small>
+                {portfolioPlan.hit_cost_for_one_extra_move == null
+                  ? "Hit cost uncertain"
+                  : portfolioPlan.hit_cost_for_one_extra_move === 0
+                    ? "Next extra move currently covered"
+                    : "One move beyond bank = -4"}
+              </small>
+            </div>
+            <div>
+              <span>BANK</span>
+              <strong>£{portfolioPlan.portfolio.bank.toFixed(1)}m</strong>
+              <small>{portfolioPlan.portfolio.bankStatus}</small>
+            </div>
+            <div>
+              <span>BENCH COVER</span>
+              <strong>{portfolioPlan.portfolio.reliableBench}/4</strong>
+              <small>reliable current substitutes</small>
+            </div>
+            <div>
+              <span>6GW XI</span>
+              <strong>{portfolioPlan.portfolio.horizon.sixGwAverageBestXi.toFixed(1)}</strong>
+              <small>formation-constrained model average</small>
+            </div>
+            <div>
+              <span>8GW XI</span>
+              <strong>{portfolioPlan.portfolio.horizon.eightGwAverageBestXi.toFixed(1)}</strong>
+              <small>structural horizon</small>
+            </div>
+            <div>
+              <span>DIFFERENTIALS</span>
+              <strong>{portfolioPlan.portfolio.differentialCount}</strong>
+              <small>&lt;10% official ownership</small>
+            </div>
+            <div>
+              <span>MIDFIELD ROUTE</span>
+              <strong>{portfolioPlan.portfolio.priceStructure.midfieldRoute ? "OPEN" : "BLOCKED"}</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.midfieldTarget ?? "No urgent target"}
+              </small>
+            </div>
+            <div>
+              <span>FORWARD ROUTE</span>
+              <strong>{portfolioPlan.portfolio.priceStructure.forwardRoute ? "OPEN" : "BLOCKED"}</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
+              </small>
+            </div>
+          </div>
+
+          <div className="portfolio-evidence-grid">
+            <section>
+              <span>WHY</span>
+              {portfolioPlan.why.map((reason, index) => (
+                <p key={"why-" + index}>{reason}</p>
+              ))}
+            </section>
+            <section>
+              <span>FAILURE MODES</span>
+              {portfolioPlan.failure_modes.map((risk, index) => (
+                <p key={"risk-" + index}>{risk}</p>
+              ))}
+            </section>
+            <section>
+              <span>UNDERLYING DATA</span>
+              {portfolioPlan.underlying.map((item, index) => (
+                <p key={"data-" + index}>{item}</p>
+              ))}
+            </section>
+            <section>
+              <span>GAME THEORY</span>
+              <p>{portfolioPlan.differential_guidance}</p>
+              <p>{portfolioPlan.field_ownership_proxy.caveat}</p>
+              <p>
+                League mode: <b>{portfolioPlan.league_mode}</b> · resource state:{" "}
+                <b>{portfolioPlan.resource_status}</b>
+              </p>
+            </section>
+          </div>
+
+          {portfolioPlan.missing.length ? (
+            <div className="portfolio-missing">
+              <span>NOT YET MEASURED — NOT INVENTED</span>
+              {portfolioPlan.missing.map((item, index) => (
+                <p key={"missing-" + index}>{item}</p>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="team-room-scoreboard">
         <div>
@@ -566,16 +714,18 @@ export function TeamRoomDashboard({
         <div>
           <span>NEXT ACTION</span>
           <strong>
-            {intelligenceLoading ? "CHECKING" : transfer ? "MOVE" : "HOLD"}
+            {intelligenceLoading
+              ? "CHECKING"
+              : portfolioPlan?.action.replaceAll("_", " ") ??
+                (transfer ? "MOVE" : "HOLD")}
           </strong>
           <small>
             {intelligenceLoading
               ? "Building recommendation"
-              : transfer
-                ? transfer.out.name +
-                  " → " +
-                  transfer.in.name
-                : "No move clears threshold"}
+              : portfolioPlan?.headline ??
+                (transfer
+                  ? transfer.out.name + " → " + transfer.in.name
+                  : "No move clears threshold")}
           </small>
         </div>
       </section>
