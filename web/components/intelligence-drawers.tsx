@@ -328,6 +328,16 @@ export function PlayerIntelDrawer({
       <section className="intel-grid intel-grid-primary">
         <Metric label="EPA" value={(profile.epa.epa >= 0 ? "+" : "") + profile.epa.epa.toFixed(2)} sub="vs replacement" />
         <Metric
+          label="Risk"
+          value={profile.riskProfile.downsideRisk + "/100"}
+          sub={profile.riskProfile.assetType}
+        />
+        <Metric
+          label="Floor / Ceiling"
+          value={profile.riskProfile.floor.toFixed(1) + " / " + profile.riskProfile.ceiling.toFixed(1)}
+          sub={"volatility " + profile.riskProfile.volatility.toFixed(1)}
+        />
+        <Metric
           label={processMetricLabel}
           value={
             processMetricValue == null
@@ -347,6 +357,29 @@ export function PlayerIntelDrawer({
         />
         <Metric label="Expected mins" value={profile.epa.expectedMinutes.toFixed(0)} sub={player.availability + "% available"} />
         <Metric label="6GW" value={profile.score6.toFixed(1)} sub={profile.bestWindow.startName + " best window"} />
+      </section>
+
+      <section className="intel-section intel-risk-profile">
+        <div className="intel-section-head">
+          <div>
+            <span>RISK-ADJUSTED PROFILE</span>
+            <h3>{profile.riskProfile.assetType} asset · downside {profile.riskProfile.downsideRisk}/100</h3>
+          </div>
+          <small>{profile.riskProfile.floor.toFixed(1)} floor → {profile.riskProfile.ceiling.toFixed(1)} ceiling</small>
+        </div>
+        <div className="intel-stat-list">
+          <p><span>Model floor</span><b>{profile.riskProfile.floor.toFixed(1)}</b></p>
+          <p><span>Model ceiling</span><b>{profile.riskProfile.ceiling.toFixed(1)}</b></p>
+          <p><span>Volatility</span><b>{profile.riskProfile.volatility.toFixed(1)}</b></p>
+          <p><span>Downside risk</span><b>{profile.riskProfile.downsideRisk}/100</b></p>
+        </div>
+        <div className="intel-risk-drivers">
+          {profile.riskProfile.drivers.map((driver) => <p key={driver}>{driver}</p>)}
+        </div>
+        <small className="intel-risk-caveat">
+          Floor/ceiling are model distribution proxies from minutes reliability, attacking involvement,
+          clean-sheet exposure, fixture variance and workload—not observed historical percentiles.
+        </small>
       </section>
 
       <details className="intel-audit intel-model-depth">

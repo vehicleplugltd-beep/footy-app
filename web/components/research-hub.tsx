@@ -64,6 +64,10 @@ function TargetCard({
         <div><span>xMins</span><strong>{profile.epa.expectedMinutes.toFixed(0)}</strong></div>
         <div><span>Ownership</span><strong>{profile.player.selectedBy.toFixed(1)}%</strong></div>
         <div><span>Set pieces</span><strong>{profile.player.setPieceRole ?? "—"}</strong></div>
+        <div><span>Risk</span><strong>{profile.riskProfile.downsideRisk}/100</strong></div>
+        <div><span>Type</span><strong>{profile.riskProfile.assetType}</strong></div>
+        <div><span>Floor</span><strong>{profile.riskProfile.floor.toFixed(1)}</strong></div>
+        <div><span>Ceiling</span><strong>{profile.riskProfile.ceiling.toFixed(1)}</strong></div>
       </div>
       <small className="research-risk">
         <b>Risk:</b> {profile.risks[0] ?? "Late role, minutes or team-news changes can move the call."}
@@ -453,6 +457,8 @@ export function ResearchHub({
               <div><span>Reg xGI/90</span><b>{playerProcess(profile).toFixed(2)}</b></div>
               <div><span>EPA</span><b>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)}</b></div>
               <div><span>Confidence</span><b>{profile.decisionConfidence}</b></div>
+              <div><span>Risk</span><b>{profile.riskProfile.downsideRisk}</b></div>
+              <div><span>Type</span><b>{profile.riskProfile.assetType}</b></div>
             </button>
           ))}
         </div>

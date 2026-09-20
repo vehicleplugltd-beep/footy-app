@@ -427,3 +427,28 @@
     grid-column: 1 / -1;
   }
 }
+
+.intel-risk-profile {
+  border: 1px solid #e0e6e3;
+  border-radius: 10px;
+  padding: 11px;
+  background: #f8fbf9;
+}
+.intel-risk-drivers {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.intel-risk-drivers p {
+  margin: 0;
+  color: #56615c;
+  font-size: 8px;
+  line-height: 1.45;
+}
+.intel-risk-caveat {
+  display: block;
+  margin-top: 8px;
+  color: #7a847f;
+  font-size: 7px;
+  line-height: 1.45;
+}
