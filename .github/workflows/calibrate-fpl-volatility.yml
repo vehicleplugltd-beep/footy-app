@@ -1,0 +1,38 @@
+name: Calibrate FPL volatility
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Historical calibration changes slowly; refresh weekly and whenever the
+    # calibration implementation changes.
+    - cron: "35 5 * * 1"
+  push:
+    branches: ["main"]
+    paths:
+      - "src/footy_data/fpl_volatility.py"
+      - "src/footy_data/storage.py"
+      - "tests/test_fpl_volatility.py"
+      - ".github/workflows/calibrate-fpl-volatility.yml"
+
+concurrency:
+  group: calibrate-fpl-volatility
+  cancel-in-progress: true
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Leakage and calibration tests
+        run: pytest -q tests/test_fpl_volatility.py
+      - name: Build and persist empirical calibration
+        run: python -m footy_data.fpl_volatility --write
