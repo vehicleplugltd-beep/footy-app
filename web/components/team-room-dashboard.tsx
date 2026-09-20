@@ -27,6 +27,35 @@ type Standing = {
   total: number;
 };
 
+type CounterPathResource = {
+  starting_free_transfers: number;
+  ending_free_transfers: number;
+  starting_bank: number;
+  ending_bank: number;
+  hit_cost: number;
+  chips_used: Array<{
+    event_id: number;
+    event_name: string;
+    chip: string;
+  }>;
+  weeks: Array<{
+    event_id: number;
+    event_name: string;
+    transfers: Array<{
+      out: { id: number; name: string; team: string };
+      in: { id: number; name: string; team: string };
+      weighted_gain: number;
+    }>;
+    captain: { id: number; name: string; team: string } | null;
+    chip: string | null;
+    hit_cost: number;
+    free_transfers_before: number;
+    free_transfers_after: number;
+    bank_after: number;
+    projected_mean: number;
+  }>;
+};
+
 type LeagueResponse = {
   standings?: { results: Standing[] };
 };
@@ -132,6 +161,58 @@ type ManagerResponse = {
       floor_5: number;
       ceiling_95: number;
     } | null;
+    game_theory_impact: {
+      band: "NEUTRAL" | "MATERIAL" | "DECISIVE";
+      probability_delta: number;
+      threshold_neutral: number;
+      threshold_decisive: number;
+      explanation: string;
+    };
+    horizon_results?: Partial<Record<"1" | "3" | "5", {
+      horizon: number;
+      event_names: string[];
+      iterations: number;
+      baseline: {
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        resource_path: CounterPathResource;
+      } | null;
+      recommended_scenario: {
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        resource_path: CounterPathResource;
+      } | null;
+      scenarios: Array<{
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        resource_path: CounterPathResource;
+      }>;
+      game_theory_impact: {
+        band: "NEUTRAL" | "MATERIAL" | "DECISIVE";
+        probability_delta: number;
+      };
+    }>>;
     recommended_scenario: {
       id: string;
       label: string;
@@ -214,6 +295,27 @@ type ManagerResponse = {
     action: "BANK" | "HOLD" | "TRANSFER" | "STRUCTURAL_REPAIR" | "CHIP_PREP";
     headline: string;
     portfolio: PortfolioHealth;
+    decision_driver: "GAME_THEORY_TIEBREAK" | "FOOTBALL_PORTFOLIO" | "PORTFOLIO_STRUCTURE";
+    game_theory: {
+      band: "NEUTRAL" | "MATERIAL" | "DECISIVE";
+      probability_delta: number;
+      threshold_neutral: number;
+      threshold_decisive: number;
+      explanation: string;
+      used_as_tiebreak: boolean;
+      football_primary_transfer: {
+        out: string;
+        in: string;
+        raw_gain: number;
+        horizon_gain: number;
+      } | null;
+      selected_transfer: {
+        out: string;
+        in: string;
+        raw_gain: number;
+        horizon_gain: number;
+      } | null;
+    };
     free_transfers: number | null;
     hit_cost_for_one_extra_move: number | null;
     chip_signal: {
@@ -297,6 +399,7 @@ export function TeamRoomDashboard({
     useState<ScoutTeamProfile | null>(null);
   const [selectedManager, setSelectedManager] =
     useState<Standing | null>(null);
+  const [counterHorizon, setCounterHorizon] = useState<1 | 3 | 5>(3);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -429,6 +532,13 @@ export function TeamRoomDashboard({
   const intelligenceLoading = !error && (!scout || !manager);
   const portfolioPlan = manager?.portfolio_plan ?? null;
   const counterPlay = manager?.counterplay ?? null;
+  const counterHorizonKey = String(counterHorizon) as "1" | "3" | "5";
+  const activeCounterHorizon =
+    counterPlay?.horizon_results?.[counterHorizonKey] ??
+    counterPlay?.horizon_results?.["3"] ??
+    counterPlay?.horizon_results?.["1"] ??
+    counterPlay?.horizon_results?.["5"] ??
+    null;
   const decisionQuality = manager?.decision_quality ?? null;
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
@@ -549,7 +659,9 @@ export function TeamRoomDashboard({
                       " · portfolio " +
                       portfolioPlan.portfolio.score +
                       "/100 · " +
-                      portfolioPlan.portfolio.status
+                      portfolioPlan.portfolio.status +
+                      " · game theory " +
+                      portfolioPlan.game_theory.band.toLowerCase()
                     : transfer
                       ? "+" +
                         transfer.raw_gain.toFixed(1) +
@@ -733,6 +845,29 @@ export function TeamRoomDashboard({
             </small>
           </div>
 
+          <div className={"portfolio-driver portfolio-driver-" + portfolioPlan.game_theory.band.toLowerCase()}>
+            <div>
+              <span>DECISION DRIVER</span>
+              <strong>
+                {portfolioPlan.decision_driver === "GAME_THEORY_TIEBREAK"
+                  ? "GAME THEORY TIE-BREAK"
+                  : portfolioPlan.decision_driver === "FOOTBALL_PORTFOLIO"
+                    ? "FOOTBALL + PORTFOLIO"
+                    : "PORTFOLIO STRUCTURE"}
+              </strong>
+            </div>
+            <div>
+              <span>GAME THEORY IMPACT</span>
+              <strong>{portfolioPlan.game_theory.band}</strong>
+              <small>
+                {(portfolioPlan.game_theory.probability_delta >= 0 ? "+" : "") +
+                  (portfolioPlan.game_theory.probability_delta * 100).toFixed(1)}
+                pp vs hold baseline
+              </small>
+            </div>
+            <p>{portfolioPlan.game_theory.explanation}</p>
+          </div>
+
           <div className="portfolio-health-grid">
             <div>
               <span>FREE TRANSFERS</span>
@@ -899,10 +1034,127 @@ export function TeamRoomDashboard({
           </div>
 
           <p className="counterplay-objective">{counterPlay.objective}</p>
+          <div className={"counterplay-impact counterplay-impact-" + counterPlay.game_theory_impact.band.toLowerCase()}>
+            <span>GAME THEORY IMPACT</span>
+            <strong>{counterPlay.game_theory_impact.band}</strong>
+            <p>{counterPlay.game_theory_impact.explanation}</p>
+          </div>
+
+          {counterPlay.horizon_results && activeCounterHorizon ? (
+            <div className="counterplay-horizon-shell">
+              <div className="counterplay-horizon-head">
+                <div>
+                  <span>STATEFUL PATH</span>
+                  <strong>{activeCounterHorizon.horizon}GW command plan</strong>
+                </div>
+                <small>
+                  Transfers, captaincy, FT, cash, hits and supported chips are
+                  re-evaluated at each deadline.
+                </small>
+              </div>
+              <div className="counterplay-horizon-toggle" aria-label="CounterPlay horizon">
+                {([1, 3, 5] as const).map((horizon) => {
+                  const key = String(horizon) as "1" | "3" | "5";
+                  if (!counterPlay.horizon_results?.[key]) return null;
+                  return (
+                    <button
+                      key={horizon}
+                      type="button"
+                      className={activeCounterHorizon.horizon === horizon ? "active" : ""}
+                      aria-pressed={activeCounterHorizon.horizon === horizon}
+                      title={"Model the next " + horizon + " Gameweek" + (horizon === 1 ? "" : "s")}
+                      onClick={() => setCounterHorizon(horizon)}
+                    >
+                      {horizon}GW
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="counterplay-horizon-summary">
+                <div>
+                  <span>CONTROL PROBABILITY</span>
+                  <strong>
+                    {activeCounterHorizon.recommended_scenario
+                      ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "%"
+                      : "—"}
+                  </strong>
+                  <small>
+                    {activeCounterHorizon.recommended_scenario
+                      ? (activeCounterHorizon.recommended_scenario.probability_delta >= 0 ? "+" : "") +
+                        (activeCounterHorizon.recommended_scenario.probability_delta * 100).toFixed(1) +
+                        "pp vs hold"
+                      : "No path edge"}
+                  </small>
+                </div>
+                <div>
+                  <span>BEST PATH</span>
+                  <strong>
+                    {activeCounterHorizon.recommended_scenario?.label ?? "Hold structure"}
+                  </strong>
+                  <small>{activeCounterHorizon.event_names.join(" → ")}</small>
+                </div>
+                <div>
+                  <span>FT / BANK AT END</span>
+                  <strong>
+                    {activeCounterHorizon.recommended_scenario
+                      ? activeCounterHorizon.recommended_scenario.resource_path.ending_free_transfers +
+                        " FT · £" +
+                        activeCounterHorizon.recommended_scenario.resource_path.ending_bank.toFixed(1)
+                      : "—"}
+                  </strong>
+                  <small>
+                    {activeCounterHorizon.recommended_scenario
+                      ? activeCounterHorizon.recommended_scenario.resource_path.hit_cost +
+                        " pts in projected hits"
+                      : "No resource path"}
+                  </small>
+                </div>
+                <div>
+                  <span>PATH 5TH–95TH</span>
+                  <strong>
+                    {activeCounterHorizon.recommended_scenario
+                      ? activeCounterHorizon.recommended_scenario.floor_5.toFixed(1) +
+                        "–" +
+                        activeCounterHorizon.recommended_scenario.ceiling_95.toFixed(1)
+                      : "—"}
+                  </strong>
+                  <small>cumulative model score band</small>
+                </div>
+              </div>
+
+              {activeCounterHorizon.recommended_scenario ? (
+                <div className="counterplay-path-weeks">
+                  {activeCounterHorizon.recommended_scenario.resource_path.weeks.map((week) => (
+                    <article key={week.event_id}>
+                      <div>
+                        <b>{week.event_name}</b>
+                        <small>
+                          {week.transfers.length
+                            ? week.transfers
+                                .map((move) => move.out.name + " → " + move.in.name)
+                                .join(" · ")
+                            : "Bank / hold"}
+                        </small>
+                      </div>
+                      <div>
+                        <span>C {week.captain?.name ?? "—"}</span>
+                        <span>
+                          {week.free_transfers_after} FT · £{week.bank_after.toFixed(1)}
+                          {week.hit_cost ? " · -" + week.hit_cost : ""}
+                        </span>
+                        {week.chip ? <span>{week.chip}</span> : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="counterplay-hero-grid">
             <div>
-              <span>BASELINE OBJECTIVE</span>
+              <span>NEXT-GW BASELINE</span>
               <strong>
                 {counterPlay.baseline
                   ? Math.round(counterPlay.baseline.objective_probability * 1000) / 10 + "%"
@@ -911,7 +1163,7 @@ export function TeamRoomDashboard({
               <small>Hold / current structure</small>
             </div>
             <div>
-              <span>BEST SCENARIO</span>
+              <span>NEXT-GW BEST</span>
               <strong>
                 {counterPlay.recommended_scenario
                   ? Math.round(counterPlay.recommended_scenario.objective_probability * 1000) / 10 + "%"

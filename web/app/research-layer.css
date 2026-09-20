@@ -577,3 +577,561 @@
 .counterplay-full-list[open] summary {
   margin-bottom: 7px;
 }
+
+.portfolio-driver {
+  display: grid;
+  grid-template-columns: .8fr .7fr 1.5fr;
+  gap: 1px;
+  margin-bottom: 9px;
+  border: 1px solid #e2e6e9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #e2e6e9;
+}
+.portfolio-driver > div,
+.portfolio-driver > p {
+  margin: 0;
+  padding: 10px 11px;
+  background: #fff;
+}
+.portfolio-driver span,
+.portfolio-driver strong,
+.portfolio-driver small {
+  display: block;
+}
+.portfolio-driver span {
+  color: #7d8792;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.portfolio-driver strong {
+  margin-top: 4px;
+  color: #111318;
+  font-size: 10px;
+}
+.portfolio-driver small {
+  margin-top: 3px;
+  color: #727c87;
+  font-size: 7px;
+}
+.portfolio-driver > p {
+  color: #59636e;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.portfolio-driver-material { border-color: #decf9c; }
+.portfolio-driver-decisive { border-color: #b9d8ca; }
+
+.counterplay-impact {
+  margin: 0 0 9px;
+  border: 1px solid #dfe5ea;
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: #fafbfc;
+}
+.counterplay-impact span,
+.counterplay-impact strong {
+  display: block;
+}
+.counterplay-impact span {
+  color: #738091;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.counterplay-impact strong {
+  margin-top: 3px;
+  color: #111318;
+  font-size: 11px;
+}
+.counterplay-impact p {
+  margin: 4px 0 0;
+  color: #5d6772;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.counterplay-impact-neutral strong { color: #66717c; }
+.counterplay-impact-material strong { color: #a16c13; }
+.counterplay-impact-decisive strong { color: #087b56; }
+
+@media (max-width: 700px) {
+  .portfolio-driver {
+    grid-template-columns: 1fr 1fr;
+  }
+  .portfolio-driver > p {
+    grid-column: 1 / -1;
+  }
+}
+
+
+.counterplay-horizon-shell {
+  margin: 12px 0;
+  border: 1px solid #dce3ea;
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+.counterplay-horizon-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e3e7eb;
+  border-radius: 999px;
+  background: #f6f8fa;
+}
+.counterplay-horizon-toggle button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.counterplay-horizon-toggle button.active {
+  background: #111827;
+  color: #fff;
+}
+.counterplay-horizon-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.counterplay-horizon-summary > div {
+  min-width: 0;
+  border: 1px solid #e7ebef;
+  border-radius: 10px;
+  padding: 9px;
+  background: #fafbfc;
+}
+.counterplay-horizon-summary span,
+.counterplay-horizon-summary small {
+  display: block;
+  font-size: 8px;
+  line-height: 1.35;
+}
+.counterplay-horizon-summary span {
+  color: #64748b;
+  font-weight: 900;
+}
+.counterplay-horizon-summary strong {
+  display: block;
+  margin: 4px 0 2px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.counterplay-horizon-summary small {
+  color: #64748b;
+}
+.counterplay-path-weeks {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+.counterplay-path-weeks article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #edf0f2;
+  padding-top: 7px;
+}
+.counterplay-path-weeks article:first-child {
+  border-top: 0;
+}
+.counterplay-path-weeks article > div {
+  min-width: 0;
+}
+.counterplay-path-weeks b,
+.counterplay-path-weeks small,
+.counterplay-path-weeks span {
+  display: block;
+}
+.counterplay-path-weeks b {
+  font-size: 10px;
+}
+.counterplay-path-weeks small,
+.counterplay-path-weeks span {
+  margin-top: 2px;
+  font-size: 8px;
+  line-height: 1.35;
+  color: #64748b;
+}
+.counterplay-path-weeks article > div:last-child {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .counterplay-horizon-shell {
+    padding: 9px;
+  }
+  .counterplay-horizon-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .counterplay-path-weeks article {
+    display: block;
+  }
+  .counterplay-path-weeks article > div:last-child {
+    margin-top: 5px;
+    text-align: left;
+  }
+}
+
+
+/* Final CounterPlay product polish: command-centre hierarchy, touch targets and mobile legibility. */
+.counterplay-panel {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid #dfe7f2;
+  border-right: 1px solid #dfe7f2;
+  border-bottom: 1px solid #dfe7f2;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .07);
+}
+.counterplay-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, #2563eb, #60a5fa 55%, transparent);
+  pointer-events: none;
+}
+.counterplay-objective {
+  max-width: 78ch;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.counterplay-impact {
+  padding: 11px 13px;
+}
+.counterplay-impact span,
+.counterplay-primary-reason span,
+.counterplay-layout > section > span {
+  font-size: 9px;
+}
+.counterplay-impact strong {
+  font-size: 13px;
+}
+.counterplay-impact p,
+.counterplay-primary-reason p {
+  font-size: 11px;
+  line-height: 1.55;
+}
+.counterplay-horizon-shell {
+  border-color: #d9e3f2;
+  border-radius: 16px;
+  padding: 13px;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, .08), transparent 32%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+.counterplay-horizon-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+.counterplay-horizon-head > div {
+  min-width: 0;
+}
+.counterplay-horizon-head span,
+.counterplay-horizon-head strong,
+.counterplay-horizon-head small {
+  display: block;
+}
+.counterplay-horizon-head span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .11em;
+}
+.counterplay-horizon-head strong {
+  margin-top: 3px;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.25;
+}
+.counterplay-horizon-head small {
+  max-width: 420px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+}
+.counterplay-horizon-toggle {
+  min-height: 40px;
+  align-items: center;
+  padding: 4px;
+  border-color: #dfe5ec;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, .03);
+}
+.counterplay-horizon-toggle button {
+  min-width: 58px;
+  min-height: 32px;
+  padding: 7px 12px;
+  font-size: 11px;
+  transition: transform .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+.counterplay-horizon-toggle button:hover {
+  background: #eef3f9;
+}
+.counterplay-horizon-toggle button.active {
+  box-shadow: 0 4px 12px rgba(17, 24, 39, .16);
+}
+.counterplay-horizon-toggle button:active {
+  transform: scale(.98);
+}
+.counterplay-horizon-toggle button:focus-visible,
+.counterplay-full-list summary:focus-visible,
+.counterplay-threats a:focus-visible,
+.counterplay-exposure a:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .22);
+  outline-offset: 2px;
+}
+.counterplay-horizon-summary {
+  gap: 9px;
+  margin-top: 12px;
+}
+.counterplay-horizon-summary > div {
+  min-height: 82px;
+  border-color: #e1e8f0;
+  border-radius: 12px;
+  padding: 11px;
+  background: rgba(255, 255, 255, .9);
+}
+.counterplay-horizon-summary > div:first-child {
+  border-color: #cddcf4;
+  background: #f5f9ff;
+}
+.counterplay-horizon-summary span {
+  font-size: 9px;
+  letter-spacing: .04em;
+}
+.counterplay-horizon-summary strong {
+  margin: 5px 0 3px;
+  font-size: 17px;
+}
+.counterplay-horizon-summary small {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.counterplay-path-weeks {
+  counter-reset: counterplay-step;
+  gap: 0;
+  margin-top: 12px;
+  border-top: 1px solid #e8edf3;
+}
+.counterplay-path-weeks article {
+  counter-increment: counterplay-step;
+  position: relative;
+  min-height: 62px;
+  padding: 11px 0 11px 42px;
+  border-top: 0;
+  border-bottom: 1px solid #eef2f6;
+}
+.counterplay-path-weeks article:last-child {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.counterplay-path-weeks article::before {
+  content: counter(counterplay-step);
+  position: absolute;
+  left: 0;
+  top: 11px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #cddcf4;
+  border-radius: 50%;
+  background: #f5f9ff;
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 950;
+}
+.counterplay-path-weeks article::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 39px;
+  bottom: -1px;
+  width: 1px;
+  background: #dfe7f2;
+}
+.counterplay-path-weeks article:last-child::after {
+  display: none;
+}
+.counterplay-path-weeks b {
+  color: #172033;
+  font-size: 12px;
+}
+.counterplay-path-weeks small,
+.counterplay-path-weeks span {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.counterplay-path-weeks article > div:last-child span:first-child {
+  color: #334155;
+  font-weight: 800;
+}
+.counterplay-hero-grid {
+  gap: 9px;
+}
+.counterplay-hero-grid > div {
+  min-height: 84px;
+  border-radius: 12px;
+  padding: 11px;
+}
+.counterplay-hero-grid span {
+  font-size: 9px;
+}
+.counterplay-hero-grid strong {
+  font-size: 18px;
+}
+.counterplay-hero-grid small {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.counterplay-scenarios,
+.counterplay-threats,
+.counterplay-exposure,
+.counterplay-vectors {
+  gap: 7px;
+}
+.counterplay-scenarios article,
+.counterplay-threats a,
+.counterplay-exposure a,
+.counterplay-vectors article {
+  border-radius: 11px;
+  padding: 11px;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+.counterplay-scenarios article:hover,
+.counterplay-vectors article:hover,
+.counterplay-threats a:hover,
+.counterplay-exposure a:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 18px rgba(15, 23, 42, .06);
+}
+.counterplay-scenarios article > strong {
+  font-size: 14px;
+}
+.counterplay-scenarios article > small,
+.counterplay-scenarios article div small,
+.counterplay-threats small,
+.counterplay-exposure small,
+.counterplay-vectors header small {
+  font-size: 9px;
+}
+.counterplay-scenarios article p,
+.counterplay-vectors p {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.counterplay-full-list {
+  border-radius: 11px;
+  padding: 9px 10px;
+}
+.counterplay-full-list summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .counterplay-panel {
+    box-shadow: 0 10px 26px rgba(15, 23, 42, .06);
+  }
+  .counterplay-objective {
+    font-size: 12px;
+  }
+  .counterplay-horizon-shell {
+    margin-inline: -2px;
+    border-radius: 14px;
+    padding: 11px;
+  }
+  .counterplay-horizon-head {
+    display: block;
+  }
+  .counterplay-horizon-head strong {
+    font-size: 16px;
+  }
+  .counterplay-horizon-head small {
+    margin-top: 5px;
+    max-width: none;
+    font-size: 11px;
+    text-align: left;
+  }
+  .counterplay-horizon-toggle {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    min-height: 48px;
+    margin-top: 12px;
+  }
+  .counterplay-horizon-toggle button {
+    min-width: 0;
+    min-height: 40px;
+    font-size: 12px;
+  }
+  .counterplay-horizon-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .counterplay-horizon-summary > div {
+    min-height: 88px;
+  }
+  .counterplay-horizon-summary strong {
+    font-size: 16px;
+  }
+  .counterplay-horizon-summary small {
+    font-size: 10px;
+  }
+  .counterplay-path-weeks article {
+    padding-left: 40px;
+  }
+  .counterplay-path-weeks article > div:last-child {
+    margin-top: 7px;
+  }
+  .counterplay-path-weeks b {
+    font-size: 13px;
+  }
+  .counterplay-path-weeks small,
+  .counterplay-path-weeks span {
+    font-size: 11px;
+  }
+  .counterplay-hero-grid > div {
+    min-height: 88px;
+  }
+  .counterplay-hero-grid span {
+    font-size: 9px;
+  }
+  .counterplay-hero-grid small,
+  .counterplay-scenarios article p,
+  .counterplay-vectors p {
+    font-size: 10px;
+  }
+}
+@media (max-width: 430px) {
+  .counterplay-horizon-summary {
+    grid-template-columns: 1fr;
+  }
+  .counterplay-horizon-summary > div {
+    min-height: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .counterplay-horizon-toggle button,
+  .counterplay-scenarios article,
+  .counterplay-vectors article,
+  .counterplay-threats a,
+  .counterplay-exposure a {
+    transition: none;
+  }
+}

@@ -538,6 +538,134 @@ function bestXiFromSquad(squad: RankedPlayer[]) {
   return best;
 }
 
+type CounterHorizonScore = {
+  score: number;
+  fixtureCount: number;
+  availability: number;
+};
+
+function bestXiFromHorizonScores(
+  squad: RankedPlayer[],
+  scores: Map<number, CounterHorizonScore>,
+) {
+  const expected = (player: RankedPlayer) => scores.get(player.id)?.score ?? 0;
+  const sorted = [...squad].sort((a, b) => expected(b) - expected(a));
+  const byPosition = new Map<string, RankedPlayer[]>();
+  for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+    byPosition.set(
+      position,
+      sorted.filter((player) => player.position === position),
+    );
+  }
+  const keeper = (byPosition.get("GKP") ?? [])[0];
+  if (!keeper) return sorted.slice(0, 11);
+
+  let best: RankedPlayer[] = sorted.slice(0, 11);
+  let bestScore = -Infinity;
+  for (let defenders = 3; defenders <= 5; defenders += 1) {
+    for (let midfielders = 2; midfielders <= 5; midfielders += 1) {
+      const forwards = 10 - defenders - midfielders;
+      if (forwards < 1 || forwards > 3) continue;
+      const def = byPosition.get("DEF") ?? [];
+      const mid = byPosition.get("MID") ?? [];
+      const fwd = byPosition.get("FWD") ?? [];
+      if (
+        def.length < defenders ||
+        mid.length < midfielders ||
+        fwd.length < forwards
+      ) continue;
+      const xi = [
+        keeper,
+        ...def.slice(0, defenders),
+        ...mid.slice(0, midfielders),
+        ...fwd.slice(0, forwards),
+      ];
+      const score = xi.reduce((sum, player) => sum + expected(player), 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = xi;
+      }
+    }
+  }
+  return best;
+}
+
+function simulatedHorizonPlayerScore(
+  player: RankedPlayer,
+  mean: number,
+  fixtureCount: number,
+  eventId: number,
+  iteration: number,
+  cache: Map<string, number>,
+) {
+  const key = eventId + ":" + player.id;
+  const cached = cache.get(key);
+  if (cached != null) return cached;
+  const sd =
+    simulationVolatility(player) * Math.sqrt(Math.max(1, fixtureCount));
+  const shock = normalFromSeed(
+    (player.id * 73856093) ^
+      ((iteration + 1) * 19349663) ^
+      (eventId * 83492791),
+  );
+  const score = Math.max(-1, mean + shock * sd);
+  cache.set(key, score);
+  return score;
+}
+
+function horizonTeamPlan(
+  team: TeamAnalysis,
+  transfer: { out: RankedPlayer; in: RankedPlayer } | null,
+  scores: Map<number, CounterHorizonScore>,
+  preferredCaptainId: number | null,
+) {
+  const squad = scenarioSquad(team, transfer);
+  const xi = bestXiFromHorizonScores(squad, scores);
+  const expected = (player: RankedPlayer) => scores.get(player.id)?.score ?? 0;
+  const preferred =
+    preferredCaptainId != null
+      ? xi.find((player) => player.id === preferredCaptainId) ?? null
+      : null;
+  const captain =
+    preferred ??
+    [...xi].sort((a, b) => expected(b) - expected(a))[0] ??
+    null;
+  return { xi, captain };
+}
+
+function simulateHorizonPlan(
+  plan: { xi: RankedPlayer[]; captain: RankedPlayer | null },
+  scores: Map<number, CounterHorizonScore>,
+  eventId: number,
+  iteration: number,
+  cache: Map<string, number>,
+) {
+  let total = 0;
+  for (const player of plan.xi) {
+    const item = scores.get(player.id);
+    total += simulatedHorizonPlayerScore(
+      player,
+      item?.score ?? 0,
+      item?.fixtureCount ?? 0,
+      eventId,
+      iteration,
+      cache,
+    );
+  }
+  if (plan.captain) {
+    const item = scores.get(plan.captain.id);
+    total += simulatedHorizonPlayerScore(
+      plan.captain,
+      item?.score ?? 0,
+      item?.fixtureCount ?? 0,
+      eventId,
+      iteration,
+      cache,
+    );
+  }
+  return total;
+}
+
 function scenarioSquad(
   team: TeamAnalysis,
   transfer:
@@ -682,7 +810,7 @@ function buildCounterPlay(
     );
   }
 
-  const rivalTransferForIteration = (
+  const rivalVectorForIteration = (
     entryId: number,
     iteration: number,
   ) => {
@@ -694,10 +822,14 @@ function buildCounterPlay(
     let cumulative = 0;
     for (const vector of vectors) {
       cumulative += vector.model_share;
-      if (draw <= cumulative) return vector.transfer;
+      if (draw <= cumulative) return vector;
     }
-    return vectors[vectors.length - 1]?.transfer ?? null;
+    return vectors[vectors.length - 1] ?? null;
   };
+  const rivalTransferForIteration = (
+    entryId: number,
+    iteration: number,
+  ) => rivalVectorForIteration(entryId, iteration)?.transfer ?? null;
 
   const candidates: Array<{
     id: string;
@@ -872,6 +1004,764 @@ function buildCounterPlay(
       return b.mean_score - a.mean_score;
     });
 
+  const bestScenario = rankedScenarios[0] ?? baseline;
+  const bestProbabilityDelta =
+    bestScenario?.objective_probability != null && baseline
+      ? bestScenario.objective_probability - baseline.objective_probability
+      : 0;
+  const gameTheoryMagnitude = Math.abs(bestProbabilityDelta);
+  const gameTheoryBand =
+    gameTheoryMagnitude < 0.01
+      ? ("NEUTRAL" as const)
+      : gameTheoryMagnitude < 0.03
+        ? ("MATERIAL" as const)
+        : ("DECISIVE" as const);
+  const gameTheoryExplanation =
+    gameTheoryBand === "NEUTRAL"
+      ? `CounterPlay changes the manager-specific objective by only ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Football quality, multi-GW value and squad structure should drive the decision.`
+      : gameTheoryBand === "MATERIAL"
+        ? `CounterPlay moves the manager-specific objective by ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Use it to break close football calls, not to rescue a weak move.`
+        : `CounterPlay moves the manager-specific objective by ${(bestProbabilityDelta * 100).toFixed(1)} percentage points. Rival context is large enough to materially alter which football-qualified option is preferred.`;
+
+  const horizonEvents = analysis.counterPlayHorizon.slice(0, 5).map((event) => ({
+    eventId: event.eventId,
+    name: event.name,
+    scores: new Map<number, CounterHorizonScore>(
+      event.scores.map((item) => [
+        item.id,
+        {
+          score: item.score,
+          fixtureCount: item.fixtureCount,
+          availability: item.availability,
+        },
+      ]),
+    ),
+  }));
+  const horizonLengths = [1, 3, 5].filter(
+    (length) => length <= horizonEvents.length,
+  );
+  const pathIterations = 10000;
+
+  type PathTransfer = {
+    out: RankedPlayer;
+    in: RankedPlayer;
+    gain: number;
+  };
+  type PathWeek = {
+    event_id: number;
+    event_name: string;
+    squad: RankedPlayer[];
+    xi: RankedPlayer[];
+    captain: RankedPlayer | null;
+    chip: string | null;
+    transfers: PathTransfer[];
+    hit_cost: number;
+    free_transfers_before: number;
+    free_transfers_after: number;
+    bank_before: number;
+    bank_after: number;
+    mean_score: number;
+  };
+  type StatefulPath = {
+    starting_free_transfers: number;
+    starting_bank: number;
+    starting_chips: string[];
+    weeks: PathWeek[];
+    ending_free_transfers: number;
+    ending_bank: number;
+    remaining_chips: string[];
+  };
+
+  const playerPool = new Map<number, RankedPlayer>();
+  for (const player of analysis.counterPlayTransferPool ?? []) {
+    playerPool.set(player.id, player);
+  }
+  for (const team of [analysis.manager, ...analysis.rivals]) {
+    for (const player of team.squad) playerPool.set(player.id, player);
+    for (const move of team.weakLinks) {
+      if (move.replacement) playerPool.set(move.replacement.id, move.replacement);
+    }
+  }
+
+  const chipKey = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const chipLabel = (value: string) => {
+    const key = chipKey(value);
+    if (key === "triplecaptain" || key === "3xc") return "Triple Captain";
+    if (key === "benchboost" || key === "bboost") return "Bench Boost";
+    if (key === "freehit") return "Free Hit";
+    if (key === "wildcard") return "Wildcard";
+    return value;
+  };
+  const hasChip = (chips: Set<string>, label: string) =>
+    [...chips].some((chip) => chipKey(chip) === chipKey(label));
+  const removeChip = (chips: Set<string>, label: string) => {
+    const match = [...chips].find((chip) => chipKey(chip) === chipKey(label));
+    if (match) chips.delete(match);
+  };
+
+  const eventScore = (eventIndex: number, playerId: number) =>
+    horizonEvents[eventIndex]?.scores.get(playerId)?.score ?? 0;
+
+  const weightedTransferGain = (
+    out: RankedPlayer,
+    incoming: RankedPlayer,
+    eventIndex: number,
+  ) => {
+    const weights = [1, 0.82, 0.62];
+    let gain = 0;
+    for (let offset = 0; offset < weights.length; offset += 1) {
+      if (!horizonEvents[eventIndex + offset]) break;
+      gain +=
+        (eventScore(eventIndex + offset, incoming.id) -
+          eventScore(eventIndex + offset, out.id)) *
+        weights[offset];
+    }
+    return gain;
+  };
+
+  const transferIsLegal = (
+    squad: RankedPlayer[],
+    bank: number,
+    out: RankedPlayer,
+    incoming: RankedPlayer,
+  ) => {
+    if (out.position !== incoming.position) return false;
+    if (squad.some((player) => player.id === incoming.id)) return false;
+    if (incoming.price > out.price + bank + 0.001) return false;
+    const clubCounts = new Map<string, number>();
+    for (const player of squad) {
+      if (player.id === out.id) continue;
+      clubCounts.set(player.team, (clubCounts.get(player.team) ?? 0) + 1);
+    }
+    return (clubCounts.get(incoming.team) ?? 0) < 3;
+  };
+
+  const bestFutureTransfer = (
+    squad: RankedPlayer[],
+    bank: number,
+    eventIndex: number,
+  ): PathTransfer | null => {
+    let best: PathTransfer | null = null;
+    for (const out of squad) {
+      for (const incoming of playerPool.values()) {
+        if (!transferIsLegal(squad, bank, out, incoming)) continue;
+        const gain = weightedTransferGain(out, incoming, eventIndex);
+        if (!best || gain > best.gain) best = { out, in: incoming, gain };
+      }
+    }
+    return best;
+  };
+
+  const applyTransfer = (
+    squad: RankedPlayer[],
+    bank: number,
+    transfer: PathTransfer,
+  ) => ({
+    squad: squad.map((player) =>
+      player.id === transfer.out.id ? transfer.in : player,
+    ),
+    // Public entry data does not expose exact selling-price profit for every
+    // squad snapshot, so path cash uses current listed prices as an explicit
+    // approximation rather than inventing purchase-price history.
+    bank: Math.max(
+      0,
+      bank + transfer.out.price - transfer.in.price,
+    ),
+  });
+
+  const selectFutureTransfers = (
+    squadInput: RankedPlayer[],
+    bankInput: number,
+    freeTransfers: number,
+    eventIndex: number,
+    style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED",
+    activity: "AGGRESSIVE" | "ACTIVE" | "PATIENT" | null,
+  ) => {
+    let squad = [...squadInput];
+    let bank = bankInput;
+    const transfers: PathTransfer[] = [];
+    const activityAdjustment =
+      activity === "AGGRESSIVE" ? -0.25 : activity === "PATIENT" ? 0.30 : 0;
+    const styleThreshold =
+      style === "ATTACK"
+        ? 0.95
+        : style === "BLOCK"
+          ? 1.25
+          : style === "HOLD"
+            ? 1.45
+            : 1.20;
+    const bankPressure = freeTransfers >= 4 ? -0.35 : 0;
+    const maxMoves =
+      freeTransfers >= 3
+        ? 2
+        : freeTransfers >= 2 && (style === "ATTACK" || activity === "AGGRESSIVE")
+          ? 2
+          : 1;
+
+    for (let moveIndex = 0; moveIndex < maxMoves; moveIndex += 1) {
+      const best = bestFutureTransfer(squad, bank, eventIndex);
+      if (!best) break;
+      const paidMove = moveIndex >= freeTransfers;
+      const threshold =
+        styleThreshold +
+        activityAdjustment +
+        bankPressure +
+        (moveIndex > 0 ? 0.45 : 0) +
+        (paidMove ? 4.25 : 0);
+      if (best.gain < threshold) break;
+      const applied = applyTransfer(squad, bank, best);
+      squad = applied.squad;
+      bank = applied.bank;
+      transfers.push(best);
+    }
+
+    return { squad, bank, transfers };
+  };
+
+  const planFromSquad = (
+    squad: RankedPlayer[],
+    scores: Map<number, CounterHorizonScore>,
+    preferredCaptainId: number | null,
+  ) => {
+    const xi = bestXiFromHorizonScores(squad, scores);
+    const expected = (player: RankedPlayer) => scores.get(player.id)?.score ?? 0;
+    const preferred =
+      preferredCaptainId != null
+        ? xi.find((player) => player.id === preferredCaptainId) ?? null
+        : null;
+    const captain =
+      preferred ??
+      [...xi].sort((a, b) => expected(b) - expected(a))[0] ??
+      null;
+    return { xi, captain };
+  };
+
+  const managerChipForWeek = (
+    chips: Set<string>,
+    eventName: string,
+  ) => {
+    const signal = analysis.chipRadar.find(
+      (item) =>
+        item.eventName === eventName &&
+        item.status === "STRONG" &&
+        hasChip(chips, chipLabel(item.chip)),
+    );
+    if (!signal) return null;
+    const label = chipLabel(signal.chip);
+    // TC and BB can be represented faithfully from a fixed 15-man path.
+    // Wildcard/Free Hit need a full one-week squad optimiser, so they remain
+    // in the carried resource state until that optimiser is available.
+    return label === "Triple Captain" || label === "Bench Boost" ? label : null;
+  };
+
+  const rivalChipForWeek = (
+    chips: Set<string>,
+    squad: RankedPlayer[],
+    xi: RankedPlayer[],
+    captain: RankedPlayer | null,
+    event: (typeof horizonEvents)[number],
+    activity: "AGGRESSIVE" | "ACTIVE" | "PATIENT" | null,
+  ) => {
+    const captainScore = captain
+      ? event.scores.get(captain.id)?.score ?? 0
+      : 0;
+    const captainFixtures = captain
+      ? event.scores.get(captain.id)?.fixtureCount ?? 0
+      : 0;
+    const bench = squad.filter(
+      (player) => !xi.some((starter) => starter.id === player.id),
+    );
+    const benchScore = bench.reduce(
+      (sum, player) => sum + (event.scores.get(player.id)?.score ?? 0),
+      0,
+    );
+    const activityBoost = activity === "AGGRESSIVE" ? 0.6 : 0;
+
+    if (
+      hasChip(chips, "Triple Captain") &&
+      captainFixtures >= 2 &&
+      captainScore >= 6.8 - activityBoost
+    ) {
+      return "Triple Captain";
+    }
+    if (
+      hasChip(chips, "Bench Boost") &&
+      benchScore >= 12.5 - activityBoost
+    ) {
+      return "Bench Boost";
+    }
+    return null;
+  };
+
+  const expectedPlanScore = (
+    squad: RankedPlayer[],
+    xi: RankedPlayer[],
+    captain: RankedPlayer | null,
+    scores: Map<number, CounterHorizonScore>,
+    chip: string | null,
+  ) => {
+    let total = xi.reduce(
+      (sum, player) => sum + (scores.get(player.id)?.score ?? 0),
+      0,
+    );
+    if (captain) total += scores.get(captain.id)?.score ?? 0;
+    if (chip === "Triple Captain" && captain) {
+      total += scores.get(captain.id)?.score ?? 0;
+    }
+    if (chip === "Bench Boost") {
+      for (const player of squad) {
+        if (xi.some((starter) => starter.id === player.id)) continue;
+        total += scores.get(player.id)?.score ?? 0;
+      }
+    }
+    return total;
+  };
+
+  const buildStatefulPath = (
+    team: TeamAnalysis,
+    firstTransfer: { out: RankedPlayer; in: RankedPlayer } | null,
+    preferredCaptainId: number | null,
+    style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED",
+    history: Awaited<ReturnType<typeof getRivalResourceHistory>> | null,
+    isManager: boolean,
+  ): StatefulPath => {
+    let squad = [...team.squad];
+    let bank = Math.max(0, Number(team.bank ?? 0));
+    let freeTransfers = Math.max(
+      1,
+      Math.min(5, Number(history?.estimatedFreeTransfers ?? 1)),
+    );
+    const chips = new Set((history?.currentHalfRemaining ?? []).map(chipLabel));
+    const startingFreeTransfers = freeTransfers;
+    const startingBank = bank;
+    const startingChips = [...chips];
+    const weeks: PathWeek[] = [];
+
+    for (let eventIndex = 0; eventIndex < horizonEvents.length; eventIndex += 1) {
+      const event = horizonEvents[eventIndex];
+      const freeBefore = freeTransfers;
+      const bankBefore = bank;
+      let transfers: PathTransfer[] = [];
+
+      if (eventIndex === 0 && firstTransfer) {
+        const gain = weightedTransferGain(
+          firstTransfer.out,
+          firstTransfer.in,
+          eventIndex,
+        );
+        const transfer = { ...firstTransfer, gain };
+        const applied = applyTransfer(squad, bank, transfer);
+        squad = applied.squad;
+        bank = applied.bank;
+        transfers = [transfer];
+      } else if (eventIndex > 0) {
+        const selected = selectFutureTransfers(
+          squad,
+          bank,
+          freeTransfers,
+          eventIndex,
+          style,
+          history?.activity ?? null,
+        );
+        squad = selected.squad;
+        bank = selected.bank;
+        transfers = selected.transfers;
+      }
+
+      const hitCost = Math.max(0, transfers.length - freeBefore) * 4;
+      freeTransfers = Math.min(
+        5,
+        Math.max(0, freeBefore - transfers.length) + 1,
+      );
+
+      const plan = planFromSquad(
+        squad,
+        event.scores,
+        eventIndex === 0 ? preferredCaptainId : null,
+      );
+      const chip = isManager
+        ? managerChipForWeek(chips, event.name)
+        : rivalChipForWeek(
+            chips,
+            squad,
+            plan.xi,
+            plan.captain,
+            event,
+            history?.activity ?? null,
+          );
+      if (chip) removeChip(chips, chip);
+      const meanScore =
+        expectedPlanScore(
+          squad,
+          plan.xi,
+          plan.captain,
+          event.scores,
+          chip,
+        ) - hitCost;
+
+      weeks.push({
+        event_id: event.eventId,
+        event_name: event.name,
+        squad: [...squad],
+        xi: plan.xi,
+        captain: plan.captain,
+        chip,
+        transfers,
+        hit_cost: hitCost,
+        free_transfers_before: freeBefore,
+        free_transfers_after: freeTransfers,
+        bank_before: bankBefore,
+        bank_after: bank,
+        mean_score: meanScore,
+      });
+    }
+
+    return {
+      starting_free_transfers: startingFreeTransfers,
+      starting_bank: startingBank,
+      starting_chips: startingChips,
+      weeks,
+      ending_free_transfers: freeTransfers,
+      ending_bank: bank,
+      remaining_chips: [...chips],
+    };
+  };
+
+  const simulateStatefulWeek = (
+    week: PathWeek,
+    event: (typeof horizonEvents)[number],
+    iteration: number,
+    cache: Map<string, number>,
+  ) => {
+    let total = 0;
+    for (const player of week.xi) {
+      const item = event.scores.get(player.id);
+      total += simulatedHorizonPlayerScore(
+        player,
+        item?.score ?? 0,
+        item?.fixtureCount ?? 0,
+        event.eventId,
+        iteration,
+        cache,
+      );
+    }
+    if (week.captain) {
+      const item = event.scores.get(week.captain.id);
+      const captainScore = simulatedHorizonPlayerScore(
+        week.captain,
+        item?.score ?? 0,
+        item?.fixtureCount ?? 0,
+        event.eventId,
+        iteration,
+        cache,
+      );
+      total += captainScore;
+      if (week.chip === "Triple Captain") total += captainScore;
+    }
+    if (week.chip === "Bench Boost") {
+      for (const player of week.squad) {
+        if (week.xi.some((starter) => starter.id === player.id)) continue;
+        const item = event.scores.get(player.id);
+        total += simulatedHorizonPlayerScore(
+          player,
+          item?.score ?? 0,
+          item?.fixtureCount ?? 0,
+          event.eventId,
+          iteration,
+          cache,
+        );
+      }
+    }
+    return total - week.hit_cost;
+  };
+
+  const managerHistory =
+    resourceByEntry.get(managerStanding.entry_id) ?? null;
+  const managerPaths = new Map<string, StatefulPath>();
+  for (const candidate of candidates) {
+    managerPaths.set(
+      candidate.id,
+      buildStatefulPath(
+        analysis.manager,
+        candidate.transfer,
+        candidate.captain?.id ?? null,
+        candidate.style,
+        managerHistory,
+        true,
+      ),
+    );
+  }
+
+  const rivalPaths = new Map<number, StatefulPath[]>();
+  for (const rival of selectedRivals) {
+    const vectors = rivalVectorMap.get(rival.standing.entry_id) ?? [];
+    const history = resourceByEntry.get(rival.standing.entry_id) ?? null;
+    rivalPaths.set(
+      rival.standing.entry_id,
+      vectors.map((vector) =>
+        buildStatefulPath(
+          rival.team,
+          vector.transfer,
+          null,
+          "BALANCED",
+          history,
+          false,
+        ),
+      ),
+    );
+  }
+
+  const summarizePath = (path: StatefulPath, horizonLength: number) => {
+    const weeks = path.weeks.slice(0, horizonLength);
+    const last = weeks.at(-1);
+    return {
+      starting_free_transfers: path.starting_free_transfers,
+      ending_free_transfers:
+        last?.free_transfers_after ?? path.starting_free_transfers,
+      starting_bank: path.starting_bank,
+      ending_bank: last?.bank_after ?? path.starting_bank,
+      hit_cost: weeks.reduce((sum, week) => sum + week.hit_cost, 0),
+      chips_used: weeks
+        .filter((week) => week.chip)
+        .map((week) => ({
+          event_id: week.event_id,
+          event_name: week.event_name,
+          chip: week.chip!,
+        })),
+      weeks: weeks.map((week) => ({
+        event_id: week.event_id,
+        event_name: week.event_name,
+        transfers: week.transfers.map((move) => ({
+          out: { id: move.out.id, name: move.out.name, team: move.out.team },
+          in: { id: move.in.id, name: move.in.name, team: move.in.team },
+          weighted_gain: move.gain,
+        })),
+        captain: week.captain
+          ? {
+              id: week.captain.id,
+              name: week.captain.name,
+              team: week.captain.team,
+            }
+          : null,
+        chip: week.chip,
+        hit_cost: week.hit_cost,
+        free_transfers_before: week.free_transfers_before,
+        free_transfers_after: week.free_transfers_after,
+        bank_after: week.bank_after,
+        projected_mean: week.mean_score,
+      })),
+    };
+  };
+
+  const pathRaw = new Map<
+    number,
+    Array<{
+      id: string;
+      label: string;
+      style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+      objective_probability: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+      resource_path: ReturnType<typeof summarizePath>;
+    }>
+  >(horizonLengths.map((length) => [length, []]));
+
+  for (const candidate of candidates) {
+    const stats = new Map<
+      number,
+      {
+        beatTarget: number;
+        stayAheadChaser: number;
+        controlAll: number;
+        scoreSum: number;
+        squareSum: number;
+      }
+    >(
+      horizonLengths.map((length) => [
+        length,
+        {
+          beatTarget: 0,
+          stayAheadChaser: 0,
+          controlAll: 0,
+          scoreSum: 0,
+          squareSum: 0,
+        },
+      ]),
+    );
+    const managerPath = managerPaths.get(candidate.id);
+    const managerStart = Number(managerStanding.total ?? 0);
+    if (!managerPath) continue;
+
+    for (let iteration = 0; iteration < pathIterations; iteration += 1) {
+      let managerCumulative = 0;
+      const rivalCumulative = new Map<number, number>();
+      const rivalVectorIndices = new Map<number, number>();
+
+      for (const rival of selectedRivals) {
+        const vector = rivalVectorForIteration(
+          rival.standing.entry_id,
+          iteration,
+        );
+        const vectors = rivalVectorMap.get(rival.standing.entry_id) ?? [];
+        const vectorIndex = vector ? Math.max(0, vectors.indexOf(vector)) : 0;
+        rivalVectorIndices.set(rival.standing.entry_id, vectorIndex);
+        rivalCumulative.set(rival.standing.entry_id, 0);
+      }
+
+      for (let weekIndex = 0; weekIndex < horizonEvents.length; weekIndex += 1) {
+        const event = horizonEvents[weekIndex];
+        const scoreCache = new Map<string, number>();
+        const managerWeek = managerPath.weeks[weekIndex];
+        if (managerWeek) {
+          managerCumulative += simulateStatefulWeek(
+            managerWeek,
+            event,
+            iteration,
+            scoreCache,
+          );
+        }
+
+        for (const rival of selectedRivals) {
+          const vectorIndex =
+            rivalVectorIndices.get(rival.standing.entry_id) ?? 0;
+          const week =
+            rivalPaths.get(rival.standing.entry_id)?.[vectorIndex]?.weeks[
+              weekIndex
+            ] ?? null;
+          if (!week) continue;
+          const score = simulateStatefulWeek(
+            week,
+            event,
+            iteration,
+            scoreCache,
+          );
+          rivalCumulative.set(
+            rival.standing.entry_id,
+            (rivalCumulative.get(rival.standing.entry_id) ?? 0) + score,
+          );
+        }
+
+        const horizonLength = weekIndex + 1;
+        if (!horizonLengths.includes(horizonLength)) continue;
+        const horizonStats = stats.get(horizonLength)!;
+        horizonStats.scoreSum += managerCumulative;
+        horizonStats.squareSum += managerCumulative * managerCumulative;
+
+        let controlsAll = true;
+        for (const rival of selectedRivals) {
+          const managerTotal = managerStart + managerCumulative;
+          const rivalTotal =
+            Number(rival.standing.total ?? 0) +
+            (rivalCumulative.get(rival.standing.entry_id) ?? 0);
+          if (managerTotal <= rivalTotal) controlsAll = false;
+          if (
+            target &&
+            rival.standing.entry_id === target.standing.entry_id &&
+            managerTotal > rivalTotal
+          ) {
+            horizonStats.beatTarget += 1;
+          }
+          if (
+            primaryChaser &&
+            rival.standing.entry_id === primaryChaser.standing.entry_id &&
+            managerTotal > rivalTotal
+          ) {
+            horizonStats.stayAheadChaser += 1;
+          }
+        }
+        if (controlsAll) horizonStats.controlAll += 1;
+      }
+    }
+
+    for (const horizonLength of horizonLengths) {
+      const item = stats.get(horizonLength)!;
+      const mean = item.scoreSum / pathIterations;
+      const variance = Math.max(
+        0,
+        item.squareSum / pathIterations - mean * mean,
+      );
+      const volatility = Math.sqrt(variance);
+      const objectiveProbability =
+        leagueStrategy.mode === "PROTECT"
+          ? primaryChaser
+            ? item.stayAheadChaser / pathIterations
+            : item.controlAll / pathIterations
+          : target
+            ? item.beatTarget / pathIterations
+            : item.controlAll / pathIterations;
+      pathRaw.get(horizonLength)!.push({
+        id: candidate.id,
+        label: candidate.label,
+        style: candidate.style,
+        objective_probability: objectiveProbability,
+        mean_score: mean,
+        volatility,
+        floor_5: mean - 1.645 * volatility,
+        ceiling_95: mean + 1.645 * volatility,
+        resource_path: summarizePath(managerPath, horizonLength),
+      });
+    }
+  }
+
+  const horizonResults = Object.fromEntries(
+    horizonLengths.map((horizonLength) => {
+      const raw = pathRaw.get(horizonLength) ?? [];
+      const hold = raw.find((item) => item.id === "hold") ?? raw[0] ?? null;
+      const ranked = raw
+        .map((item) => ({
+          ...item,
+          probability_delta:
+            hold == null
+              ? 0
+              : item.objective_probability - hold.objective_probability,
+        }))
+        .sort((a, b) => {
+          const probabilityGap =
+            b.objective_probability - a.objective_probability;
+          if (Math.abs(probabilityGap) > 0.01) return probabilityGap;
+          if (leagueStrategy.mode === "PROTECT") {
+            const floorGap = b.floor_5 - a.floor_5;
+            if (Math.abs(floorGap) > 0.15) return floorGap;
+            const volatilityGap = a.volatility - b.volatility;
+            if (Math.abs(volatilityGap) > 0.05) return volatilityGap;
+          } else {
+            const ceilingGap = b.ceiling_95 - a.ceiling_95;
+            if (Math.abs(ceilingGap) > 0.15) return ceilingGap;
+          }
+          return b.mean_score - a.mean_score;
+        });
+      const best = ranked[0] ?? null;
+      const delta = best?.probability_delta ?? 0;
+      const magnitude = Math.abs(delta);
+      const band =
+        magnitude < 0.01
+          ? ("NEUTRAL" as const)
+          : magnitude < 0.03
+            ? ("MATERIAL" as const)
+            : ("DECISIVE" as const);
+      return [
+        String(horizonLength),
+        {
+          horizon: horizonLength,
+          event_names: horizonEvents
+            .slice(0, horizonLength)
+            .map((event) => event.name),
+          iterations: pathIterations,
+          baseline: hold,
+          recommended_scenario: best,
+          scenarios: ranked,
+          game_theory_impact: {
+            band,
+            probability_delta: delta,
+          },
+        },
+      ];
+    }),
+  );
+
   const playerById = new Map<number, RankedPlayer>();
   for (const team of [analysis.manager, ...analysis.rivals]) {
     for (const player of team.squad) playerById.set(player.id, player);
@@ -974,6 +1864,14 @@ function buildCounterPlay(
           ceiling_95: baseline.ceiling_95,
         }
       : null,
+    game_theory_impact: {
+      band: gameTheoryBand,
+      probability_delta: bestProbabilityDelta,
+      threshold_neutral: 0.01,
+      threshold_decisive: 0.03,
+      explanation: gameTheoryExplanation,
+    },
+    horizon_results: horizonResults,
     scenarios: rankedScenarios.slice(0, 7),
     recommended_scenario: rankedScenarios[0] ?? null,
     local_exposure: localMatrix,
@@ -985,7 +1883,10 @@ function buildCounterPlay(
       "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
       "Rival HOLD/transfer vectors are model-weighted plausible responses and are sampled inside the simulation; they are not claims about a rival's intent.",
       "When objective probabilities are within one percentage point, PROTECT mode uses downside floor/tighter variance as the tie-break; CHASE/RECOVER uses upside ceiling. Raw expected score only breaks the final tie.",
-      "The first CounterPlay release models next-deadline pressure control; 3GW/5GW path simulation is the next extension.",
+      "The 1GW/3GW/5GW path is stateful: each deadline carries forward the squad, free-transfer bank, approximate cash balance, hit cost, captaincy and supported chip use before re-evaluating the next football-qualified transfer.",
+      "Future manager and rival transfers are model-selected response paths from a bounded football-qualified pool. They are planning weights, not claims about what any manager will do.",
+      "Path cash uses current listed prices because exact historical purchase/selling-price profit is not available in the public league snapshot; bank-sensitive moves should therefore be treated as approximate until selling-price state is added.",
+      "Triple Captain and Bench Boost can be represented from the carried 15-man squad. Wildcard and Free Hit remain in the resource state and are not auto-deployed until a full one-deadline squad optimiser is wired into CounterPlay.",
     ],
   };
 }
@@ -1223,9 +2124,32 @@ function buildPortfolioPlan(
   leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
   managerHistory: Awaited<ReturnType<typeof getRivalResourceHistory>> | null,
   resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
+  counterPlay: ReturnType<typeof buildCounterPlay>,
 ) {
   const portfolio = analysis.manager.portfolio;
-  const transfer = leagueStrategy.transfer_moves[0] ?? null;
+  const footballTransfer = leagueStrategy.transfer_moves[0] ?? null;
+  const counterScenario = counterPlay.recommended_scenario ?? null;
+  const counterTransfer =
+    counterScenario?.transfer
+      ? leagueStrategy.transfer_moves.find(
+          (move) =>
+            move.out.id === counterScenario.transfer?.out.id &&
+            move.in.id === counterScenario.transfer?.in.id,
+        ) ?? null
+      : null;
+  const impactBand = counterPlay.game_theory_impact.band;
+  const materialCloseCall =
+    impactBand === "MATERIAL" &&
+    footballTransfer &&
+    counterTransfer &&
+    Math.abs(counterTransfer.raw_gain - footballTransfer.raw_gain) <= 0.75;
+  const gameTheoryTiebreak =
+    Boolean(counterTransfer) &&
+    (impactBand === "DECISIVE" || Boolean(materialCloseCall));
+  const transfer =
+    gameTheoryTiebreak && counterTransfer
+      ? counterTransfer
+      : footballTransfer;
   const freeTransfers = managerHistory?.estimatedFreeTransfers ?? null;
   const firstTwoEvents = new Set(
     analysis.futurePlan.slice(0, 2).map((item) => item.name),
@@ -1289,6 +2213,13 @@ function buildPortfolioPlan(
     );
   }
 
+  why.push(counterPlay.game_theory_impact.explanation);
+  if (gameTheoryTiebreak && footballTransfer && transfer) {
+    why.push(
+      `Game theory acts only as a tie-break between moves that already clear the football threshold: ${transfer.out.name} → ${transfer.in.name} is preferred over ${footballTransfer.out.name} → ${footballTransfer.in.name} in this league context.`,
+    );
+  }
+
   const failureModes = [
     ...portfolio.risks,
     analysis.freshness.nearDeadline
@@ -1323,6 +2254,32 @@ function buildPortfolioPlan(
   return {
     action,
     headline,
+    decision_driver:
+      gameTheoryTiebreak
+        ? "GAME_THEORY_TIEBREAK"
+        : action === "TRANSFER"
+          ? "FOOTBALL_PORTFOLIO"
+          : "PORTFOLIO_STRUCTURE",
+    game_theory: {
+      ...counterPlay.game_theory_impact,
+      used_as_tiebreak: gameTheoryTiebreak,
+      football_primary_transfer: footballTransfer
+        ? {
+            out: footballTransfer.out.name,
+            in: footballTransfer.in.name,
+            raw_gain: footballTransfer.raw_gain,
+            horizon_gain: footballTransfer.horizon_gain,
+          }
+        : null,
+      selected_transfer: transfer
+        ? {
+            out: transfer.out.name,
+            in: transfer.in.name,
+            raw_gain: transfer.raw_gain,
+            horizon_gain: transfer.horizon_gain,
+          }
+        : null,
+    },
     portfolio,
     free_transfers: freeTransfers,
     hit_cost_for_one_extra_move: hitCostForExtraMove,
@@ -1734,6 +2691,7 @@ export async function GET(
       leagueStrategy,
       managerHistory,
       resourceAdvice,
+      counterPlay,
     );
     const decisionPath = buildDecisionPath(
       analysis,
@@ -1780,6 +2738,13 @@ export async function GET(
       ).catch(() => null);
     }
 
+    // The bounded transfer pool is an internal CounterPlay search space. Keep
+    // it out of the response payload once the path engine has consumed it.
+    const publicAnalysis = {
+      ...analysis,
+      counterPlayTransferPool: undefined,
+    };
+
     return NextResponse.json({
       league_id: leagueId,
       manager_standing: managerStanding,
@@ -1787,7 +2752,7 @@ export async function GET(
       target_standing: targetStanding,
       chaser_standings: chaserStandings,
       pressure_map: pressureMap,
-      analysis,
+      analysis: publicAnalysis,
       league_strategy: leagueStrategy,
       resource_map: resourceMap,
       resource_advice: resourceAdvice,
