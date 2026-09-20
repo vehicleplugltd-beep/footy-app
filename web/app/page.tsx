@@ -40,6 +40,19 @@ export default async function Home() {
     (rule) => rule.strategy_id === "home-edge-v1",
   );
 
+  const shortlist = board
+    .map((match) => {
+      const pick = [...match.selections].sort(
+        (a, b) => b.model_probability - a.model_probability,
+      )[0];
+      return pick ? { match, pick } : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => b.pick.model_probability - a.pick.model_probability)
+    .slice(0, 3);
+
+  const watchCount = board.length;
+
   return (
     <main>
       <BettingAgeGate />
@@ -95,38 +108,57 @@ export default async function Home() {
         </div>
       ) : null}
 
-      <section className="hero shell betting-hero">
+      <section className="hero shell consumer-hero">
         <div>
-          <span className="eyebrow">Betting intelligence for serious punters</span>
+          <span className="eyebrow">Football tips without the tipster nonsense</span>
           <h1>
-            Beat the bookies by
+            Today&apos;s football.
             <br />
-            beating the price.
+            <span>Simplified.</span>
           </h1>
           <p>
-            Footy is built to help punters find mispriced odds, know the price
-            worth waiting for, and see whether a model edge is backed by
-            historical evidence.
+            Footy crunches the numbers, works out what the odds should be, and
+            tells you the price worth waiting for. No forcing a pick just because
+            there&apos;s a game on.
           </p>
           <div className="hero-actions">
-            <a className="primary-cta" href="#price-checker">Check a price</a>
-            <Link className="secondary-cta" href="/fpl">Use Free FPL Assistant</Link>
+            <a className="primary-cta" href="#today-shortlist">
+              Show me today&apos;s shortlist
+            </a>
+            <Link className="secondary-cta" href="/fpl">
+              Free FPL Assistant
+            </Link>
+          </div>
+          <div className="consumer-trust-row">
+            <span>✓ Every public call tracked</span>
+            <span>✓ Losses stay visible</span>
+            <span>✓ Fractional odds</span>
           </div>
         </div>
 
-        <div className="hero-card betting-positioning">
-          <span className="eyebrow">The Footy rule</span>
-          <strong>Price first.</strong>
-          <p>
-            A team can be likely to win and still be a bad bet. Footy models the
-            football first, sets a fair price, adds an uncertainty margin, then
-            compares that with the bookmaker.
-          </p>
-          <div className="hero-proof">
-            <span>Current 1X2 model</span>
-            <StatusPill status={status} />
+        <aside className="today-glance">
+          <div className="today-glance-top">
+            <span className="live-dot" />
+            <span>FOOTY TODAY</span>
           </div>
-        </div>
+          <strong>{board.length} matches scanned</strong>
+          <div className="today-glance-grid">
+            <div>
+              <span>Price watches</span>
+              <b>{watchCount}</b>
+            </div>
+            <div>
+              <span>Forced tips</span>
+              <b>0</b>
+            </div>
+          </div>
+          <p>
+            {status === "APPROVED"
+              ? "The model is approved, but the bookmaker price still has to clear Footy’s take price."
+              : "The model is still on WATCH, so Footy shows the interesting prices without pretending they are proven value tips."}
+          </p>
+          <Link href="/results">See the public record →</Link>
+        </aside>
       </section>
 
       <section className="shell home-proof-strip">
@@ -143,56 +175,105 @@ export default async function Home() {
         </div>
         <p>
           Every published model call is frozen before kickoff and settled
-          automatically. Losses stay visible.
+          automatically. No deleting the ugly ones.
         </p>
         <Link className="proof-link" href="/results">
           See every result →
         </Link>
       </section>
 
-      <section className="shell quick-scan" aria-label="Footy quick scan">
-        <div>
-          <span>Fixtures priced</span>
-          <strong>{board.length}</strong>
-          <small>upcoming modelled matches</small>
+      <section className="shell consumer-shortlist" id="today-shortlist">
+        <div className="consumer-section-head">
+          <div>
+            <span className="eyebrow">Today&apos;s shortlist</span>
+            <h2>What Footy likes most</h2>
+            <p>
+              These are the strongest 1X2 model leans. The important number is
+              the price beside <b>Wait for</b> — shorter than that and Footy says
+              leave it alone.
+            </p>
+          </div>
+          <a href="#price-checker">Check your bookmaker price ↓</a>
         </div>
-        <div>
-          <span>Odds format</span>
-          <strong>Fractional</strong>
-          <small>UK-friendly throughout</small>
-        </div>
-        <div>
-          <span>1X2 model</span>
-          <strong>{status}</strong>
-          <small>{validation?.sample_size?.toLocaleString("en-GB") ?? "—"} historical predictions</small>
-        </div>
-        <div>
-          <span>Fastest action</span>
-          <strong>Check a price</strong>
-          <small>enter 7/4, 6/5, EVS etc.</small>
+
+        <div className="consumer-pick-grid">
+          {shortlist.length ? (
+            shortlist.map(({ match, pick }, index) => (
+              <article
+                className={`consumer-pick-card ${index === 0 ? "featured-pick" : ""}`}
+                key={match.match_id}
+              >
+                <div className="consumer-pick-top">
+                  <span className="pick-rank">
+                    {index === 0 ? "🔥 Strongest lean" : `#${index + 1} today`}
+                  </span>
+                  <span className="pick-status">
+                    {status === "APPROVED" ? "PRICE CHECK" : "WATCHLIST"}
+                  </span>
+                </div>
+
+                <span className="consumer-fixture">
+                  {match.home_team} v {match.away_team}
+                </span>
+                <h3>{pick.displaySelection}</h3>
+
+                <div className="consumer-price-call">
+                  <span>Wait for</span>
+                  <strong>
+                    {minimumTakeToFractional(pick.minimum_take_price)}+
+                  </strong>
+                </div>
+
+                <p className="consumer-explain">
+                  Footy gives {pick.displaySelection} a{" "}
+                  <b>{(pick.model_probability * 100).toFixed(0)}% chance</b>.
+                  Fair price is about{" "}
+                  <b>{decimalToFractional(pick.fair_odds)}</b>. If your bookie
+                  is shorter than the take price, move on.
+                </p>
+
+                <div className="consumer-card-footer">
+                  <span>{kickoff(match.kickoff_at)}</span>
+                  <a href="#price-checker">Check price →</a>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="empty">
+              No Footy shortlist is available right now.
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="shell product-promise">
+      <section className="shell everyday-strip">
         <article>
-          <span className="promise-number">01</span>
-          <h3>Find the edge</h3>
-          <p>Independent probabilities built from underlying football process—not odds-led narratives.</p>
+          <span>🔥</span>
+          <div>
+            <strong>What we like</strong>
+            <small>The strongest model lean, in plain English.</small>
+          </div>
         </article>
         <article>
-          <span className="promise-number">02</span>
-          <h3>Know your price</h3>
-          <p>Fair odds and a stricter Minimum Take Price tell you when a quoted price is genuinely interesting and when to pass.</p>
+          <span>💷</span>
+          <div>
+            <strong>What price we need</strong>
+            <small>A clear fractional number — not vague “value”.</small>
+          </div>
         </article>
         <article>
-          <span className="promise-number">03</span>
-          <h3>Filter the noise</h3>
-          <p>Validation gates stop a large-looking raw edge being presented as a tip before the evidence supports it.</p>
+          <span>🚫</span>
+          <div>
+            <strong>When to walk away</strong>
+            <small>Too short is too short, even on the likely winner.</small>
+          </div>
         </article>
         <article>
-          <span className="promise-number">04</span>
-          <h3>Prove the edge</h3>
-          <p>Historical tip performance and closing-line movement decide whether an edge survives—not screenshots or winning streaks.</p>
+          <span>📊</span>
+          <div>
+            <strong>How we&apos;re doing</strong>
+            <small>Every published call stays on the results page.</small>
+          </div>
         </article>
       </section>
 
@@ -203,17 +284,25 @@ export default async function Home() {
         </div>
       ) : null}
 
-      <div className="shell notice">
-        <strong>Footy Pro is in live beta.</strong> Today you can use fractional
-        fair prices, Minimum Take Price, the price checker and model-validation
-        evidence. Live bookmaker line-shopping and automatic price alerts are next.
+      <div className="shell notice consumer-notice">
+        <strong>One rule:</strong> don&apos;t chase a team — chase the right price.
+        Footy can like an outcome and still tell you to leave it alone if the odds
+        are too short.
       </div>
 
-      <section className="shell section">
+      <details className="shell advanced-board">
+        <summary>
+          <div>
+            <span className="eyebrow">Want the numbers?</span>
+            <strong>Open the full model board</strong>
+          </div>
+          <span>Probabilities · Fair odds · Take prices</span>
+        </summary>
+        <div className="advanced-board-inner">
         <div className="section-head">
           <div>
-            <span className="eyebrow">Upcoming</span>
-            <h2>Today&apos;s pricing board</h2>
+            <span className="eyebrow">Advanced view</span>
+            <h2>Full model board</h2>
           </div>
           <div className="board-legend">
             <span><b>Fair</b> model price</span>
@@ -271,28 +360,28 @@ export default async function Home() {
             </div>
           )}
         </div>
-      </section>
+        </div>
+
+      </details>
 
       <section className="shell section split" id="price-checker">
         <div className="panel">
-          <span className="eyebrow">Tool 01 · Find value</span>
-          <h2>Is the bookmaker price good enough?</h2>
+          <span className="eyebrow">Got a price?</span>
+          <h2>Ask Footy if it&apos;s big enough.</h2>
           <p className="muted">
-            Enter the odds you can actually get. Footy compares them with our
-            fair price and Minimum Take Price, calculates the raw EV, then applies
-            the historical validation gate before calling it actionable.
+            Type the fractional odds from your bookmaker — 7/4, 6/5, EVS etc.
+            Footy tells you whether the price is interesting or too short.
           </p>
           <PriceChecker board={board} validationStatus={status} />
         </div>
 
         <div className="panel">
-          <span className="eyebrow">Tool 02 · Read the signal</span>
-          <h2>Know what Footy is actually telling you</h2>
+          <span className="eyebrow">Keep it simple</span>
+          <h2>Three answers. That&apos;s it.</h2>
           <p className="muted">
-            Footy is an information service. An APPROVED value tip means the
-            model price, market price and historical validation all clear our
-            threshold. WATCH means the idea is interesting but not strong
-            enough to promote. PASS means the price is not good enough.
+            VALUE TIP means the price and evidence clear Footy&apos;s bar. WATCH
+            means interesting, but not strong enough yet. PASS means don&apos;t
+            force it at the price you entered.
           </p>
           <div className="signal-guide">
             <div><strong>VALUE TIP</strong><span>Historically approved information signal.</span></div>
@@ -305,8 +394,8 @@ export default async function Home() {
       <section className="shell section evidence">
         <div className="section-head">
           <div>
-            <span className="eyebrow">Evidence</span>
-            <h2>Show me the evidence</h2>
+            <span className="eyebrow">For the number nerds</span>
+            <h2>Show me the proof underneath</h2>
           </div>
         </div>
 
