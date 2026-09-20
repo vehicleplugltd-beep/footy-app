@@ -1,0 +1,27 @@
+name: sync-live-odds
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */2 * * *"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/sync-live-odds.yml"
+      - "web/scripts/sync-live-odds.mjs"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sync UK live odds and evaluate Footy alerts
+        run: node web/scripts/sync-live-odds.mjs
