@@ -273,6 +273,19 @@ export type PortfolioHealth = {
     forwardRoute: boolean;
     midfieldTarget: string | null;
     forwardTarget: string | null;
+    bands: {
+      goalkeeperSpend: number;
+      budgetGoalkeepers: number;
+      premiumDefenders: number;
+      midDefenders: number;
+      budgetDefenders: number;
+      premiumMidfielders: number;
+      midMidfielders: number;
+      enablerMidfielders: number;
+      premiumMidForwards: number;
+      valueForwards: number;
+      budgetForwards: number;
+    };
   };
   horizon: {
     nextGwBestXi: number;
@@ -1672,6 +1685,31 @@ function buildPortfolioHealth(
       player.price <= 8.5,
   ).length;
 
+  const goalkeepers = squad.filter((player) => player.position === "GKP");
+  const defenders = squad.filter((player) => player.position === "DEF");
+  const midfielders = squad.filter((player) => player.position === "MID");
+  const forwards = squad.filter((player) => player.position === "FWD");
+  const goalkeeperSpend = goalkeepers.reduce(
+    (sum, player) => sum + player.price,
+    0,
+  );
+  const budgetGoalkeepers = goalkeepers.filter((player) => player.price <= 4.5).length;
+  const premiumDefenders = defenders.filter((player) => player.price >= 6.0).length;
+  const midDefenders = defenders.filter(
+    (player) => player.price > 4.5 && player.price <= 5.5,
+  ).length;
+  const budgetDefenders = defenders.filter((player) => player.price <= 4.5).length;
+  const premiumMidfielders = midfielders.filter((player) => player.price >= 8.5).length;
+  const midMidfielders = midfielders.filter(
+    (player) => player.price >= 6.5 && player.price <= 8.0,
+  ).length;
+  const enablerMidfielders = midfielders.filter((player) => player.price <= 5.5).length;
+  const premiumMidForwards = forwards.filter((player) => player.price >= 7.5).length;
+  const valueForwards = forwards.filter(
+    (player) => player.price >= 5.5 && player.price < 7.5,
+  ).length;
+  const budgetForwards = forwards.filter((player) => player.price < 5.5).length;
+
   const midfieldTarget =
     ranked.find(
       (player) =>
@@ -1722,6 +1760,7 @@ function buildPortfolioHealth(
   score -= unavailablePlayers * 5;
   if (bank < 0.5) score -= 8;
   if (bank > 2.0) score -= 3;
+  if (goalkeeperSpend > 9.5) score -= 4;
   if (!midfieldRoute) score -= 8;
   if (!forwardRoute) score -= 8;
   if (differentialCount > 3) score -= (differentialCount - 3) * 4;
@@ -1742,12 +1781,19 @@ function buildPortfolioHealth(
     `${reliableBench}/4 bench players currently clear Footy's availability, start-reliability and fixture-availability test.`,
     `Bank is £${bank.toFixed(1)}m (${bankStatus.toLowerCase()}); a £0.5m–£1.0m buffer is treated as useful optionality, not a hard rule.`,
     `Price structure has ${midBandMidfielders} midfielder(s) in £6.5m–£8.0m and ${midBandForwards} forward(s) in £7.0m–£8.5m.`,
+    `Goalkeeper spend is £${goalkeeperSpend.toFixed(1)}m; defender bands are ${premiumDefenders} premium / ${midDefenders} mid / ${budgetDefenders} budget; midfield has ${premiumMidfielders} premium / ${midMidfielders} mid / ${enablerMidfielders} enabler.`,
+    `Forward bands are ${premiumMidForwards} at £7.5m+ / ${valueForwards} value / ${budgetForwards} budget. These bands are structural heuristics, not hard selection rules.`,
     `Six-Gameweek best-XI model average is ${sixGwAverageBestXi.toFixed(1)}; eight-Gameweek average is ${eightGwAverageBestXi.toFixed(1)}.`,
   ];
 
   const risks: string[] = [];
   if (reliableBench < 2) {
     risks.push("Bench resilience is thin: fewer than two substitutes currently project as dependable cover.");
+  }
+  if (goalkeeperSpend > 9.5) {
+    risks.push(
+      `£${goalkeeperSpend.toFixed(1)}m is currently tied up in goalkeepers; Footy flags the opportunity cost but will not force a downgrade if save/clean-sheet value justifies it.`,
+    );
   }
   if (!midfieldRoute) {
     risks.push(
@@ -1792,6 +1838,19 @@ function buildPortfolioHealth(
       forwardRoute,
       midfieldTarget: midfieldTarget?.name ?? null,
       forwardTarget: forwardTarget?.name ?? null,
+      bands: {
+        goalkeeperSpend,
+        budgetGoalkeepers,
+        premiumDefenders,
+        midDefenders,
+        budgetDefenders,
+        premiumMidfielders,
+        midMidfielders,
+        enablerMidfielders,
+        premiumMidForwards,
+        valueForwards,
+        budgetForwards,
+      },
     },
     horizon: {
       nextGwBestXi,
