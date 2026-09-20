@@ -1,85 +1,64 @@
 import Link from "next/link";
-import { BettingAgeGate } from "@/components/age-gate";
 
 export default function ProPage() {
   return (
-    <main>
-      <BettingAgeGate />
+    <main className="league-edge-app">
       <nav className="nav shell">
         <Link className="brand brand-link" href="/">
-          <span className="brand-mark">F</span>
-          <span>Footy</span>
+          <span className="brand-mark">F</span><span>Footy</span>
         </Link>
         <div className="nav-links">
-          <Link href="/account">Account</Link>
-          <span className="status status-watch">FOUNDING BETA</span>
+          <Link href="/">League Edge</Link>
+          <Link href="/results">Receipts</Link>
         </div>
       </nav>
 
-      <section className="shell pricing-hero">
-        <span className="eyebrow">Footy Pro</span>
-        <h1>Pay for better betting information, not hype.</h1>
+      <section className="shell pass-hero">
+        <span className="eyebrow">Footy League Edge · Founding passes</span>
+        <h1>Pay for the decision layer.</h1>
         <p>
-          The paid product is being built around live price intelligence:
-          fair odds, Minimum Take Price, validated value-tip feeds, bookmaker
-          line-shopping, alerts and transparent evidence showing how the
-          model compares with the closing market.
+          The free product shows the league. The season pass tells you what to
+          do about it: move ranking, chase/protect, rival chips and Receipts.
         </p>
       </section>
 
-      <section className="shell pricing-grid">
-        <article className="pricing-card">
-          <span className="eyebrow">Free</span>
-          <h2>£0</h2>
-          <p>Use Footy before deciding whether the full terminal is worth it.</p>
+      <section className="shell edge-price-grid pass-grid">
+        <article className="featured">
+          <span>PLAYER PASS</span>
+          <h3>£9.99 <small>founding price</small></h3>
+          <p>One manager, this season. No auto-renew.</p>
           <ul>
-            <li>Fair-price board</li>
-            <li>Manual price checker</li>
-            <li>Model-validation status</li>
-            <li>Private saved-tip watchlist</li>
-            <li>Basic model-performance history</li>
-            <li>Free FPL Assistant remains separate</li>
+            <li>Top five transfer/captain moves</li>
+            <li>League-win probability change</li>
+            <li>Chase / protect mode</li>
+            <li>Rivals&apos; chip tracker</li>
+            <li>Chip planner</li>
+            <li>Receipts detail</li>
           </ul>
-          <Link className="secondary-cta" href="/account">Create free account</Link>
+          <button type="button" disabled>Checkout opening soon</button>
         </article>
 
-        <article className="pricing-card featured">
-          <span className="eyebrow">Founding Pro target</span>
-          <h2>£9.99 <small>/ month</small></h2>
-          <p>
-            No payment is being taken yet. Join the founding waitlist while we
-            validate the payment provider and finish the live odds layer.
-          </p>
+        <article>
+          <span>LEAGUE PASS</span>
+          <h3>£29 <small>founding price</small></h3>
+          <p>Up to 12 managers plus commissioner tools.</p>
           <ul>
-            <li>Live value scanner</li>
-            <li>William Hill + best-market prices</li>
-            <li>Price-crossing alerts</li>
-            <li>Validated value-tip feeds only</li>
-            <li>Advanced model-performance analytics</li>
-            <li>CLV / model performance dashboard</li>
-            <li>Advanced filters and exports</li>
+            <li>Player Pass features for 12 seats</li>
+            <li>Commissioner dashboard</li>
+            <li>League invite link</li>
+            <li>Commissioner recap badge</li>
           </ul>
-          <Link className="primary-cta" href="/account">Join the Pro waitlist</Link>
+          <button type="button" disabled>Checkout opening soon</button>
         </article>
       </section>
 
-      <section className="shell section">
-        <div className="panel">
-          <span className="eyebrow">Commercial rule</span>
-          <h2>We do not sell “guaranteed winners”.</h2>
-          <p className="muted">
-            Footy Pro will charge for analytics, price intelligence and research workflow.
-            We do not accept, place or settle bets. Models can be downgraded when
-            validation deteriorates, and an unapproved market cannot become a
-            customer-facing VALUE TIP simply because the raw EV looks large.
-          </p>
-        </div>
+      <section className="shell pass-note">
+        <strong>One-off season pass.</strong>
+        <p>
+          No monthly subscription and no auto-renew. Footy will only turn on
+          checkout when the promised paid features are ready to deliver.
+        </p>
       </section>
-
-      <footer className="shell footer">
-        <p><strong>18+ only.</strong> Footy provides betting information and analytics; we do not accept or place bets.</p>
-        <p>FAIR PRICE → TAKE PRICE → MARKET → EDGE → TRACK</p>
-      </footer>
     </main>
   );
 }
