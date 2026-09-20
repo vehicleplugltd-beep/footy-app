@@ -538,6 +538,134 @@ function bestXiFromSquad(squad: RankedPlayer[]) {
   return best;
 }
 
+type CounterHorizonScore = {
+  score: number;
+  fixtureCount: number;
+  availability: number;
+};
+
+function bestXiFromHorizonScores(
+  squad: RankedPlayer[],
+  scores: Map<number, CounterHorizonScore>,
+) {
+  const expected = (player: RankedPlayer) => scores.get(player.id)?.score ?? 0;
+  const sorted = [...squad].sort((a, b) => expected(b) - expected(a));
+  const byPosition = new Map<string, RankedPlayer[]>();
+  for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+    byPosition.set(
+      position,
+      sorted.filter((player) => player.position === position),
+    );
+  }
+  const keeper = (byPosition.get("GKP") ?? [])[0];
+  if (!keeper) return sorted.slice(0, 11);
+
+  let best: RankedPlayer[] = sorted.slice(0, 11);
+  let bestScore = -Infinity;
+  for (let defenders = 3; defenders <= 5; defenders += 1) {
+    for (let midfielders = 2; midfielders <= 5; midfielders += 1) {
+      const forwards = 10 - defenders - midfielders;
+      if (forwards < 1 || forwards > 3) continue;
+      const def = byPosition.get("DEF") ?? [];
+      const mid = byPosition.get("MID") ?? [];
+      const fwd = byPosition.get("FWD") ?? [];
+      if (
+        def.length < defenders ||
+        mid.length < midfielders ||
+        fwd.length < forwards
+      ) continue;
+      const xi = [
+        keeper,
+        ...def.slice(0, defenders),
+        ...mid.slice(0, midfielders),
+        ...fwd.slice(0, forwards),
+      ];
+      const score = xi.reduce((sum, player) => sum + expected(player), 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = xi;
+      }
+    }
+  }
+  return best;
+}
+
+function simulatedHorizonPlayerScore(
+  player: RankedPlayer,
+  mean: number,
+  fixtureCount: number,
+  eventId: number,
+  iteration: number,
+  cache: Map<string, number>,
+) {
+  const key = eventId + ":" + player.id;
+  const cached = cache.get(key);
+  if (cached != null) return cached;
+  const sd =
+    simulationVolatility(player) * Math.sqrt(Math.max(1, fixtureCount));
+  const shock = normalFromSeed(
+    (player.id * 73856093) ^
+      ((iteration + 1) * 19349663) ^
+      (eventId * 83492791),
+  );
+  const score = Math.max(-1, mean + shock * sd);
+  cache.set(key, score);
+  return score;
+}
+
+function horizonTeamPlan(
+  team: TeamAnalysis,
+  transfer: { out: RankedPlayer; in: RankedPlayer } | null,
+  scores: Map<number, CounterHorizonScore>,
+  preferredCaptainId: number | null,
+) {
+  const squad = scenarioSquad(team, transfer);
+  const xi = bestXiFromHorizonScores(squad, scores);
+  const expected = (player: RankedPlayer) => scores.get(player.id)?.score ?? 0;
+  const preferred =
+    preferredCaptainId != null
+      ? xi.find((player) => player.id === preferredCaptainId) ?? null
+      : null;
+  const captain =
+    preferred ??
+    [...xi].sort((a, b) => expected(b) - expected(a))[0] ??
+    null;
+  return { xi, captain };
+}
+
+function simulateHorizonPlan(
+  plan: { xi: RankedPlayer[]; captain: RankedPlayer | null },
+  scores: Map<number, CounterHorizonScore>,
+  eventId: number,
+  iteration: number,
+  cache: Map<string, number>,
+) {
+  let total = 0;
+  for (const player of plan.xi) {
+    const item = scores.get(player.id);
+    total += simulatedHorizonPlayerScore(
+      player,
+      item?.score ?? 0,
+      item?.fixtureCount ?? 0,
+      eventId,
+      iteration,
+      cache,
+    );
+  }
+  if (plan.captain) {
+    const item = scores.get(plan.captain.id);
+    total += simulatedHorizonPlayerScore(
+      plan.captain,
+      item?.score ?? 0,
+      item?.fixtureCount ?? 0,
+      eventId,
+      iteration,
+      cache,
+    );
+  }
+  return total;
+}
+
 function scenarioSquad(
   team: TeamAnalysis,
   transfer:
