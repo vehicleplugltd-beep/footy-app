@@ -192,6 +192,13 @@ export function NextMoveCommand({
 
   const transferProcess = transfer?.in.processBoost ?? 0;
   const transferAvailability = transfer?.in.availability ?? 100;
+  const freshnessSource = payload?.analysis?.freshness?.source;
+  const readiness =
+    transfer && transferAvailability < 100
+      ? "WAIT FOR NEWS"
+      : freshnessSource === "CACHED_FALLBACK"
+        ? "REFRESH BEFORE DEADLINE"
+        : "READY";
 
   return (
     <section className="shell next-move-command" id="next-move">
@@ -200,8 +207,15 @@ export function NextMoveCommand({
           <span>YOUR NEXT MOVE</span>
           <b>{leagueName ?? "Selected mini-league"}</b>
         </div>
-        <div className={`next-move-mode mode-${strategy.mode.toLowerCase()}`}>
-          {strategy.mode}
+        <div className="next-move-statuses">
+          <div className={`decision-readiness readiness-${readiness
+            .toLowerCase()
+            .replaceAll(" ", "-")}`}>
+            {readiness}
+          </div>
+          <div className={`next-move-mode mode-${strategy.mode.toLowerCase()}`}>
+            {strategy.mode}
+          </div>
         </div>
       </div>
 
