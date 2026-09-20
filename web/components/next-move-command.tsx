@@ -44,6 +44,16 @@ type ResourceAdvice = {
 };
 
 type Payload = {
+  manager_standing?: {
+    rank: number | null;
+    total: number | null;
+    entry_name: string;
+  };
+  rival_standing?: {
+    rank: number | null;
+    total: number | null;
+    entry_name: string;
+  } | null;
   league_strategy?: Strategy;
   resource_advice?: ResourceAdvice | null;
   analysis?: {
@@ -200,12 +210,23 @@ export function NextMoveCommand({
         ? "REFRESH BEFORE DEADLINE"
         : "READY";
 
+  const managerStanding = payload?.manager_standing;
+  const rivalStanding = payload?.rival_standing;
+  const rankLabel =
+    managerStanding?.rank != null ? `#${managerStanding.rank}` : "—";
+  const rivalRankLabel =
+    rivalStanding?.rank != null ? `#${rivalStanding.rank}` : "—";
+  const directGap =
+    managerStanding?.total != null && rivalStanding?.total != null
+      ? rivalStanding.total - managerStanding.total
+      : null;
+
   return (
-    <section className="shell next-move-command" id="next-move">
-      <div className="next-move-head">
-        <div className="next-move-kicker">
-          <span>YOUR NEXT MOVE</span>
-          <b>{leagueName ?? "Selected mini-league"}</b>
+    <section className="shell next-move-command minimal-command" id="next-move">
+      <div className="minimal-command-top">
+        <div>
+          <span className="minimal-label">TODAY</span>
+          <strong>{leagueName ?? "Selected mini-league"}</strong>
         </div>
         <div className="next-move-statuses">
           <div className={`decision-readiness readiness-${readiness
@@ -219,148 +240,130 @@ export function NextMoveCommand({
         </div>
       </div>
 
-      <div className="decision-sentence">
-        <span>FOOTY SAYS</span>
-        <strong>{decisionSentence}</strong>
-      </div>
-
-      <div className="decision-proof-row">
-        <article>
-          <span>MODEL EDGE</span>
-          <strong>
-            {transfer ? `+${transfer.raw_gain.toFixed(1)}` : "HOLD"}
-          </strong>
-          <small>
-            {transfer
-              ? "Projected squad improvement"
-              : "No transfer clears the threshold"}
-          </small>
-        </article>
-        <article>
-          <span>UNDERLYING PROCESS</span>
-          <strong>
-            {transfer
-              ? `${transferProcess >= 0 ? "+" : ""}${(
-                  transferProcess * 100
-                ).toFixed(0)}%`
-              : "—"}
-          </strong>
-          <small>
-            {transfer
-              ? `${transfer.in.team} process adjustment · ${transferAvailability}% availability`
-              : "No move required"}
-          </small>
-        </article>
-        <article>
-          <span>RIVAL CONTEXT</span>
-          <strong>
-            {transfer
-              ? transfer.rival_owns
-                ? "COVER"
-                : "SEPARATE"
-              : resources?.status ?? "EVEN"}
-          </strong>
-          <small>
-            {transfer
-              ? transfer.rival_owns
-                ? `${target} already owns ${transfer.in.name}`
-                : `${transfer.in.name} creates separation from ${target}`
-              : "League resources decide the posture"}
-          </small>
-        </article>
-      </div>
-
-      <div className="next-move-main">
-        <div className="beat-target">
-          <span>WHO YOU NEED TO BEAT</span>
+      <div className="minimal-position">
+        <div>
+          <span>You</span>
+          <strong>{rankLabel}</strong>
+        </div>
+        <div className="minimal-position-arrow">→</div>
+        <div>
+          <span>Target</span>
           <strong>{target}</strong>
           <small>
-            {strategy.gap_to_leader > 0
-              ? `${strategy.gap_to_leader} pts to the league leader`
-              : "You are currently setting the target"}
+            {rivalRankLabel}
+            {directGap != null
+              ? directGap > 0
+                ? ` · ${directGap} pts ahead`
+                : directGap < 0
+                  ? ` · ${Math.abs(directGap)} pts behind`
+                  : " · level on points"
+              : ""}
           </small>
         </div>
+      </div>
 
-        <article className="next-move-action primary-action">
-          <span>BEST TRANSFER</span>
-          {transfer ? (
-            <>
-              <strong>
-                {transfer.out.name} <i>→</i> {transfer.in.name}
-              </strong>
-              <p>{transfer.rationale}</p>
-              <small>
-                Model gain +{transfer.raw_gain.toFixed(1)}
-                {transfer.in.opponent ? ` · next vs ${transfer.in.opponent}` : ""}
-              </small>
-            </>
-          ) : (
-            <>
-              <strong>HOLD</strong>
-              <p>No transfer currently clears Footy&apos;s model threshold.</p>
-            </>
-          )}
+      <div className="minimal-decision">
+        <span>FOOTY SAYS</span>
+        <h2>{decisionSentence}</h2>
+      </div>
+
+      <div className="minimal-actions-grid">
+        <article>
+          <span>TRANSFER</span>
+          <strong>
+            {transfer ? `${transfer.out.name} → ${transfer.in.name}` : "HOLD"}
+          </strong>
+          <small>
+            {transfer
+              ? `+${transfer.raw_gain.toFixed(1)} model gain`
+              : "No move clears the threshold"}
+          </small>
         </article>
-
-        <article className="next-move-action">
+        <article>
           <span>CAPTAIN</span>
-          {captain ? (
-            <>
-              <strong>{captain.player.name}</strong>
-              <p>{captain.rationale}</p>
-              <small>
-                Footy score {captain.player.assistantScore.toFixed(1)}
-                {captain.player.opponent
-                  ? ` · vs ${captain.player.opponent}`
-                  : ""}
-              </small>
-            </>
-          ) : (
-            <strong>—</strong>
-          )}
+          <strong>{captain?.player.name ?? "—"}</strong>
+          <small>
+            {captain?.player.opponent
+              ? `vs ${captain.player.opponent}`
+              : "Best current option"}
+          </small>
         </article>
-
-        <article className="next-move-action resource-action">
-          <span>RIVAL RESOURCES</span>
-          <strong>{resources?.status ?? "CHECKING"}</strong>
-          <p>
-            {resources?.recommendation ??
-              "Footy is comparing chips, hits and likely free-transfer banks."}
-          </p>
-          {resources ? (
-            <small>
-              FT edge {resources.free_transfer_edge >= 0 ? "+" : ""}
-              {resources.free_transfer_edge}
-              {resources.chip_edge.length
-                ? ` · your chip edge: ${resources.chip_edge.join(", ")}`
-                : ""}
-              {resources.chip_threats.length
-                ? ` · rival edge: ${resources.chip_threats.join(", ")}`
-                : ""}
-            </small>
-          ) : null}
+        <article>
+          <span>RESOURCES</span>
+          <strong>{resources?.status ?? "EVEN"}</strong>
+          <small>
+            {resources
+              ? `FT edge ${resources.free_transfer_edge >= 0 ? "+" : ""}${resources.free_transfer_edge}`
+              : "No meaningful edge detected"}
+          </small>
         </article>
       </div>
 
-      <div className="next-move-actions">
+      <details className="minimal-why">
+        <summary>Why this decision?</summary>
+        <div className="minimal-proof">
+          <article>
+            <span>MODEL</span>
+            <strong>
+              {transfer ? `+${transfer.raw_gain.toFixed(1)}` : "HOLD"}
+            </strong>
+            <p>
+              {transfer
+                ? "Footy rates the incoming player as the stronger expected-output option."
+                : "The current squad grades better than the available transfer alternatives."}
+            </p>
+          </article>
+          <article>
+            <span>UNDERLYING DATA</span>
+            <strong>
+              {transfer
+                ? `${transferProcess >= 0 ? "+" : ""}${(
+                    transferProcess * 100
+                  ).toFixed(0)}% process`
+                : "No forced move"}
+            </strong>
+            <p>
+              {transfer
+                ? `${transfer.in.team} process, fixture and ${transferAvailability}% availability support the call.`
+                : "No underlying-process signal is strong enough to justify a transfer."}
+            </p>
+          </article>
+          <article>
+            <span>MINI-LEAGUE</span>
+            <strong>
+              {transfer
+                ? transfer.rival_owns
+                  ? "Cover"
+                  : "Separation"
+                : resources?.status ?? "Even"}
+            </strong>
+            <p>
+              {resources?.recommendation ??
+                "Footy adjusts strong player calls using rival ownership, chips and free-transfer flexibility."}
+            </p>
+          </article>
+        </div>
+      </details>
+
+      <div className="minimal-command-actions">
         <Link
           className="next-move-primary"
           href={`/team/${teamId}?league=${leagueId}#build-test`}
         >
-          Build &amp; test this move
+          Test this move
         </Link>
         <Link
           className="next-move-secondary"
           href={`/league/${leagueId}?team=${teamId}`}
         >
-          Why Footy thinks this
+          Full league detail
         </Link>
         <small>
           {payload?.analysis?.freshness?.source === "LIVE_FPL"
             ? "Live FPL data"
             : "Latest available FPL snapshot"}
           {payload?.analysis?.dataRetrievedAt
-            ? ` · updated ${new Date(
+            ? ` · ${new Date(
                 payload.analysis.dataRetrievedAt,
               ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
             : ""}
