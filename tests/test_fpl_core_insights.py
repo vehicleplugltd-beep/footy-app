@@ -133,6 +133,24 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
             "goals_prevented": 0.2,
             "saves": 4,
         },
+        {
+            "player_id": 98,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "total_shots": 1,
+            "xg": 0.79,
+            "penalties_scored": 1,
+            "penalties_missed": 0,
+        },
+        {
+            "player_id": 99,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "total_shots": 1,
+            "xg": 0.79,
+            "penalties_scored": 0,
+            "penalties_missed": 1,
+        },
     ])
 
     player_rows = normalise_fpl_core_player_match_stats(
@@ -143,6 +161,8 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
     assert saka["team"] == "Arsenal"
     assert saka["opponent"] == "Brighton"
     assert saka["xa"] == 0.3
+    assert saka["npxg"] == 0.4
+    assert saka["penalty_xg_value"] == 0.79
     assert saka["final_third_passes"] == 11
 
     footy = pd.DataFrame([
@@ -227,3 +247,70 @@ def test_player_prior_uses_stable_code_and_recomputed_rates():
     assert row["xa_per90"] == 0.4
     assert row["xgi_per90"] == 0.9
     assert row["verification_status"] == "PASS"
+
+
+
+def test_player_npxg_fails_closed_when_penalty_convention_is_inconsistent():
+    teams = pd.DataFrame([
+        {"code": 3, "name": "Arsenal"},
+        {"code": 36, "name": "Brighton"},
+    ])
+    players = pd.DataFrame([
+        {
+            "player_code": 208706,
+            "player_id": 12,
+            "web_name": "Saka",
+            "team_code": 3,
+        },
+    ])
+    matches = pd.DataFrame([
+        {
+            "gameweek": 5,
+            "kickoff_time": "2026-09-19T14:00:00Z",
+            "home_team": 36,
+            "away_team": 3,
+            "match_id": "provider-1",
+            "tournament": "prem",
+            "player_stats_processed": True,
+        }
+    ])
+    player_stats = pd.DataFrame([
+        {
+            "player_id": 12,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "total_shots": 3,
+            "xg": 0.4,
+            "penalties_scored": 0,
+            "penalties_missed": 0,
+        },
+        {
+            "player_id": 98,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "total_shots": 1,
+            "xg": 0.70,
+            "penalties_scored": 1,
+            "penalties_missed": 0,
+        },
+        {
+            "player_id": 99,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "total_shots": 1,
+            "xg": 0.88,
+            "penalties_scored": 0,
+            "penalties_missed": 1,
+        },
+    ])
+
+    rows = normalise_fpl_core_player_match_stats(
+        player_stats,
+        players,
+        teams,
+        matches,
+        season="2627",
+    )
+    assert len(rows) == 1
+    assert pd.isna(rows.iloc[0]["npxg"])
+    assert pd.isna(rows.iloc[0]["penalty_xg_value"])
