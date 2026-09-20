@@ -167,7 +167,7 @@ function getBattleMode(row: Standing, leader: Standing) {
       label: "CHASE",
       className: "mode-chase",
       copy:
-        "You are within one strong Gameweek of changing the race. The paid layer will rank moves against the managers directly above you.",
+        "You are within one strong Gameweek of changing the race. Footy ranks moves against the managers directly above you.",
     };
   }
 
@@ -373,8 +373,7 @@ export function LeagueView({
         <strong>We couldn&apos;t connect that league.</strong>
         <p>{error}</p>
         <p>
-          Footy is serving the first leagues in beta. Check the numeric classic
-          league ID and try again.
+          Check the numeric classic league ID and try again.
         </p>
         <Link href="/">Try another league</Link>
       </div>
@@ -448,9 +447,8 @@ export function LeagueView({
                   : "Pick a manager. See the battle."}
               </h2>
               <p>
-                This starts with real standings data, then the Founding beta can
-                refresh official FPL squad data on demand and compare it with
-                the nearest rival.
+                This starts with real standings data, then refreshes official FPL squad data
+                on demand and compares it with the nearest rival.
               </p>
             </div>
             <label className="manager-picker">
@@ -582,18 +580,17 @@ export function LeagueView({
       {selected && battleMode ? (
         <section className="decision-gate">
           <div className="decision-gate-copy">
-            <span className="eyebrow">Player Pass preview</span>
+            <span className="eyebrow">League intelligence</span>
             <h2>From “where am I?” to “what changes the race?”</h2>
             <p>
-              The free layer can identify your league situation. The paid
-              decision layer will add your squad, rival ownership, captaincy and
-              chip state before ranking any actual move.
+              Footy combines your squad, rival ownership, captaincy, chip state,
+              free transfers and underlying football process before ranking an actual move.
             </p>
-            <Link href="/pro">See the founding Player Pass →</Link>
+            <Link href="/squad-lab">Open Player Database + Squad Lab →</Link>
           </div>
 
           <div className="decision-gate-preview">
-            <span>FOUNDING BETA · REAL SQUAD DATA</span>
+            <span>LIVE LEAGUE INTELLIGENCE · REAL SQUAD DATA</span>
             <div className="decision-context">
               <div>
                 <span>Current mode</span>
@@ -612,10 +609,9 @@ export function LeagueView({
             {!edgePreview ? (
               <>
                 <p className="beta-preview-intro">
-                  Footy can now load this manager&apos;s public squad and compare
-                  it with the nearest rival using the existing underlying-process
-                  player model. League-win probability is deliberately excluded
-                  until that simulation layer is ready.
+                  Footy loads this manager&apos;s public squad, compares it with the nearest rival
+                  and ranks the decision using underlying process, fixtures, rival resources
+                  and fresh FPL data.
                 </p>
                 <button
                   className="beta-preview-button"
@@ -625,7 +621,7 @@ export function LeagueView({
                 >
                   {edgePreviewLoading
                     ? "Building squad preview…"
-                    : "Generate founding beta preview"}
+                    : "Generate live league analysis"}
                 </button>
                 {edgePreviewError ? (
                   <p className="beta-preview-error">{edgePreviewError}</p>
@@ -634,27 +630,18 @@ export function LeagueView({
                 <div className="locked-moves">
                   <div className="locked-move">
                     <span>Squad comparison</span>
-                    <strong>Now available in beta</strong>
-                    <small>
-                      Current captain, model captain, transfer upgrades and
-                      direct-rival squad overlap.
-                    </small>
+                    <strong>Included</strong>
+                    <small>Captaincy, transfer upgrades and direct-rival overlap.</small>
                   </div>
                   <div className="locked-move">
-                    <span>League-win probability</span>
-                    <strong>Still locked</strong>
-                    <small>
-                      No percentage will be shown until the simulation is
-                      implemented and frozen/tested against historical outcomes.
-                    </small>
+                    <span>Rival Arsenal</span>
+                    <strong>Included</strong>
+                    <small>Chips, hits, transfer activity and reconstructed free-transfer bank.</small>
                   </div>
                   <div className="locked-move">
-                    <span>Chip leverage</span>
-                    <strong>Still locked</strong>
-                    <small>
-                      Requires reliable chip-history sync across the relevant
-                      rivals before Footy ranks a chip window.
-                    </small>
+                    <span>Squad Lab</span>
+                    <strong>Included</strong>
+                    <small>Simulate recommendations on the 2D pitch before doing anything in FPL.</small>
                   </div>
                 </div>
               </>
@@ -852,10 +839,8 @@ export function LeagueView({
                 </Link>
 
                 <div className="beta-limit-note">
-                  <strong>Not yet claimed:</strong> this is squad intelligence,
-                  not a league-win probability model. Probability deltas and
-                  chip leverage stay locked until they can be properly frozen
-                  and scored in Receipts.
+                  <strong>Calibration note:</strong> Footy does not show a league-win percentage yet.
+                  That simulation will be added only after it can be calibrated and scored honestly in Receipts.
                 </div>
               </div>
             )}
