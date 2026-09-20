@@ -126,9 +126,47 @@ function FixtureCard({
           {prediction.evidence.awayXga?.toFixed(2) ?? "—"}
         </span>
         <span>
+          ATT trend{" "}
+          {prediction.evidence.homeAttackTrend == null
+            ? "—"
+            : (prediction.evidence.homeAttackTrend >= 0 ? "+" : "") +
+              Math.round(prediction.evidence.homeAttackTrend * 100) +
+              "%"}
+          {" / "}
+          {prediction.evidence.awayAttackTrend == null
+            ? "—"
+            : (prediction.evidence.awayAttackTrend >= 0 ? "+" : "") +
+              Math.round(prediction.evidence.awayAttackTrend * 100) +
+              "%"}
+        </span>
+        <span>
+          DEF trend{" "}
+          {prediction.evidence.homeDefenceTrend == null
+            ? "—"
+            : (prediction.evidence.homeDefenceTrend >= 0 ? "+" : "") +
+              Math.round(prediction.evidence.homeDefenceTrend * 100) +
+              "%"}
+          {" / "}
+          {prediction.evidence.awayDefenceTrend == null
+            ? "—"
+            : (prediction.evidence.awayDefenceTrend >= 0 ? "+" : "") +
+              Math.round(prediction.evidence.awayDefenceTrend * 100) +
+              "%"}
+        </span>
+        <span>
+          Baseline {prediction.evidence.homeScoringPrior.toFixed(2)} /{" "}
+          {prediction.evidence.awayScoringPrior.toFixed(2)} xG
+        </span>
+        <span>
           Source {Math.round(prediction.evidence.sourceConfidence * 100)}%
         </span>
       </div>
+      <small className="fixture-forecast-risk">
+        <b>Failure mode:</b>{" "}
+        {prediction.confidence === "LOW"
+          ? "one or both teams have incomplete reconciled process evidence, so the forecast is deliberately low-confidence."
+          : "future team news, injuries, rotation and genuine process changes can move the scoring rates; Footy re-runs the forecast with fresh data."}
+      </small>
     </article>
   );
 }

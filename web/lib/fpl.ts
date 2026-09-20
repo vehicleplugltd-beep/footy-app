@@ -2298,6 +2298,10 @@ export type FixturePrediction = {
     awayXga: number | null;
     homeAttackTrend: number | null;
     awayAttackTrend: number | null;
+    homeDefenceTrend: number | null;
+    awayDefenceTrend: number | null;
+    homeScoringPrior: number;
+    awayScoringPrior: number;
     sourceConfidence: number;
   };
 };
@@ -2541,6 +2545,10 @@ function buildFixturePredictions(
           awayXga: awayProcess?.metrics.xga ?? null,
           homeAttackTrend: homeProcess?.attackTrend ?? null,
           awayAttackTrend: awayProcess?.attackTrend ?? null,
+          homeDefenceTrend: homeProcess?.defenceTrend ?? null,
+          awayDefenceTrend: awayProcess?.defenceTrend ?? null,
+          homeScoringPrior: 1.52,
+          awayScoringPrior: 1.18,
           sourceConfidence,
         },
       };

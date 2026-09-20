@@ -64,3 +64,12 @@
   font-size: 9px;
   line-height: 1.5;
 }
+
+.fixture-forecast-risk {
+  display: block;
+  margin-top: 8px;
+  color: #7b5e66;
+  font-size: 7px;
+  line-height: 1.45;
+}
+.fixture-forecast-risk b { color: #5f454d; }
