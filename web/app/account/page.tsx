@@ -43,6 +43,21 @@ type Alert = {
   bookmaker: string | null;
   target_odds: number;
   enabled: boolean;
+  last_observed_odds: number | null;
+  last_checked_at: string | null;
+  last_triggered_at: string | null;
+};
+
+type AlertEvent = {
+  id: string;
+  event_name: string;
+  market: string;
+  selection: string;
+  bookmaker: string | null;
+  target_odds: number;
+  observed_odds: number;
+  triggered_at: string;
+  read_at: string | null;
 };
 
 function n(value: unknown) {
@@ -73,6 +88,7 @@ export default function AccountPage() {
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [tips, setTips] = useState<SavedTip[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   async function refresh() {
@@ -87,6 +103,7 @@ export default function AccountPage() {
       setEntitlement(null);
       setTips([]);
       setAlerts([]);
+      setAlertEvents([]);
       setLoading(false);
       return;
     }
@@ -94,7 +111,7 @@ export default function AccountPage() {
     setUserId(user.id);
     setEmail(user.email ?? "");
 
-    const [profileRes, entitlementRes, tipsRes, alertsRes] = await Promise.all([
+    const [profileRes, entitlementRes, tipsRes, alertsRes, alertEventsRes] = await Promise.all([
       supabase
         .from("footy_profiles")
         .select("*")
@@ -117,12 +134,19 @@ export default function AccountPage() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("footy_alert_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("triggered_at", { ascending: false })
+        .limit(30),
     ]);
 
     if (profileRes.data) setProfile(profileRes.data as Profile);
     if (entitlementRes.data) setEntitlement(entitlementRes.data as Entitlement);
     setTips((tipsRes.data ?? []) as SavedTip[]);
     setAlerts((alertsRes.data ?? []) as Alert[]);
+    setAlertEvents((alertEventsRes.data ?? []) as AlertEvent[]);
     setLoading(false);
   }
 
@@ -273,6 +297,14 @@ export default function AccountPage() {
     await refresh();
   }
 
+  async function markAlertRead(id: string) {
+    await supabase
+      .from("footy_alert_events")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", id);
+    await refresh();
+  }
+
   async function joinWaitlist() {
     if (!userId) return;
 
@@ -293,6 +325,7 @@ export default function AccountPage() {
   }
 
   const activeAlerts = alerts.filter((alert) => alert.enabled).length;
+  const unreadAlerts = alertEvents.filter((event) => !event.read_at).length;
   const approvedTips = tips.filter(
     (tip) => tip.validation_status === "APPROVED",
   ).length;
@@ -431,7 +464,7 @@ export default function AccountPage() {
             <article>
               <span>Price alerts</span>
               <strong>{activeAlerts}</strong>
-              <small>active targets</small>
+              <small>{unreadAlerts ? `${unreadAlerts} price hits unread` : "active targets"}</small>
             </article>
           </section>
 
@@ -529,6 +562,36 @@ export default function AccountPage() {
             <div className="panel">
               <span className="eyebrow">Price alerts</span>
               <h2>Save a target price</h2>
+
+              {alertEvents.length ? (
+                <div className="price-hit-inbox">
+                  <div className="price-hit-head">
+                    <strong>Price hits</strong>
+                    <span>{unreadAlerts} unread</span>
+                  </div>
+                  {alertEvents.slice(0, 5).map((event) => (
+                    <button
+                      className={`price-hit-row ${event.read_at ? "read" : ""}`}
+                      key={event.id}
+                      type="button"
+                      onClick={() => markAlertRead(event.id)}
+                    >
+                      <div>
+                        <strong>{event.event_name}</strong>
+                        <small>
+                          {event.selection} · {event.bookmaker || "Best UK"}
+                        </small>
+                      </div>
+                      <div>
+                        <b>{decimalToFractional(event.observed_odds)}</b>
+                        <small>
+                          target {decimalToFractional(event.target_odds)}+
+                        </small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <form className="account-form compact-form" onSubmit={addAlert}>
                 <label>
                   <span>Event</span>
@@ -551,10 +614,16 @@ export default function AccountPage() {
                 <div className="form-pair">
                   <label>
                     <span>Bookmaker</span>
-                    <input
-                      name="bookmaker"
-                      placeholder="Any / William Hill"
-                    />
+                    <select name="bookmaker" defaultValue="">
+                      <option value="">Best UK price</option>
+                      <option value="William Hill">William Hill</option>
+                      <option value="Sky Bet">Sky Bet</option>
+                      <option value="Paddy Power">Paddy Power</option>
+                      <option value="Betfair Sportsbook">Betfair Sportsbook</option>
+                      <option value="BetVictor">BetVictor</option>
+                      <option value="Ladbrokes">Ladbrokes</option>
+                      <option value="Betfred">Betfred</option>
+                    </select>
                   </label>
                   <label>
                     <span>Alert at odds</span>
@@ -578,6 +647,9 @@ export default function AccountPage() {
                         <small>
                           {alert.market} · {alert.selection} ·{" "}
                           {decimalToFractional(alert.target_odds)}+
+                          {alert.last_observed_odds
+                            ? ` · now ${decimalToFractional(alert.last_observed_odds)}`
+                            : ""}
                         </small>
                       </div>
                       <div className="row-actions">
