@@ -35,16 +35,16 @@ const features = [
     href: "/",
   },
   {
-    name: "Player Database",
+    name: "Player Database + Build & Test",
     status: "LIVE",
     description: "FPL pool enriched with Footy football-process data.",
-    href: "/squad-lab",
+    href: "/",
   },
   {
-    name: "Squad Lab",
+    name: "Build & Test",
     status: "BETA",
     description: "Mock £100m squads, Draft Board and scenario testing.",
-    href: "/squad-lab",
+    href: "/",
   },
   {
     name: "League Command Centre",
@@ -110,8 +110,7 @@ export default async function AdminPage() {
           <span>Footy Admin</span>
         </Link>
         <div className="nav-links">
-          <Link href="/squad-lab">Squad Lab</Link>
-          <Link href="/results">Receipts</Link>
+                    <Link href="/results">Receipts</Link>
           <Link href="/">Public app</Link>
         </div>
       </nav>
