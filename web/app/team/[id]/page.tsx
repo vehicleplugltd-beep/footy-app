@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { TeamPitch } from "@/components/team-pitch";
+import { SquadLab } from "@/components/squad-lab";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
+import { getPlayerDatabase } from "@/lib/fpl";
 
 function rank(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
@@ -12,110 +14,211 @@ function movement(current: number | null, previous: number | null) {
   return delta > 0 ? `↑ ${delta}` : `↓ ${Math.abs(delta)}`;
 }
 
-export default async function TeamPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TeamPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ league?: string | string[] }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const rawLeague = Array.isArray(query.league) ? query.league[0] : query.league;
+  const leagueId = rawLeague ? Number(rawLeague.replace(/\D/g, "")) : undefined;
   const teamId = Number(id.replace(/\D/g, ""));
+
   let team;
+  let playerDb;
 
   try {
-    team = await getFplTeamDiscovery(teamId);
+    [team, playerDb] = await Promise.all([
+      getFplTeamDiscovery(teamId),
+      getPlayerDatabase(),
+    ]);
   } catch (error) {
     return (
       <main className="league-edge-app">
         <nav className="nav shell">
-          <Link className="brand brand-link" href="/"><span className="brand-mark">F</span><span>Footy</span></Link>
+          <Link className="brand brand-link" href="/">
+            <span className="brand-mark">F</span><span>Footy</span>
+          </Link>
         </nav>
         <section className="shell team-discovery-error">
           <span className="eyebrow">Find your FPL team</span>
-          <h1>We couldn&apos;t find that team.</h1>
-          <p>{error instanceof Error ? error.message : "The official FPL feed did not return this team."}</p>
+          <h1>We couldn&apos;t load this workspace.</h1>
+          <p>
+            {error instanceof Error
+              ? error.message
+              : "The official FPL feed did not return this team."}
+          </p>
           <Link href="/">Try another Team ID</Link>
         </section>
       </main>
     );
   }
 
-  const leagues = team.miniLeagues.length ? team.miniLeagues : team.otherClassicLeagues.slice(0, 12);
+  const leagues = team.miniLeagues.length
+    ? team.miniLeagues
+    : team.otherClassicLeagues.slice(0, 12);
 
   return (
-    <main className="league-edge-app">
+    <main className="league-edge-app footy-workspace">
       <nav className="nav shell">
-        <Link className="brand brand-link" href="/"><span className="brand-mark">F</span><span>Footy</span></Link>
+        <Link className="brand brand-link" href="/">
+          <span className="brand-mark">F</span><span>Footy</span>
+        </Link>
         <div className="nav-links">
-          <Link href={`/squad-lab?team=${team.id}`}>Squad Lab</Link>
+          <a href="#squad">Squad</a>
+          <a href="#leagues">Mini-Leagues</a>
+          <a href="#build-test">Build &amp; Test</a>
           <Link href="/results">Receipts</Link>
         </div>
       </nav>
 
-      <section className="shell team-discovery-hero">
+      <section className="shell team-discovery-hero workspace-hero">
         <div>
-          <span className="eyebrow">Step 1 complete · This is your team</span>
+          <span className="eyebrow">My Footy</span>
           <h1>{team.teamName}</h1>
-          <p>{team.managerName}{team.region ? ` · ${team.region}` : ""}</p>
+          <p>
+            {team.managerName}
+            {team.region ? ` · ${team.region}` : ""}
+          </p>
         </div>
-        <Link className="change-team-link" href="/">Wrong team? Change it</Link>
+        <Link className="change-team-link" href="/">Change team</Link>
       </section>
 
-      <section className="shell team-first-dashboard">
+      <div className="workspace-tabs shell" aria-label="Footy workspace">
+        <a href="#squad"><span>01</span> Squad</a>
+        <a href="#leagues"><span>02</span> Mini-Leagues</a>
+        <a href="#build-test"><span>03</span> Build &amp; Test</a>
+        <Link href="/results"><span>04</span> Receipts</Link>
+      </div>
+
+      <section className="shell team-first-dashboard" id="squad">
         <div className="team-pitch-panel">
           <div className="team-pitch-panel-head">
-            <div><span className="eyebrow">Your squad · GW{team.currentEvent}</span><h2>See the team before the advice.</h2></div>
+            <div>
+              <span className="eyebrow">Your squad · GW{team.currentEvent}</span>
+              <h2>Your team, live.</h2>
+            </div>
             <div className="team-pitch-summary">
-              <span>{team.squadValue.toFixed(1)}m squad</span>
-              <span>{team.bank.toFixed(1)}m bank</span>
+              <span>£{team.squadValue.toFixed(1)}m value</span>
+              <span>£{team.bank.toFixed(1)}m bank</span>
               {team.activeChip ? <span>{team.activeChip}</span> : null}
             </div>
           </div>
-          {team.squad.length ? <TeamPitch squad={team.squad} /> : <div className="league-state">Footy found the team but the current public squad is temporarily unavailable.</div>}
+          {team.squad.length ? (
+            <TeamPitch squad={team.squad} />
+          ) : (
+            <div className="league-state">
+              Footy found the team but the current public squad is temporarily unavailable.
+            </div>
+          )}
         </div>
 
-        <aside className="team-control-panel">
+        <aside className="team-control-panel" id="leagues">
           <div className="team-control-kpis">
-            <article><span>Overall points</span><strong>{team.overallPoints.toLocaleString()}</strong></article>
-            <article><span>Overall rank</span><strong>{rank(team.overallRank)}</strong></article>
-            <article><span>Latest GW</span><strong>{team.eventPoints ?? "—"} pts</strong></article>
+            <article>
+              <span>Overall points</span>
+              <strong>{team.overallPoints.toLocaleString()}</strong>
+            </article>
+            <article>
+              <span>Overall rank</span>
+              <strong>{rank(team.overallRank)}</strong>
+            </article>
+            <article>
+              <span>Latest GW</span>
+              <strong>{team.eventPoints ?? "—"} pts</strong>
+            </article>
           </div>
 
           <div className="team-league-picker-head">
-            <span className="eyebrow">Step 2 · Choose your mini-league</span>
-            <h2>Which battle matters?</h2>
-            <p>{team.miniLeagues.length ? `Footy found ${team.miniLeagues.length} invitational classic league${team.miniLeagues.length === 1 ? "" : "s"} for this team.` : "No invitational classic league was returned, so Footy is showing the available classic leagues instead."}</p>
+            <span className="eyebrow">Your mini-leagues</span>
+            <h2>Pick the race that matters.</h2>
+            <p>
+              {team.miniLeagues.length
+                ? `Footy found ${team.miniLeagues.length} invitational classic league${team.miniLeagues.length === 1 ? "" : "s"}.`
+                : "No invitational classic league was returned, so Footy is showing the available classic leagues instead."}
+            </p>
           </div>
 
           <div className="team-league-list">
-            {leagues.length ? leagues.map((league) => {
-              const rankParam = league.entry_rank ? `&rank=${league.entry_rank}` : "";
-              return (
-                <Link className="team-league-card" href={`/league/${league.id}?team=${team.id}${rankParam}`} key={league.id}>
-                  <div><span>YOUR RANK</span><strong>{league.entry_rank ? `#${league.entry_rank}` : "—"}</strong><small>{movement(league.entry_rank, league.entry_last_rank)}</small></div>
-                  <div><h3>{league.name}</h3><p>Open focused on your manager and nearest rivals.</p></div>
-                  <b>→</b>
-                </Link>
-              );
-            }) : <div className="league-state">No classic mini-league is currently attached to this team.</div>}
+            {leagues.length ? (
+              leagues.map((league) => {
+                const rankParam = league.entry_rank
+                  ? `&rank=${league.entry_rank}`
+                  : "";
+                return (
+                  <div className="team-league-card-wrap" key={league.id}>
+                    <Link
+                      className="team-league-card"
+                      href={`/league/${league.id}?team=${team.id}${rankParam}`}
+                    >
+                      <div>
+                        <span>YOUR RANK</span>
+                        <strong>
+                          {league.entry_rank ? `#${league.entry_rank}` : "—"}
+                        </strong>
+                        <small>
+                          {movement(league.entry_rank, league.entry_last_rank)}
+                        </small>
+                      </div>
+                      <div>
+                        <h3>{league.name}</h3>
+                        <p>Open the rival battle and league intelligence.</p>
+                      </div>
+                      <b>→</b>
+                    </Link>
+                    <Link
+                      className="league-build-link"
+                      href={`/team/${team.id}?league=${league.id}#build-test`}
+                    >
+                      Build &amp; test for this league
+                    </Link>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="league-state">
+                No classic mini-league is currently attached to this team.
+              </div>
+            )}
           </div>
         </aside>
       </section>
 
-      <section className="shell team-flow-note team-lab-cta">
-        <span>SQUAD LAB · EXPLORE BEFORE YOU COMMIT</span>
-        <strong>Build a mock squad with Footy&apos;s player database.</strong>
-        <p>
-          Search all FPL players, filter by price, form, xGI and underlying team
-          process, then test different squad structures on the pitch.
-        </p>
-        <Link href={`/squad-lab?team=${team.id}`}>Open my squad in Squad Lab →</Link>
-      </section>
+      <section className="shell integrated-build-test" id="build-test">
+        <div className="workspace-section-intro">
+          <span className="eyebrow">Build &amp; Test</span>
+          <h2>
+            {leagueId
+              ? "Test moves against this mini-league."
+              : "Explore your next move before the deadline."}
+          </h2>
+          <p>
+            This is part of your Footy workspace: the same real squad, player
+            database, underlying football process and—when a league is selected—
+            rival resources and league-specific recommendations.
+          </p>
+        </div>
 
-      <section className="shell team-flow-note">
-        <span>STEP 3 · LEAGUE EDGE</span>
-        <strong>From your team to the rivals you actually need to beat.</strong>
-        <p>Selecting a league opens Footy on your manager automatically. From there we compare rank gaps, captaincy, squad overlap, transfer options and fresh player/team trends against the nearest rivals.</p>
+        <SquadLab
+          players={playerDb.players}
+          dataRetrievedAt={playerDb.dataRetrievedAt}
+          freshness={playerDb.freshness}
+          processTeams={playerDb.processTeams}
+          initialPlayerIds={team.squad.map((player) => player.id)}
+          teamId={team.id}
+          leagueId={leagueId}
+          teamName={team.teamName}
+        />
       </section>
 
       <footer className="shell footer">
-        <p>Footy uses public FPL data only. No FPL password or account connection is required.</p>
-        <p>YOUR TEAM → YOUR LEAGUE → YOUR RIVALS → YOUR MOVE</p>
+        <p>
+          Footy uses public FPL data only. No FPL password or account connection is required.
+        </p>
+        <p>SQUAD → LEAGUE → BUILD → DECIDE → RECEIPTS</p>
       </footer>
     </main>
   );
