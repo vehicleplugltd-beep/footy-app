@@ -2920,3 +2920,290 @@ h1 {
     color: var(--muted);
   }
 }
+
+
+/* League Edge command centre */
+.league-command-centre {
+  padding: 12px 0 34px;
+}
+.league-command-head {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 320px);
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.league-command-head h2,
+.decision-gate h2 {
+  font-size: clamp(30px, 4vw, 48px);
+  letter-spacing: -.04em;
+  margin: 7px 0 8px;
+}
+.league-command-head p,
+.decision-gate-copy > p {
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 760px;
+  margin-bottom: 0;
+}
+.manager-picker {
+  display: grid;
+  gap: 7px;
+}
+.manager-picker span {
+  color: #d8e8dd;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+.manager-picker select {
+  min-height: 46px;
+  width: 100%;
+  border: 1px solid rgba(123,176,141,.28);
+  border-radius: 12px;
+  background: rgba(4,14,9,.9);
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  outline: none;
+}
+.manager-picker select:focus {
+  border-color: rgba(114,245,158,.58);
+  box-shadow: 0 0 0 3px rgba(114,245,158,.08);
+}
+.manager-battle-card {
+  border: 1px solid rgba(114,245,158,.22);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(114,245,158,.11), transparent 34%),
+    rgba(7,20,13,.78);
+  padding: 20px;
+}
+.manager-battle-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.manager-battle-top > div > span {
+  color: var(--muted);
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+.manager-battle-top h3 {
+  font-size: clamp(24px, 3vw, 38px);
+  letter-spacing: -.04em;
+  margin: 4px 0 3px;
+}
+.manager-battle-top small {
+  color: var(--muted);
+}
+.battle-mode {
+  border: 1px solid rgba(114,245,158,.3);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .1em;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.battle-mode.mode-recover {
+  border-color: rgba(255,196,107,.3);
+  color: #ffc46b;
+}
+.manager-battle-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  padding-top: 14px;
+}
+.manager-battle-metrics > div {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(2,12,7,.36);
+  padding: 12px;
+}
+.manager-battle-metrics span,
+.rival-pressure-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.manager-battle-metrics strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 18px;
+}
+.manager-battle-copy {
+  color: #cadbd0;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 14px 0 0;
+}
+.rival-pressure {
+  margin-top: 12px;
+}
+.rival-pressure > span {
+  color: var(--muted);
+  display: block;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.rival-pressure-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+.rival-pressure-card {
+  appearance: none;
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(6,18,12,.7);
+  color: var(--text);
+  padding: 11px;
+  cursor: pointer;
+}
+.rival-pressure-card:hover,
+.rival-pressure-card.active {
+  border-color: rgba(114,245,158,.42);
+  background: rgba(15,38,25,.92);
+}
+.rival-pressure-card b,
+.rival-pressure-card small {
+  display: block;
+}
+.rival-pressure-card b {
+  margin: 5px 0 4px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rival-pressure-card small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.decision-gate {
+  display: grid;
+  grid-template-columns: .82fr 1.18fr;
+  gap: 30px;
+  padding: 28px 0 56px;
+  align-items: start;
+}
+.decision-gate-preview {
+  border: 1px solid rgba(114,245,158,.22);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(12,31,21,.88), rgba(5,17,11,.95));
+  padding: 18px;
+}
+.decision-gate-preview > span {
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
+.decision-context {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.decision-context > div,
+.locked-move {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(2,12,7,.35);
+  padding: 12px;
+}
+.decision-context span,
+.locked-move span {
+  color: var(--muted);
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.decision-context strong,
+.locked-move strong,
+.locked-move small {
+  display: block;
+}
+.decision-context strong {
+  margin-top: 5px;
+  font-size: 14px;
+}
+.locked-moves {
+  display: grid;
+  gap: 7px;
+}
+.locked-move {
+  position: relative;
+  overflow: hidden;
+}
+.locked-move strong {
+  margin-top: 5px;
+  font-size: 13px;
+}
+.locked-move small {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+.locked-move::after {
+  content: "PLAYER PASS";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: rgba(255,255,255,.3);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+.decision-gate-copy a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 16px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #06110c;
+  padding: 0 16px;
+  font-size: 11px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+@media (max-width: 1000px) {
+  .league-command-head,
+  .decision-gate {
+    grid-template-columns: 1fr;
+  }
+  .rival-pressure-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .manager-battle-top {
+    flex-direction: column;
+  }
+  .manager-battle-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .rival-pressure-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .decision-context {
+    grid-template-columns: 1fr;
+  }
+}

@@ -16,8 +16,9 @@ export default async function LeaguePage({
           <span>Footy</span>
         </Link>
         <div className="nav-links">
+          <Link href="/results">Receipts</Link>
+          <Link href="/pro">Player Pass</Link>
           <Link href="/#how-it-works">How it works</Link>
-          <Link href="/#pricing">Season passes</Link>
         </div>
       </nav>
 
