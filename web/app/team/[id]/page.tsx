@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { TeamPitch } from "@/components/team-pitch";
-import { SquadLab } from "@/components/squad-lab";
 import { NextMoveCommand } from "@/components/next-move-command";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
-import { getPlayerDatabase } from "@/lib/fpl";
+import { BuildTestWorkspace } from "@/components/build-test-workspace";
 
 function rank(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
@@ -29,13 +28,9 @@ export default async function TeamPage({
   const teamId = Number(id.replace(/\D/g, ""));
 
   let team;
-  let playerDb;
 
   try {
-    [team, playerDb] = await Promise.all([
-      getFplTeamDiscovery(teamId),
-      getPlayerDatabase(),
-    ]);
+    team = await getFplTeamDiscovery(teamId);
   } catch (error) {
     return (
       <main className="league-edge-app">
@@ -144,66 +139,75 @@ export default async function TeamPage({
             </article>
           </div>
 
-          <div className="team-league-picker-head">
-            <span className="eyebrow">3 · Mini-league</span>
-            <h2>{selectedLeague ? "Switch the battle." : "Pick the race that matters."}</h2>
-            <p>
-              {team.miniLeagues.length
-                ? `Footy found ${team.miniLeagues.length} invitational classic league${team.miniLeagues.length === 1 ? "" : "s"}.`
-                : "No invitational classic league was returned, so Footy is showing the available classic leagues instead."}
-            </p>
-          </div>
-
-          <div className="team-league-list">
-            {leagues.length ? (
-              leagues.map((league) => {
-                const rankParam = league.entry_rank
-                  ? `&rank=${league.entry_rank}`
-                  : "";
-                return (
-                  <div className="team-league-card-wrap" key={league.id}>
-                    <Link
-                      className="team-league-card"
-                      href={`/team/${team.id}?league=${league.id}#next-move`}
-                    >
-                      <div>
-                        <span>YOUR RANK</span>
-                        <strong>
-                          {league.entry_rank ? `#${league.entry_rank}` : "—"}
-                        </strong>
-                        <small>
-                          {movement(league.entry_rank, league.entry_last_rank)}
-                        </small>
-                      </div>
-                      <div>
-                        <h3>{league.name}</h3>
-                        <p>Get the move Footy recommends to beat this league.</p>
-                      </div>
-                      <b>→</b>
-                    </Link>
-                    <div className="league-card-actions">
-                      <Link
-                        className="league-build-link"
-                        href={`/team/${team.id}?league=${league.id}#build-test`}
-                      >
-                        Build &amp; test
-                      </Link>
-                      <Link
-                        className="league-build-link"
-                        href={`/league/${league.id}?team=${team.id}${rankParam}`}
-                      >
-                        Full league view
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="league-state">
-                No classic mini-league is currently attached to this team.
+          {selectedLeague ? (
+            <>
+              <div className="team-league-picker-head">
+                <span className="eyebrow">3 · Mini-league</span>
+                <h2>Switch the battle.</h2>
+                <p>Your recommendation changes with the league you choose.</p>
               </div>
-            )}
-          </div>
+              <div className="team-league-list">
+                {leagues.map((league) => {
+                  const rankParam = league.entry_rank
+                    ? `&rank=${league.entry_rank}`
+                    : "";
+                  return (
+                    <div className="team-league-card-wrap" key={league.id}>
+                      <Link
+                        className="team-league-card"
+                        href={`/team/${team.id}?league=${league.id}#today`}
+                      >
+                        <div>
+                          <span>YOUR RANK</span>
+                          <strong>
+                            {league.entry_rank ? `#${league.entry_rank}` : "—"}
+                          </strong>
+                          <small>
+                            {movement(league.entry_rank, league.entry_last_rank)}
+                          </small>
+                        </div>
+                        <div>
+                          <h3>{league.name}</h3>
+                          <p>
+                            {league.id === selectedLeague.id
+                              ? "Currently selected"
+                              : "Switch Footy to this league"}
+                          </p>
+                        </div>
+                        <b>{league.id === selectedLeague.id ? "✓" : "→"}</b>
+                      </Link>
+                      {league.id === selectedLeague.id ? (
+                        <div className="league-card-actions">
+                          <Link
+                            className="league-build-link"
+                            href={`/team/${team.id}?league=${league.id}#build-test`}
+                          >
+                            Build &amp; test
+                          </Link>
+                          <Link
+                            className="league-build-link"
+                            href={`/league/${league.id}?team=${team.id}${rankParam}`}
+                          >
+                            Full league view
+                          </Link>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="journey-helper-card">
+              <span className="eyebrow">What happens next</span>
+              <strong>Choose a league above.</strong>
+              <p>
+                Footy will identify the rival that matters, rank your transfer
+                and captain options, compare chips/free transfers, and give you
+                one clear recommendation.
+              </p>
+            </div>
+          )}
         </aside>
       </section>
 
@@ -222,11 +226,7 @@ export default async function TeamPage({
           </p>
         </div>
 
-        <SquadLab
-          players={playerDb.players}
-          dataRetrievedAt={playerDb.dataRetrievedAt}
-          freshness={playerDb.freshness}
-          processTeams={playerDb.processTeams}
+        <BuildTestWorkspace
           initialPlayerIds={team.squad.map((player) => player.id)}
           teamId={team.id}
           leagueId={leagueId}
