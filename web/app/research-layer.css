@@ -1135,3 +1135,150 @@
     transition: none;
   }
 }
+
+
+/* CounterPlay posture control — user intent stays separate from inferred league state. */
+.counterplay-posture-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr);
+  gap: 12px 18px;
+  align-items: center;
+  margin: 0 0 12px;
+  border: 1px solid #dce5f1;
+  border-radius: 14px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8fbff 0%, #ffffff 72%);
+}
+.counterplay-posture-copy span,
+.counterplay-posture-copy strong,
+.counterplay-posture-copy small {
+  display: block;
+}
+.counterplay-posture-copy span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .11em;
+}
+.counterplay-posture-copy strong {
+  margin-top: 4px;
+  color: #172033;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.counterplay-posture-copy small {
+  margin-top: 4px;
+  max-width: 68ch;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.counterplay-posture-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid #dfe6ee;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+.counterplay-posture-toggle button {
+  appearance: none;
+  min-width: 0;
+  min-height: 54px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: transparent;
+  color: #526071;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.counterplay-posture-toggle button b,
+.counterplay-posture-toggle button small {
+  display: block;
+}
+.counterplay-posture-toggle button b {
+  color: inherit;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+.counterplay-posture-toggle button small {
+  margin-top: 3px;
+  color: #748196;
+  font-size: 8px;
+  line-height: 1.3;
+}
+.counterplay-posture-toggle button:hover:not(:disabled) {
+  border-color: #d5dfec;
+  background: rgba(255, 255, 255, .78);
+}
+.counterplay-posture-toggle button.active {
+  border-color: #c7d8ef;
+  background: #fff;
+  color: #1d4ed8;
+  box-shadow: 0 5px 14px rgba(37, 99, 235, .10);
+}
+.counterplay-posture-toggle button.active small {
+  color: #587197;
+}
+.counterplay-posture-toggle button:active:not(:disabled) {
+  transform: scale(.985);
+}
+.counterplay-posture-toggle button:disabled {
+  cursor: progress;
+  opacity: .72;
+}
+.counterplay-posture-toggle button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .22);
+  outline-offset: 2px;
+}
+.counterplay-posture-status {
+  grid-column: 1 / -1;
+  min-height: 16px;
+  color: #6b7787;
+  font-size: 9px;
+  line-height: 1.4;
+}
+@media (max-width: 840px) {
+  .counterplay-posture-shell {
+    grid-template-columns: 1fr;
+  }
+  .counterplay-posture-toggle {
+    width: 100%;
+  }
+}
+@media (max-width: 520px) {
+  .counterplay-posture-shell {
+    margin-inline: -2px;
+    padding: 10px;
+  }
+  .counterplay-posture-copy strong {
+    font-size: 14px;
+  }
+  .counterplay-posture-copy small {
+    font-size: 11px;
+  }
+  .counterplay-posture-toggle {
+    gap: 4px;
+  }
+  .counterplay-posture-toggle button {
+    min-height: 62px;
+    padding: 8px 7px;
+  }
+  .counterplay-posture-toggle button b {
+    font-size: 9px;
+  }
+  .counterplay-posture-toggle button small {
+    font-size: 8px;
+  }
+  .counterplay-posture-status {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .counterplay-posture-toggle button {
+    transition: none;
+  }
+}
