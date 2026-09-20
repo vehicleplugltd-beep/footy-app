@@ -465,9 +465,13 @@ def enrich_fpl_core_team_rows_from_players(
         return team_rows.copy()
 
     numeric = [
+        "shots",
+        "shots_on_target",
+        "box_touches",
         "xa",
         "chances_created",
         "final_third_passes",
+        "xgot",
         "xgot_faced",
         "goals_prevented",
     ]
@@ -482,6 +486,15 @@ def enrich_fpl_core_team_rows_from_players(
             dropna=False,
         )
         .agg(
+            shots=("shots", lambda values: values.sum(min_count=1)),
+            shots_on_target=(
+                "shots_on_target",
+                lambda values: values.sum(min_count=1),
+            ),
+            box_touches=(
+                "box_touches",
+                lambda values: values.sum(min_count=1),
+            ),
             xa=("xa", lambda values: values.sum(min_count=1)),
             key_passes=(
                 "chances_created",
@@ -491,6 +504,7 @@ def enrich_fpl_core_team_rows_from_players(
                 "final_third_passes",
                 lambda values: values.sum(min_count=1),
             ),
+            xgot=("xgot", lambda values: values.sum(min_count=1)),
             xgot_faced=(
                 "xgot_faced",
                 lambda values: values.sum(min_count=1),
@@ -510,9 +524,13 @@ def enrich_fpl_core_team_rows_from_players(
         validate="one_to_one",
     )
     for column in [
+        "shots",
+        "shots_on_target",
+        "box_touches",
         "xa",
         "key_passes",
         "final_third_passes",
+        "xgot",
         "xgot_faced",
         "goals_prevented",
     ]:

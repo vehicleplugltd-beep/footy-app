@@ -115,6 +115,8 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
             "player_id": 12,
             "match_id": "provider-1",
             "minutes_played": 90,
+            "total_shots": 3,
+            "shots_on_target": 2,
             "xg": 0.4,
             "xa": 0.3,
             "xgot": 0.5,
@@ -177,6 +179,9 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
 
     enriched = enrich_fpl_core_team_rows_from_players(team_rows, linked)
     row = enriched.iloc[0]
+    assert row["shots"] == 3
+    assert row["shots_on_target"] == 2
+    assert row["box_touches"] == 7
     assert row["xa"] == 0.3
     assert row["key_passes"] == 4
     assert row["final_third_passes"] == 11
