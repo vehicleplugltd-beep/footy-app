@@ -807,3 +807,6 @@ revoke all on table public.footy_admin_credentials from public, anon, authentica
 revoke all on table public.footy_admin_sessions from public, anon, authenticated;
 grant select, insert, update, delete on table public.footy_admin_credentials to service_role;
 grant select, insert, update, delete on table public.footy_admin_sessions to service_role;
+
+create index if not exists idx_footy_admin_sessions_credential
+  on public.footy_admin_sessions(credential_id);
