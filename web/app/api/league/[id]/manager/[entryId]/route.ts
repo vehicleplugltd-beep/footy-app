@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import {
   getLeagueManagerEdgeAnalysis,
   getRivalResourceHistory,
+  type RankedPlayer,
+  type TeamAnalysis,
 } from "@/lib/fpl";
 
 const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
@@ -16,6 +18,539 @@ type LeagueEntry = {
   event_total: number | null;
   total: number | null;
 };
+
+type EntrySnapshot = {
+  entry_id: number;
+  event: number;
+  picks: Array<{
+    element: number;
+    position: number;
+    multiplier: number;
+    is_captain: boolean;
+  }>;
+  entry_history: {
+    bank?: number;
+    event_transfers?: number;
+    event_transfers_cost?: number;
+    points_on_bench?: number;
+    total_points?: number;
+  } | null;
+};
+
+type LocalExposure = {
+  player_id: number;
+  squad_ownership: number;
+  starter_ownership: number;
+  captain_share: number;
+  effective_exposure: number;
+};
+
+async function latestLeagueSnapshots(leagueId: number): Promise<{
+  event: number | null;
+  snapshots: EntrySnapshot[];
+}> {
+  const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return { event: null, snapshots: [] };
+
+  const eventResponse = await fetch(
+    `${url}/rest/v1/footy_fpl_entry_snapshots?select=event&league_id=eq.${leagueId}&order=event.desc&limit=1`,
+    {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    },
+  );
+  if (!eventResponse.ok) return { event: null, snapshots: [] };
+  const eventRows = (await eventResponse.json()) as Array<{ event: number }>;
+  const event = Number(eventRows[0]?.event ?? 0);
+  if (!event) return { event: null, snapshots: [] };
+
+  const snapshotResponse = await fetch(
+    `${url}/rest/v1/footy_fpl_entry_snapshots?select=entry_id,event,picks,entry_history&league_id=eq.${leagueId}&event=eq.${event}&order=entry_id.asc`,
+    {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    },
+  );
+  if (!snapshotResponse.ok) return { event, snapshots: [] };
+  return {
+    event,
+    snapshots: (await snapshotResponse.json()) as EntrySnapshot[],
+  };
+}
+
+function buildLocalExposure(snapshots: EntrySnapshot[]) {
+  const managers = Math.max(1, snapshots.length);
+  const counts = new Map<
+    number,
+    { squad: number; starter: number; captain: number; multiplier: number }
+  >();
+
+  for (const snapshot of snapshots) {
+    for (const pick of snapshot.picks ?? []) {
+      const item = counts.get(pick.element) ?? {
+        squad: 0,
+        starter: 0,
+        captain: 0,
+        multiplier: 0,
+      };
+      item.squad += 1;
+      if (pick.position <= 11 && pick.multiplier > 0) item.starter += 1;
+      if (pick.is_captain) item.captain += 1;
+      item.multiplier += Number(pick.multiplier ?? 0);
+      counts.set(pick.element, item);
+    }
+  }
+
+  return new Map<number, LocalExposure>(
+    [...counts.entries()].map(([playerId, item]) => [
+      playerId,
+      {
+        player_id: playerId,
+        squad_ownership: (item.squad / managers) * 100,
+        starter_ownership: (item.starter / managers) * 100,
+        captain_share: (item.captain / managers) * 100,
+        effective_exposure: (item.multiplier / managers) * 100,
+      },
+    ]),
+  );
+}
+
+function deterministicUnit(seed: number) {
+  let value = seed | 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value ^= value >>> 16;
+  return (value >>> 0) / 4294967296;
+}
+
+function normalFromSeed(seed: number) {
+  const u1 = Math.max(1e-9, deterministicUnit(seed));
+  const u2 = deterministicUnit(seed ^ 0x9e3779b9);
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function simulationVolatility(player: RankedPlayer) {
+  const rotationRisk = 1 - Math.max(0, Math.min(1, player.startReliability));
+  const attackingVariance =
+    (player.position === "MID" || player.position === "FWD"
+      ? player.xgiPer90 * 2.3
+      : player.xgiPer90 * 1.35);
+  const cleanSheetVariance =
+    player.position === "GKP" || player.position === "DEF" ? 1.0 : 0.25;
+  return Math.max(
+    1.0,
+    Math.min(
+      5.8,
+      1.2 +
+        rotationRisk * 3.0 +
+        Math.min(2.3, attackingVariance) +
+        cleanSheetVariance +
+        Math.max(0, player.fixtureDifficulty - 2.5) * 0.25,
+    ),
+  );
+}
+
+function simulatedPlayerScore(player: RankedPlayer, iteration: number) {
+  const sd = simulationVolatility(player);
+  const shock = normalFromSeed(
+    (player.id * 73856093) ^ ((iteration + 1) * 19349663),
+  );
+  return Math.max(-1, player.assistantScore + shock * sd);
+}
+
+function bestXiFromSquad(squad: RankedPlayer[]) {
+  const sorted = [...squad].sort((a, b) => b.assistantScore - a.assistantScore);
+  const byPosition = new Map<string, RankedPlayer[]>();
+  for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+    byPosition.set(
+      position,
+      sorted.filter((player) => player.position === position),
+    );
+  }
+  const keeper = (byPosition.get("GKP") ?? [])[0];
+  if (!keeper) return sorted.slice(0, 11);
+
+  let best: RankedPlayer[] = sorted.slice(0, 11);
+  let bestScore = -Infinity;
+  for (let defenders = 3; defenders <= 5; defenders += 1) {
+    for (let midfielders = 2; midfielders <= 5; midfielders += 1) {
+      const forwards = 10 - defenders - midfielders;
+      if (forwards < 1 || forwards > 3) continue;
+      const def = byPosition.get("DEF") ?? [];
+      const mid = byPosition.get("MID") ?? [];
+      const fwd = byPosition.get("FWD") ?? [];
+      if (
+        def.length < defenders ||
+        mid.length < midfielders ||
+        fwd.length < forwards
+      ) continue;
+      const xi = [
+        keeper,
+        ...def.slice(0, defenders),
+        ...mid.slice(0, midfielders),
+        ...fwd.slice(0, forwards),
+      ];
+      const score = xi.reduce((sum, player) => sum + player.assistantScore, 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = xi;
+      }
+    }
+  }
+  return best;
+}
+
+function scenarioSquad(
+  team: TeamAnalysis,
+  transfer:
+    | { out: RankedPlayer; in: RankedPlayer }
+    | null,
+) {
+  if (!transfer) return team.squad;
+  return team.squad.map((player) =>
+    player.id === transfer.out.id ? transfer.in : player,
+  );
+}
+
+function simulateTeamScore(
+  team: TeamAnalysis,
+  iteration: number,
+  transfer: { out: RankedPlayer; in: RankedPlayer } | null,
+  captain: RankedPlayer | null,
+) {
+  const squad = scenarioSquad(team, transfer);
+  const xi = bestXiFromSquad(squad);
+  let score = xi.reduce(
+    (sum, player) => sum + simulatedPlayerScore(player, iteration),
+    0,
+  );
+  const captainId =
+    captain && squad.some((player) => player.id === captain.id)
+      ? captain.id
+      : team.recommendedCaptain?.id ?? team.currentCaptain?.id ?? null;
+  if (captainId && xi.some((player) => player.id === captainId)) {
+    const player = xi.find((item) => item.id === captainId)!;
+    score += simulatedPlayerScore(player, iteration);
+  }
+  return score;
+}
+
+function buildCounterPlay(
+  managerStanding: LeagueEntry,
+  targetStanding: LeagueEntry | null,
+  chaserStandings: LeagueEntry[],
+  analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
+  leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
+  localExposure: Map<number, LocalExposure>,
+  snapshots: EntrySnapshot[],
+  snapshotEvent: number | null,
+) {
+  const rivalByEntry = new Map(
+    analysis.rivals.map((team) => [team.entryId, team]),
+  );
+  const selectedRivals = [
+    targetStanding,
+    ...chaserStandings.slice(0, 3),
+  ]
+    .filter(
+      (standing, index, list): standing is LeagueEntry =>
+        Boolean(standing) &&
+        list.findIndex((item) => item?.entry_id === standing?.entry_id) === index,
+    )
+    .map((standing) => ({
+      standing,
+      team: rivalByEntry.get(standing.entry_id) ?? null,
+    }))
+    .filter(
+      (
+        item,
+      ): item is { standing: LeagueEntry; team: TeamAnalysis } =>
+        Boolean(item.team),
+    );
+
+  const target =
+    targetStanding != null
+      ? selectedRivals.find(
+          (item) => item.standing.entry_id === targetStanding.entry_id,
+        ) ?? null
+      : selectedRivals[0] ?? null;
+  const primaryChaser =
+    chaserStandings.length > 0
+      ? selectedRivals.find(
+          (item) => item.standing.entry_id === chaserStandings[0].entry_id,
+        ) ?? null
+      : null;
+
+  const candidates: Array<{
+    id: string;
+    label: string;
+    transfer: { out: RankedPlayer; in: RankedPlayer } | null;
+    captain: RankedPlayer | null;
+    style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+  }> = [
+    {
+      id: "hold",
+      label: "Hold structure",
+      transfer: null,
+      captain:
+        leagueStrategy.captain_moves[0]?.player ??
+        analysis.manager.recommendedCaptain ??
+        null,
+      style: "HOLD",
+    },
+  ];
+
+  for (const move of leagueStrategy.transfer_moves.slice(0, 3)) {
+    const targetOwns = target?.team.squad.some(
+      (player) => player.id === move.in.id,
+    );
+    candidates.push({
+      id: `transfer-${move.in.id}`,
+      label: `${move.out.name} → ${move.in.name}`,
+      transfer: { out: move.out, in: move.in },
+      captain:
+        leagueStrategy.captain_moves[0]?.player ??
+        analysis.manager.recommendedCaptain ??
+        null,
+      style: targetOwns ? "BLOCK" : "ATTACK",
+    });
+  }
+
+  for (const captainMove of leagueStrategy.captain_moves.slice(0, 3)) {
+    if (
+      candidates.some(
+        (candidate) =>
+          !candidate.transfer && candidate.captain?.id === captainMove.player.id,
+      )
+    ) continue;
+    const targetOwns = target?.team.squad.some(
+      (player) => player.id === captainMove.player.id,
+    );
+    candidates.push({
+      id: `captain-${captainMove.player.id}`,
+      label: `Captain ${captainMove.player.name}`,
+      transfer: null,
+      captain: captainMove.player,
+      style: targetOwns ? "BLOCK" : "ATTACK",
+    });
+  }
+
+  const iterations = 10000;
+  const results = candidates.map((candidate) => {
+    let beatTarget = 0;
+    let stayAheadChaser = 0;
+    let controlAll = 0;
+    let scoreSum = 0;
+    let squareSum = 0;
+    const managerStart = Number(managerStanding.total ?? 0);
+
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const managerScore = simulateTeamScore(
+        analysis.manager,
+        iteration,
+        candidate.transfer,
+        candidate.captain,
+      );
+      scoreSum += managerScore;
+      squareSum += managerScore * managerScore;
+
+      let controls = true;
+      for (const rival of selectedRivals) {
+        const rivalScore = simulateTeamScore(
+          rival.team,
+          iteration,
+          null,
+          rival.team.recommendedCaptain ?? rival.team.currentCaptain,
+        );
+        const managerTotal = managerStart + managerScore;
+        const rivalTotal = Number(rival.standing.total ?? 0) + rivalScore;
+        if (managerTotal <= rivalTotal) controls = false;
+
+        if (
+          target &&
+          rival.standing.entry_id === target.standing.entry_id &&
+          managerTotal > rivalTotal
+        ) {
+          beatTarget += 1;
+        }
+        if (
+          primaryChaser &&
+          rival.standing.entry_id === primaryChaser.standing.entry_id &&
+          managerTotal > rivalTotal
+        ) {
+          stayAheadChaser += 1;
+        }
+      }
+      if (controls) controlAll += 1;
+    }
+
+    const mean = scoreSum / iterations;
+    const variance = Math.max(0, squareSum / iterations - mean * mean);
+    const sd = Math.sqrt(variance);
+    const objectiveProbability =
+      leagueStrategy.mode === "PROTECT"
+        ? primaryChaser
+          ? stayAheadChaser / iterations
+          : controlAll / iterations
+        : target
+          ? beatTarget / iterations
+          : controlAll / iterations;
+
+    return {
+      ...candidate,
+      mean_score: mean,
+      volatility: sd,
+      floor_5: mean - 1.645 * sd,
+      ceiling_95: mean + 1.645 * sd,
+      beat_target_probability: target ? beatTarget / iterations : null,
+      protect_vs_chaser_probability: primaryChaser
+        ? stayAheadChaser / iterations
+        : null,
+      pressure_control_probability: controlAll / iterations,
+      objective_probability: objectiveProbability,
+    };
+  });
+
+  const baseline = results.find((item) => item.id === "hold") ?? results[0];
+  const rankedScenarios = results
+    .map((result) => ({
+      ...result,
+      probability_delta:
+        result.objective_probability - baseline.objective_probability,
+    }))
+    .sort(
+      (a, b) =>
+        b.objective_probability - a.objective_probability ||
+        b.mean_score - a.mean_score,
+    );
+
+  const playerById = new Map<number, RankedPlayer>();
+  for (const team of [analysis.manager, ...analysis.rivals]) {
+    for (const player of team.squad) playerById.set(player.id, player);
+  }
+
+  const localMatrix = [...localExposure.values()]
+    .map((item) => ({
+      ...item,
+      player: playerById.get(item.player_id) ?? null,
+    }))
+    .filter((item) => item.player)
+    .sort(
+      (a, b) =>
+        b.effective_exposure - a.effective_exposure ||
+        b.squad_ownership - a.squad_ownership,
+    );
+
+  const managerIds = new Set(analysis.manager.squad.map((player) => player.id));
+  const threatPlayers = selectedRivals
+    .flatMap((rival) =>
+      rival.team.squad
+        .filter((player) => !managerIds.has(player.id))
+        .map((player) => {
+          const exposure = localExposure.get(player.id);
+          const ceiling =
+            player.assistantScore + simulationVolatility(player) * 1.65;
+          const threatScore = Math.round(
+            Math.max(
+              0,
+              Math.min(
+                100,
+                player.assistantScore * 6 +
+                  ceiling * 2.5 +
+                  (exposure?.captain_share ?? 0) * 0.25 +
+                  (exposure?.starter_ownership ?? 0) * 0.08,
+              ),
+            ),
+          );
+          return {
+            rival_entry_id: rival.standing.entry_id,
+            rival_name: rival.standing.entry_name,
+            player,
+            threat_score: threatScore,
+            local_exposure: exposure ?? null,
+            ceiling_proxy: ceiling,
+          };
+        }),
+    )
+    .sort((a, b) => b.threat_score - a.threat_score);
+
+  const snapshotByEntry = new Map(
+    snapshots.map((snapshot) => [Number(snapshot.entry_id), snapshot]),
+  );
+
+  const rivalVectors = selectedRivals.map((rival) => {
+    const vectors = rival.team.weakLinks
+      .filter(
+        (move) =>
+          move.replacement &&
+          move.timing === "NOW" &&
+          move.gain >= move.minimumGain,
+      )
+      .slice(0, 3)
+      .map((move) => ({
+        out: move.player,
+        in: move.replacement!,
+        gain: move.gain,
+        horizon_gain: move.horizonGain,
+        relative_weight: Math.exp(Math.max(-2, Math.min(2, move.gain / 2))),
+      }));
+    const weightTotal = vectors.reduce(
+      (sum, vector) => sum + vector.relative_weight,
+      0,
+    );
+    return {
+      entry_id: rival.standing.entry_id,
+      name: rival.standing.entry_name,
+      gap:
+        Number(rival.standing.total ?? 0) -
+        Number(managerStanding.total ?? 0),
+      bank:
+        Number(
+          snapshotByEntry.get(rival.standing.entry_id)?.entry_history?.bank ?? 0,
+        ) / 10,
+      transfer_vectors: vectors.map((vector) => ({
+        ...vector,
+        model_share:
+          weightTotal > 0 ? vector.relative_weight / weightTotal : 0,
+        caveat:
+          "Model share is a relative Footy transfer-vector weight, not an observed probability of what the rival will do.",
+      })),
+    };
+  });
+
+  return {
+    snapshot_event: snapshotEvent,
+    managers_in_local_matrix: snapshots.length,
+    iterations,
+    strategy_mode: leagueStrategy.mode,
+    objective:
+      leagueStrategy.mode === "PROTECT"
+        ? "Maximise probability of staying ahead of the nearest chasing pressure."
+        : "Maximise probability of overtaking the nearest target above without ignoring downside from chasers.",
+    baseline: baseline
+      ? {
+          objective_probability: baseline.objective_probability,
+          mean_score: baseline.mean_score,
+          volatility: baseline.volatility,
+          floor_5: baseline.floor_5,
+          ceiling_95: baseline.ceiling_95,
+        }
+      : null,
+    scenarios: rankedScenarios.slice(0, 7),
+    recommended_scenario: rankedScenarios[0] ?? null,
+    local_exposure: localMatrix.slice(0, 30),
+    primary_threats: threatPlayers.slice(0, 12),
+    rival_vectors: rivalVectors,
+    caveats: [
+      "The 10,000-run simulator is a model distribution, not a guarantee of future results.",
+      "Shared players use the same simulated outcome in both squads, preserving ownership correlation rather than drawing them independently.",
+      "Local effective exposure is calculated from the latest synced mini-league starting multipliers/captaincy; it is not global effective ownership and it is not a prediction of the next deadline.",
+      "Rival transfer vectors are model-weighted plausible moves, not claims about a rival's intent.",
+      "The first CounterPlay release models next-deadline pressure control; 3GW/5GW path simulation is the next extension.",
+    ],
+  };
+}
 
 function battleMode(manager: LeagueEntry, leader: LeagueEntry) {
   const gap = Math.max(0, Number(leader.total || 0) - Number(manager.total || 0));
@@ -662,10 +1197,14 @@ export async function GET(
         list.indexOf(value) === index,
     );
 
-    const analysis = await getLeagueManagerEdgeAnalysis(
-      managerEntryId,
-      analysisRivalIds,
-    );
+    const [analysis, localSnapshotState] = await Promise.all([
+      getLeagueManagerEdgeAnalysis(
+        managerEntryId,
+        analysisRivalIds,
+      ),
+      latestLeagueSnapshots(leagueId),
+    ]);
+    const localExposure = buildLocalExposure(localSnapshotState.snapshots);
     const leagueStrategy = buildLeagueStrategy(
       managerStanding,
       targetStanding,
@@ -734,6 +1273,16 @@ export async function GET(
             "PROTECT",
           )
         : null;
+    const counterPlay = buildCounterPlay(
+      managerStanding,
+      targetStanding,
+      chaserStandings,
+      analysis,
+      leagueStrategy,
+      localExposure,
+      localSnapshotState.snapshots,
+      localSnapshotState.event,
+    );
     const portfolioPlan = buildPortfolioPlan(
       analysis,
       leagueStrategy,
@@ -799,6 +1348,7 @@ export async function GET(
       chaser_resource_advice: chaserResourceAdvice,
       decision_path: decisionPath,
       portfolio_plan: portfolioPlan,
+      counterplay: counterPlay,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {
