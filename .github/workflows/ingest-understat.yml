@@ -1,6 +1,10 @@
 name: ingest-understat
 
 on:
+  schedule:
+    # Refresh current-season process after the main UK match windows.
+    # The job is idempotent and only upserts completed Understat matches.
+    - cron: "25 6,13,18,23 * * *"
   workflow_dispatch:
     inputs:
       league:
@@ -20,6 +24,10 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/ingest-understat.yml"
+
+concurrency:
+  group: ingest-understat-current
+  cancel-in-progress: true
 
 jobs:
   ingest:
@@ -44,7 +52,7 @@ jobs:
 
           ARGS=(understat-ingest --league "$LEAGUE" --season "$SEASON")
 
-          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$WITH_SHOTS" = "true" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "schedule" ] || [ "$WITH_SHOTS" = "true" ]; then
             ARGS+=(--with-shots)
           fi
 

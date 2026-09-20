@@ -5,11 +5,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables");
 }
 
-const endpoints = [
-  ["bootstrap-static", "https://fantasy.premierleague.com/api/bootstrap-static/"],
-  ["fixtures", "https://fantasy.premierleague.com/api/fixtures/"],
-];
-
 async function fetchFpl(url) {
   const response = await fetch(url, {
     headers: {
@@ -54,8 +49,37 @@ async function upsert(snapshotKey, payload) {
   }
 }
 
-for (const [key, url] of endpoints) {
-  const payload = await fetchFpl(url);
-  await upsert(key, payload);
-  console.log(`cached ${key}`);
+const bootstrap = await fetchFpl(
+  "https://fantasy.premierleague.com/api/bootstrap-static/",
+);
+await upsert("bootstrap-static", bootstrap);
+console.log("cached bootstrap-static");
+
+const fixtures = await fetchFpl(
+  "https://fantasy.premierleague.com/api/fixtures/",
+);
+await upsert("fixtures", fixtures);
+console.log("cached fixtures");
+
+const current =
+  bootstrap.events?.find((event) => event.is_current) ??
+  [...(bootstrap.events ?? [])]
+    .filter((event) => !event.finished)
+    .sort((a, b) => a.id - b.id)[0] ??
+  [...(bootstrap.events ?? [])]
+    .sort((a, b) => b.id - a.id)[0] ??
+  null;
+
+if (current?.id) {
+  try {
+    const live = await fetchFpl(
+      `https://fantasy.premierleague.com/api/event/${current.id}/live/`,
+    );
+    await upsert(`event-live-${current.id}`, live);
+    console.log(`cached event-live-${current.id}`);
+  } catch (error) {
+    console.warn(
+      `event-live-${current.id} cache refresh failed: ${error instanceof Error ? error.message : error}`,
+    );
+  }
 }
