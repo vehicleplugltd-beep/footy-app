@@ -155,10 +155,6 @@ export default async function Home({
                     ? decimalToFractional(selection.bestPrice.decimal_odds)
                     : null,
                   liveBookmaker: selection.bestPrice?.bookmaker_name ?? null,
-                  live: selection.bestPrice
-                    ? decimalToFractional(selection.bestPrice.decimal_odds)
-                    : null,
-                  liveBookmaker: selection.bestPrice?.bookmaker_name ?? null,
                 })),
               ), ...board.flatMap((match) =>
                 match.selections.map((selection) => ({
@@ -167,6 +163,10 @@ export default async function Home({
                   selection: selection.displaySelection,
                   fair: decimalToFractional(selection.fair_odds),
                   take: minimumTakeToFractional(selection.minimum_take_price),
+                  live: selection.bestPrice
+                    ? decimalToFractional(selection.bestPrice.decimal_odds)
+                    : null,
+                  liveBookmaker: selection.bestPrice?.bookmaker_name ?? null,
                 })),
               )].map((item) => (
                 <span className="ticker-item" key={item.key}>
