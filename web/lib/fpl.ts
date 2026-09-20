@@ -2955,7 +2955,9 @@ function scoutRisks(
   return risks.slice(0, 3);
 }
 
-export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> {
+export async function getScoutIntelligence(
+  options: { allFixtureForecasts?: boolean } = {},
+): Promise<ScoutIntelligencePayload> {
   const [bootstrapSnapshot, fixturesSnapshot, process, playerProcesses] =
     await Promise.all([
       cachedFpl<Bootstrap>("bootstrap-static"),
@@ -2991,10 +2993,10 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
   }
 
   const { current, next } = currentAndNext(bootstrap.events);
-  const upcomingEvents = bootstrap.events
+  const futureEvents = bootstrap.events
     .filter((event) => next && event.id >= next.id && !event.finished)
-    .sort((a, b) => a.id - b.id)
-    .slice(0, 8);
+    .sort((a, b) => a.id - b.id);
+  const upcomingEvents = futureEvents.slice(0, 8);
 
   const rankings = upcomingEvents.map((event) => ({
     event,
@@ -3319,7 +3321,7 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     bootstrap,
     fixtures,
     process,
-    upcomingEvents,
+    options.allFixtureForecasts ? futureEvents : upcomingEvents,
   );
 
   return {

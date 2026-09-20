@@ -217,7 +217,7 @@ export function ResearchHub({
     const controller = new AbortController();
     async function load() {
       try {
-        const response = await fetch("/api/scout", {
+        const response = await fetch("/api/scout?forecast=all", {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -510,8 +510,10 @@ export function ResearchHub({
             <h2>Data-based probabilities for every upcoming league fixture.</h2>
           </div>
           <small>
-            Expected goals + Poisson outcome distribution, adjusted by regressed team
-            attack/defence process and recent trend. These are model estimates, not certainties.
+            {fixtureGroups.length} remaining scheduled Gameweeks · expected goals + Poisson
+            outcome distribution, adjusted by regressed team attack/defence process and recent
+            trend. Player scouting stays on an 8GW horizon; fixture forecasting continues across
+            the remaining schedule. These are model estimates, not certainties.
           </small>
         </div>
 
