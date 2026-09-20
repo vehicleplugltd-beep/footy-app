@@ -414,11 +414,24 @@ function buildCounterPlay(
 
   const baseline = results.find((item) => item.id === "hold") ?? results[0];
   const rankedScenarios = results
-    .map((result) => ({
-      ...result,
-      probability_delta:
-        result.objective_probability - baseline.objective_probability,
-    }))
+    .map((result) => {
+      const probabilityDelta =
+        result.objective_probability - baseline.objective_probability;
+      const meanDelta = result.mean_score - baseline.mean_score;
+      const reason =
+        result.id === "hold"
+          ? "Baseline portfolio: current squad structure with Footy's highest-rated available captain."
+          : probabilityDelta >= 0.02
+            ? `${result.style === "BLOCK" ? "Block" : result.style === "ATTACK" ? "Attack" : "Balanced"} vector raises the league objective by ${(probabilityDelta * 100).toFixed(1)} percentage points while changing expected Gameweek score by ${meanDelta >= 0 ? "+" : ""}${meanDelta.toFixed(1)}.`
+            : probabilityDelta <= -0.02
+              ? `The move may alter raw expected score by ${meanDelta >= 0 ? "+" : ""}${meanDelta.toFixed(1)}, but its ownership/captain correlation and variance reduce the manager-specific league objective by ${Math.abs(probabilityDelta * 100).toFixed(1)} percentage points.`
+              : `League-objective impact is small (${probabilityDelta >= 0 ? "+" : ""}${(probabilityDelta * 100).toFixed(1)}pp); football quality and structural flexibility should break the tie rather than game theory alone.`;
+      return {
+        ...result,
+        probability_delta: probabilityDelta,
+        reason,
+      };
+    })
     .sort(
       (a, b) =>
         b.objective_probability - a.objective_probability ||
