@@ -74,6 +74,51 @@ type ManagerResponse = {
     chip_threats: string[];
     recommendation: string;
   } | null;
+  decision_quality?: {
+    status: "ACTIVE" | "ACCUMULATING" | "UNAVAILABLE";
+    tracked_from_event: number;
+    completed: Array<{
+      event: number;
+      generated_at: string;
+      model_version: string | null;
+      battle_mode: string | null;
+      captain: {
+        process: string;
+        actual_player_id: number | null;
+        model_player_id: number | null;
+        model_player_name: string | null;
+        model_expected: number | null;
+        actual_choice_expected: number | null;
+        expected_ev_gap: number | null;
+        actual_choice_points: number | null;
+        model_choice_points: number | null;
+        actual_vs_model_expectation: number | null;
+      };
+      transfers: {
+        process: string;
+        actual_in_ids: number[];
+        actual_out_ids: number[];
+        model_top: {
+          out: { id: number; name: string; team: string; score: number };
+          in: { id: number; name: string; team: string; score: number } | null;
+          reason: string;
+        } | null;
+        model_expected_delta: number | null;
+        model_actual_delta: number | null;
+        hit_cost: number;
+      };
+      bench_points: number;
+    }>;
+    summary: {
+      deadlines: number;
+      captain_process_alignment: number;
+      total_hit_cost: number;
+      average_bench_points: number;
+      negative_variance_deadlines: number;
+      observations: string[];
+    } | null;
+    caveat: string;
+  };
   counterplay?: {
     snapshot_event: number | null;
     managers_in_local_matrix: number;
@@ -382,6 +427,7 @@ export function TeamRoomDashboard({
   const intelligenceLoading = !error && (!scout || !manager);
   const portfolioPlan = manager?.portfolio_plan ?? null;
   const counterPlay = manager?.counterplay ?? null;
+  const decisionQuality = manager?.decision_quality ?? null;
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
   const captain =
@@ -996,6 +1042,119 @@ export function TeamRoomDashboard({
               <p key={"counter-caveat-" + index}>{item}</p>
             ))}
           </details>
+        </section>
+      ) : null}
+
+      {decisionQuality ? (
+        <section className="team-room-block decision-quality-panel">
+          <div className="team-room-block-head">
+            <div>
+              <span>DECISION QUALITY</span>
+              <h2>
+                {decisionQuality.status === "ACTIVE"
+                  ? decisionQuality.summary?.deadlines + " tracked deadline" +
+                    (decisionQuality.summary?.deadlines === 1 ? "" : "s")
+                  : decisionQuality.status === "ACCUMULATING"
+                    ? "Building the clean history"
+                    : "Audit temporarily unavailable"}
+              </h2>
+            </div>
+            <small>Process EV and outcome variance are scored separately</small>
+          </div>
+
+          {decisionQuality.status === "ACTIVE" && decisionQuality.summary ? (
+            <>
+              <div className="decision-quality-grid">
+                <div>
+                  <span>CAPTAIN PROCESS</span>
+                  <strong>
+                    {(decisionQuality.summary.captain_process_alignment * 100).toFixed(0)}%
+                  </strong>
+                  <small>model-aligned / close-call deadlines</small>
+                </div>
+                <div>
+                  <span>HIT COST</span>
+                  <strong>-{decisionQuality.summary.total_hit_cost}</strong>
+                  <small>tracked transfer points spent</small>
+                </div>
+                <div>
+                  <span>BENCH LEAKAGE</span>
+                  <strong>{decisionQuality.summary.average_bench_points.toFixed(1)}</strong>
+                  <small>average actual bench points</small>
+                </div>
+                <div>
+                  <span>BAD VARIANCE</span>
+                  <strong>{decisionQuality.summary.negative_variance_deadlines}</strong>
+                  <small>captain outcomes ≥2 below deadline expectation</small>
+                </div>
+              </div>
+
+              <div className="decision-quality-observations">
+                <span>WHAT THE SAMPLE ACTUALLY SAYS</span>
+                {decisionQuality.summary.observations.map((item, index) => (
+                  <p key={"decision-observation-" + index}>{item}</p>
+                ))}
+              </div>
+
+              <div className="decision-quality-history">
+                {decisionQuality.completed.map((item) => (
+                  <article key={item.event}>
+                    <header>
+                      <b>GW{item.event}</b>
+                      <small>{item.battle_mode ?? "—"} · {item.model_version ?? "model receipt"}</small>
+                    </header>
+                    <div>
+                      <span>Captain process</span>
+                      <strong>{item.captain.process.replaceAll("_", " ")}</strong>
+                      <small>
+                        {item.captain.model_player_name
+                          ? "Model: " + item.captain.model_player_name
+                          : "No comparable captain receipt"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Captain variance</span>
+                      <strong>
+                        {item.captain.actual_vs_model_expectation == null
+                          ? "—"
+                          : (item.captain.actual_vs_model_expectation >= 0 ? "+" : "") +
+                            item.captain.actual_vs_model_expectation.toFixed(1)}
+                      </strong>
+                      <small>actual raw points vs deadline expectation</small>
+                    </div>
+                    <div>
+                      <span>Transfer process</span>
+                      <strong>{item.transfers.process.replaceAll("_", " ")}</strong>
+                      <small>
+                        {item.transfers.hit_cost
+                          ? "-" + item.transfers.hit_cost + " hit"
+                          : "no hit cost"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Bench</span>
+                      <strong>{item.bench_points}</strong>
+                      <small>actual points left on bench</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="decision-quality-empty">
+              <strong>
+                Footy started storing genuine pre-deadline decision receipts in GW
+                {decisionQuality.tracked_from_event}.
+              </strong>
+              <p>
+                Earlier Gameweeks are deliberately not reconstructed with hindsight. Once the
+                first tracked deadline is complete, this section will compare what the model knew
+                then with the manager’s actual choice and eventual outcome.
+              </p>
+            </div>
+          )}
+
+          <p className="decision-quality-caveat">{decisionQuality.caveat}</p>
         </section>
       ) : null}
 

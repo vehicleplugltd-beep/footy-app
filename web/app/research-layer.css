@@ -452,3 +452,111 @@
   font-size: 7px;
   line-height: 1.45;
 }
+
+.decision-quality-panel {
+  border-left: 3px solid #8b5cf6;
+}
+.decision-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 7px;
+}
+.decision-quality-grid > div {
+  border: 1px solid #e6e1f2;
+  border-radius: 10px;
+  padding: 10px;
+  background: #faf8ff;
+}
+.decision-quality-grid span,
+.decision-quality-grid strong,
+.decision-quality-grid small {
+  display: block;
+}
+.decision-quality-grid span {
+  color: #7a6b9a;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+.decision-quality-grid strong {
+  margin-top: 4px;
+  color: #17131f;
+  font-size: 15px;
+}
+.decision-quality-grid small {
+  margin-top: 3px;
+  color: #756d82;
+  font-size: 8px;
+}
+.decision-quality-observations,
+.decision-quality-empty {
+  margin-top: 9px;
+  border: 1px solid #e6e1f2;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.decision-quality-observations > span {
+  color: #7c5cc4;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.decision-quality-observations p,
+.decision-quality-empty p,
+.decision-quality-caveat {
+  margin: 6px 0 0;
+  color: #5c5568;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.decision-quality-empty strong {
+  color: #312a3d;
+  font-size: 10px;
+}
+.decision-quality-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+.decision-quality-history article {
+  display: grid;
+  grid-template-columns: 110px repeat(4,minmax(0,1fr));
+  gap: 7px;
+  border: 1px solid #e7e3ed;
+  border-radius: 10px;
+  padding: 9px;
+  background: #fff;
+}
+.decision-quality-history article header b,
+.decision-quality-history article header small,
+.decision-quality-history article div span,
+.decision-quality-history article div strong,
+.decision-quality-history article div small {
+  display: block;
+}
+.decision-quality-history article header small,
+.decision-quality-history article div span,
+.decision-quality-history article div small {
+  color: #7a7285;
+  font-size: 7px;
+}
+.decision-quality-history article div strong {
+  margin-top: 3px;
+  color: #221d29;
+  font-size: 9px;
+}
+.decision-quality-caveat {
+  color: #79717f;
+}
+@media (max-width: 800px) {
+  .decision-quality-grid {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .decision-quality-history article {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .decision-quality-history article header {
+    grid-column: 1 / -1;
+  }
+}
