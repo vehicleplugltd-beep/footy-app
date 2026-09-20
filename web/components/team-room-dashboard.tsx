@@ -197,11 +197,13 @@ type ManagerResponse = {
       name: string;
       gap: number;
       bank: number;
+      estimated_free_transfers: number | null;
+      remaining_chips: string[];
+      activity: string | null;
       transfer_vectors: Array<{
-        out: { id: number; name: string; team: string };
-        in: { id: number; name: string; team: string };
-        gain: number;
-        horizon_gain: number;
+        out: { id: number; name: string; team: string } | null;
+        in: { id: number; name: string; team: string } | null;
+        label: string;
         model_share: number;
         caveat: string;
       }>;
@@ -1017,18 +1019,27 @@ export function TeamRoomDashboard({
                     <header>
                       <b>{rival.name}</b>
                       <small>
-                        gap {rival.gap >= 0 ? "+" : ""}{rival.gap} · £{rival.bank.toFixed(1)}m bank
+                        gap {rival.gap >= 0 ? "+" : ""}{rival.gap} · £{rival.bank.toFixed(1)}m bank ·{" "}
+                        {rival.estimated_free_transfers == null
+                          ? "FT unknown"
+                          : rival.estimated_free_transfers + "/5 FT"}
                       </small>
                     </header>
+                    <small className="counterplay-rival-meta">
+                      {rival.activity ?? "resource style unknown"} ·{" "}
+                      {rival.remaining_chips.length
+                        ? rival.remaining_chips.join(", ") + " available"
+                        : "no tracked chips remaining in current half"}
+                    </small>
                     {rival.transfer_vectors.length ? (
-                      rival.transfer_vectors.map((vector) => (
-                        <p key={vector.out.id + "-" + vector.in.id}>
-                          {vector.out.name} → {vector.in.name} ·{" "}
-                          <b>{(vector.model_share * 100).toFixed(0)}% relative vector weight</b>
+                      rival.transfer_vectors.map((vector, vectorIndex) => (
+                        <p key={rival.entry_id + "-" + vectorIndex}>
+                          {vector.label} ·{" "}
+                          <b>{(vector.model_share * 100).toFixed(0)}% relative response weight</b>
                         </p>
                       ))
                     ) : (
-                      <p>No current transfer vector clears that rival’s football threshold.</p>
+                      <p>No current response vector is available.</p>
                     )}
                   </article>
                 ))}
