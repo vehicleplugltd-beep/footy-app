@@ -28,7 +28,9 @@ export default async function LeaguePage({
           ) : (
             <Link href="/">Find team</Link>
           )}
-          <Link href="/review">Review</Link>
+          {teamId ? (
+            <Link href={`/review?team=${teamId}&league=${id}`}>Review</Link>
+          ) : null}
         </div>
       </nav>
 

@@ -10,7 +10,7 @@ export default function Home() {
           <span>Footy</span>
         </div>
         <div className="nav-links">
-          <Link href="/review">Review</Link>
+          <span className="home-nav-note">Assistant manager for FPL</span>
         </div>
       </nav>
 

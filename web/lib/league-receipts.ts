@@ -271,7 +271,10 @@ async function buildReviews(rows: ReceiptRow[]) {
   });
 }
 
-export async function getLeagueReceiptSummary(): Promise<LeagueReceiptSummary> {
+export async function getLeagueReceiptSummary(filters?: {
+  entryId?: number;
+  leagueId?: number;
+}): Promise<LeagueReceiptSummary> {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -286,10 +289,17 @@ export async function getLeagueReceiptSummary(): Promise<LeagueReceiptSummary> {
     reviews: [],
   };
 
-  if (!key) return empty;
+  if (!key || !filters?.entryId) return empty;
+
+  const filterQuery = [
+    `entry_id=eq.${filters.entryId}`,
+    filters.leagueId ? `league_id=eq.${filters.leagueId}` : null,
+  ]
+    .filter(Boolean)
+    .join("&");
 
   const response = await fetch(
-    `${url}/rest/v1/footy_fpl_recommendation_snapshots?select=id,league_id,entry_id,event,deadline_time,generated_at,data_retrieved_at,model_version,captain_options,transfer_options,actual_captain_id,actual_incoming_ids,matched_top3,matched_captain_top3,matched_transfer_top3,scored_at&is_pre_deadline=eq.true&order=generated_at.desc&limit=1000`,
+    `${url}/rest/v1/footy_fpl_recommendation_snapshots?select=id,league_id,entry_id,event,deadline_time,generated_at,data_retrieved_at,model_version,captain_options,transfer_options,actual_captain_id,actual_incoming_ids,matched_top3,matched_captain_top3,matched_transfer_top3,scored_at&is_pre_deadline=eq.true&${filterQuery}&order=generated_at.desc&limit=1000`,
     {
       headers: {
         apikey: key,

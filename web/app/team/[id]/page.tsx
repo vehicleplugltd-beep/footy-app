@@ -83,7 +83,11 @@ export default async function TeamPage({
           <span className="brand-mark">F</span><span>Footy</span>
         </Link>
         <div className="topbar-secondary">
-          <Link href="/review">Review</Link>
+          <Link
+            href={`/review?team=${team.id}${leagueId ? `&league=${leagueId}` : ""}`}
+          >
+            Review
+          </Link>
           <Link href="/">Change team</Link>
         </div>
       </nav>

@@ -14,8 +14,23 @@ function outcomeCopy(
   return "Awaiting Gameweek outcome";
 }
 
-export default async function ReviewPage() {
-  const summary = await getLeagueReceiptSummary();
+export default async function ReviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    team?: string | string[];
+    league?: string | string[];
+  }>;
+}) {
+  const query = await searchParams;
+  const rawTeam = Array.isArray(query.team) ? query.team[0] : query.team;
+  const rawLeague = Array.isArray(query.league) ? query.league[0] : query.league;
+  const teamId = rawTeam ? Number(rawTeam.replace(/\D/g, "")) : undefined;
+  const leagueId = rawLeague ? Number(rawLeague.replace(/\D/g, "")) : undefined;
+  const summary = await getLeagueReceiptSummary({
+    entryId: teamId,
+    leagueId,
+  });
 
   return (
     <main className="league-edge-app minimal-footy review-page">
@@ -24,7 +39,15 @@ export default async function ReviewPage() {
           <span className="brand-mark">F</span><span>Footy</span>
         </Link>
         <div className="nav-links">
-          <Link href="/">Home</Link>
+          {teamId ? (
+            <Link
+              href={`/team/${teamId}?view=today${leagueId ? `&league=${leagueId}` : ""}`}
+            >
+              Back to team
+            </Link>
+          ) : (
+            <Link href="/">Connect team</Link>
+          )}
         </div>
       </nav>
 
@@ -73,7 +96,16 @@ export default async function ReviewPage() {
           </p>
         </div>
 
-        {summary.reviews.length ? (
+        {!teamId ? (
+          <div className="review-empty">
+            <strong>Connect your team to open Review.</strong>
+            <p>
+              Review is personal to your FPL team and, where selected, your
+              mini-league battle. Open Footy through your Team ID first.
+            </p>
+            <Link href="/">Connect team →</Link>
+          </div>
+        ) : summary.reviews.length ? (
           <div className="review-cards">
             {summary.reviews.map((review) => {
               const transfer = review.transfer.recommended;
