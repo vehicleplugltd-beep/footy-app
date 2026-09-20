@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./research-layer.css";
 
 export const metadata: Metadata = {
   title: "Footy — Your FPL Assistant Manager",

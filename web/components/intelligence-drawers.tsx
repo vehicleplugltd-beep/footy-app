@@ -1,6 +1,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type {
   ScoutPlayerProfile,
@@ -327,6 +328,16 @@ export function PlayerIntelDrawer({
       <section className="intel-grid intel-grid-primary">
         <Metric label="EPA" value={(profile.epa.epa >= 0 ? "+" : "") + profile.epa.epa.toFixed(2)} sub="vs replacement" />
         <Metric
+          label="Risk"
+          value={profile.riskProfile.downsideRisk + "/100"}
+          sub={profile.riskProfile.assetType}
+        />
+        <Metric
+          label="Floor / Ceiling"
+          value={profile.riskProfile.floor.toFixed(1) + " / " + profile.riskProfile.ceiling.toFixed(1)}
+          sub={"volatility " + profile.riskProfile.volatility.toFixed(1)}
+        />
+        <Metric
           label={processMetricLabel}
           value={
             processMetricValue == null
@@ -346,6 +357,29 @@ export function PlayerIntelDrawer({
         />
         <Metric label="Expected mins" value={profile.epa.expectedMinutes.toFixed(0)} sub={player.availability + "% available"} />
         <Metric label="6GW" value={profile.score6.toFixed(1)} sub={profile.bestWindow.startName + " best window"} />
+      </section>
+
+      <section className="intel-section intel-risk-profile">
+        <div className="intel-section-head">
+          <div>
+            <span>RISK-ADJUSTED PROFILE</span>
+            <h3>{profile.riskProfile.assetType} asset · downside {profile.riskProfile.downsideRisk}/100</h3>
+          </div>
+          <small>{profile.riskProfile.floor.toFixed(1)} floor → {profile.riskProfile.ceiling.toFixed(1)} ceiling</small>
+        </div>
+        <div className="intel-stat-list">
+          <p><span>Model floor</span><b>{profile.riskProfile.floor.toFixed(1)}</b></p>
+          <p><span>Model ceiling</span><b>{profile.riskProfile.ceiling.toFixed(1)}</b></p>
+          <p><span>Volatility</span><b>{profile.riskProfile.volatility.toFixed(1)}</b></p>
+          <p><span>Downside risk</span><b>{profile.riskProfile.downsideRisk}/100</b></p>
+        </div>
+        <div className="intel-risk-drivers">
+          {profile.riskProfile.drivers.map((driver) => <p key={driver}>{driver}</p>)}
+        </div>
+        <small className="intel-risk-caveat">
+          Floor/ceiling are model distribution proxies from minutes reliability, attacking involvement,
+          clean-sheet exposure, fixture variance and workload—not observed historical percentiles.
+        </small>
       </section>
 
       <details className="intel-audit intel-model-depth">
@@ -582,20 +616,25 @@ export function TeamIntelDrawer({
           </div>
         </div>
         <div className="intel-player-links">
-          {team.topPlayers.map((item) => {
-            const profile = players.find((player) => player.player.id === item.id);
-            return (
+          {players
+            .filter((profile) => profile.player.teamName === team.team)
+            .sort((a, b) => b.score6 - a.score6)
+            .map((profile) => (
               <button
                 type="button"
-                key={item.id}
-                disabled={!profile}
-                onClick={() => profile && onOpenPlayer(profile)}
+                key={profile.player.id}
+                onClick={() => onOpenPlayer(profile)}
               >
-                <span><b>{item.name}</b><small>{item.position} · £{item.price.toFixed(1)}m</small></span>
-                <strong>{item.score6.toFixed(1)} <small>6GW</small></strong>
+                <span>
+                  <b>{profile.player.name}</b>
+                  <small>
+                    {profile.player.position} · £{profile.player.price.toFixed(1)}m ·{" "}
+                    {profile.reasons[0] ?? "Modelled from role, process and fixtures."}
+                  </small>
+                </span>
+                <strong>{profile.score6.toFixed(1)} <small>6GW</small></strong>
               </button>
-            );
-          })}
+            ))}
         </div>
       </section>
     </DrawerShell>
@@ -760,10 +799,10 @@ export function ManagerIntelDrawer({
         {error ? <div className="intel-error">{error}</div> : null}
         <div className="intel-manager-squad">
           {(manager?.squad ?? []).map((player) => (
-            <div key={player.id}>
+            <Link key={player.id} href={"/research?player=" + player.id}>
               <span><b>{player.name}</b><small>{player.team} · {player.position} · £{player.price.toFixed(1)}m</small></span>
               <strong>{player.assistantScore.toFixed(1)}<small>Footy</small></strong>
-            </div>
+            </Link>
           ))}
         </div>
       </section>
@@ -778,7 +817,7 @@ export function ManagerIntelDrawer({
         </div>
         <div>
           <span>WEAK LINKS / ROUTES</span>
-          {(manager?.weakLinks ?? []).slice(0, 3).map((move) => (
+          {(manager?.weakLinks ?? []).map((move) => (
             <p key={move.player.id}>
               <b>{move.player.name}</b>
               {move.replacement ? " → " + move.replacement.name : " · hold"}

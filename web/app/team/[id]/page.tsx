@@ -50,7 +50,7 @@ export default async function TeamPage({
 
   const leagues = team.miniLeagues.length
     ? team.miniLeagues
-    : team.otherClassicLeagues.slice(0, 12);
+    : team.otherClassicLeagues;
 
   if (!leagueId) {
     redirect("/?team=" + team.id);
@@ -76,6 +76,7 @@ export default async function TeamPage({
         </Link>
         <div className="hq-nav-right">
           <Link href={"/?team=" + team.id}>HQ</Link>
+          <Link href="/research">Research</Link>
           <Link
             href={
               "/team/" +

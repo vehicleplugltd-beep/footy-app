@@ -37,6 +37,7 @@ export default async function Home({
         </Link>
         <div className="hq-nav-right">
           <span>FPL Assistant Manager</span>
+          <Link href="/research">Research</Link>
           {team ? (
             <Link href={"/review?team=" + team.id}>Review</Link>
           ) : null}
@@ -68,7 +69,7 @@ export default async function Home({
       <section className="shell hq-flow">
         <div>
           <span>HOW FOOTY FLOWS</span>
-          <h2>HQ → Team Room → Preview</h2>
+          <h2>HQ → Research → Team Room → Preview</h2>
           <p className="hq-flow-principle">
             Decision first. Evidence second. Model depth only when you ask for it.
           </p>
@@ -76,6 +77,9 @@ export default async function Home({
         <div>
           <p>
             <b>HQ</b> gives you the live player market and loads your team.
+          </p>
+          <p>
+            <b>Research</b> holds the complete player, club and fixture evidence.
           </p>
           <p>
             <b>Team Room</b> combines squad quality with the mini-league battle.
@@ -88,7 +92,7 @@ export default async function Home({
 
       <footer className="shell footer minimal-footer">
         <p>Live FPL data. Underlying football process. Mini-league context.</p>
-        <p>LOAD TEAM → CHOOSE LEAGUE → DECIDE → PREVIEW</p>
+        <p>LOAD TEAM → RESEARCH → CHOOSE LEAGUE → DECIDE → PREVIEW</p>
       </footer>
     </main>
   );

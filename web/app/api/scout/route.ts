@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getScoutIntelligence } from "@/lib/fpl";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const data = await getScoutIntelligence();
+    const url = new URL(request.url);
+    const data = await getScoutIntelligence({
+      allFixtureForecasts: url.searchParams.get("forecast") === "all",
+    });
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(

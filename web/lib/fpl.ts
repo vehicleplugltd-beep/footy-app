@@ -84,6 +84,8 @@ type Entry = {
 type Pick = {
   element: number;
   is_captain: boolean;
+  position: number;
+  multiplier: number;
 };
 
 type PicksResponse = { picks: Pick[] };
@@ -252,6 +254,57 @@ export type SquadSuggestion = {
   timing: "NOW" | "WAIT" | "HOLD";
 };
 
+export type PortfolioHealth = {
+  score: number;
+  status: "STRONG" | "BALANCED" | "FRAGILE" | "REPAIR";
+  bank: number;
+  bankStatus: "LEAN" | "BUFFERED" | "CASH_HEAVY";
+  reliableBench: number;
+  lowReliabilityPlayers: number;
+  unavailablePlayers: number;
+  premiumCount: number;
+  differentialCount: number;
+  highOwnershipCount: number;
+  averageFieldOwnership: number;
+  bench: {
+    spend: number;
+    spendShare: number;
+    currentModelScore: number;
+    reliable: number;
+    expensiveBenchPlayers: number;
+  };
+  priceStructure: {
+    midBandMidfielders: number;
+    midBandForwards: number;
+    midfieldRoute: boolean;
+    forwardRoute: boolean;
+    midfieldTarget: string | null;
+    forwardTarget: string | null;
+    bands: {
+      goalkeeperSpend: number;
+      budgetGoalkeepers: number;
+      premiumDefenders: number;
+      midDefenders: number;
+      budgetDefenders: number;
+      premiumMidfielders: number;
+      midMidfielders: number;
+      enablerMidfielders: number;
+      premiumMidForwards: number;
+      valueForwards: number;
+      budgetForwards: number;
+    };
+  };
+  horizon: {
+    nextGwBestXi: number;
+    sixGwAverageBestXi: number;
+    eightGwAverageBestXi: number;
+  };
+  reasons: string[];
+  risks: string[];
+  underlying: string[];
+  missing: string[];
+};
+
 export type TeamAnalysis = {
   entryId: number;
   teamName: string;
@@ -264,6 +317,9 @@ export type TeamAnalysis = {
   recommendedCaptain: RankedPlayer | null;
   weakLinks: SquadSuggestion[];
   squad: RankedPlayer[];
+  starters: RankedPlayer[];
+  bench: RankedPlayer[];
+  portfolio: PortfolioHealth;
 };
 
 export type ManagerFutureGameweek = {
@@ -1335,12 +1391,33 @@ function buildFuturePlan(
     };
   }
 
-  const upcomingEvents = bootstrap.events
+  const allFutureEvents = bootstrap.events
     .filter((event) => event.id >= nextEvent.id && !event.finished)
-    .sort((a, b) => a.id - b.id)
-    .slice(0, 8);
+    .sort((a, b) => a.id - b.id);
+  const upcomingEvents = allFutureEvents.slice(0, 8);
+  const chipHalfEnd = nextEvent.id <= 19 ? 19 : 38;
+  const chipWindowEvents = allFutureEvents.filter(
+    (event) => event.id <= chipHalfEnd,
+  );
 
   const teamById = new Map(bootstrap.teams.map((team) => [team.id, team]));
+
+  const calendarStructure = chipWindowEvents.map((event) => {
+    const counts = new Map<number, number>();
+    for (const fixture of fixtures.filter((item) => item.event === event.id)) {
+      counts.set(fixture.team_h, (counts.get(fixture.team_h) ?? 0) + 1);
+      counts.set(fixture.team_a, (counts.get(fixture.team_a) ?? 0) + 1);
+    }
+    return {
+      event,
+      doubleTeams: bootstrap.teams
+        .filter((team) => (counts.get(team.id) ?? 0) > 1)
+        .map((team) => team.short_name),
+      blankTeams: bootstrap.teams
+        .filter((team) => (counts.get(team.id) ?? 0) === 0)
+        .map((team) => team.short_name),
+    };
+  });
 
   const futurePlan = upcomingEvents.map((event) => {
     const ranked = rankPlayers(
@@ -1378,26 +1455,54 @@ function buildFuturePlan(
     } satisfies FutureGameweekPlan;
   });
 
-  const tripleCandidate = [...futurePlan]
+  const strongestDouble = [...calendarStructure].sort(
+    (a, b) =>
+      b.doubleTeams.length - a.doubleTeams.length ||
+      a.event.id - b.event.id,
+  )[0];
+  const doubleCaptain =
+    strongestDouble?.doubleTeams.length
+      ? rankPlayers(
+          bootstrap,
+          fixtures,
+          strongestDouble.event.id,
+          process,
+          false,
+        ).find(
+          (player) =>
+            player.availability >= 75 &&
+            player.fixtureCount > 1,
+        ) ?? null
+      : null;
+  const nearTermTriple = [...futurePlan]
     .filter((plan) => plan.captain)
     .sort(
       (a, b) =>
         (b.captain?.assistantScore ?? 0) -
         (a.captain?.assistantScore ?? 0),
     )[0];
+  const tripleCandidate = doubleCaptain
+    ? {
+        name: strongestDouble.event.name,
+        captain: doubleCaptain,
+      }
+    : nearTermTriple;
 
-  const freeHitCandidate = [...futurePlan]
-    .sort(
-      (a, b) =>
-        b.blankTeams.length + b.doubleTeams.length * 1.5 -
-        (a.blankTeams.length + a.doubleTeams.length * 1.5),
-    )[0];
+  const freeHitCandidate = [...calendarStructure].sort(
+    (a, b) =>
+      b.blankTeams.length + b.doubleTeams.length * 1.5 -
+      (a.blankTeams.length + a.doubleTeams.length * 1.5),
+  )[0];
 
-  const benchBoostCandidate = [...futurePlan]
-    .sort((a, b) => b.doubleTeams.length - a.doubleTeams.length)[0];
+  const benchBoostCandidate = [...calendarStructure].sort(
+    (a, b) =>
+      b.doubleTeams.length - a.doubleTeams.length ||
+      a.event.id - b.event.id,
+  )[0];
 
+  const wildcardEvents = upcomingEvents.slice(0, 6);
   const teamRunScores = bootstrap.teams.map((team) => {
-    const eventScores = upcomingEvents.map((event) => {
+    const eventScores = wildcardEvents.map((event) => {
       const fixturesForEvent = fixturesForTeam(team.id, event.id, fixtures);
       if (!fixturesForEvent.length) return 0;
       return fixturesForEvent.reduce((sum, fixture) => {
@@ -1435,7 +1540,7 @@ function buildFuturePlan(
             : "HOLD",
       eventName: tripleCandidate?.name ?? null,
       reason: tripleCandidate?.captain
-        ? `${tripleCandidate.captain.name} leads the five-Gameweek captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}.`
+        ? `${tripleCandidate.captain.name} leads the relevant captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}; scheduled doubles are scanned across the current chip half through GW${chipHalfEnd}.`
         : "No standout captain window yet.",
     },
     {
@@ -1446,9 +1551,9 @@ function buildFuturePlan(
           : (benchBoostCandidate?.doubleTeams.length ?? 0) >= 2
             ? "WATCH"
             : "HOLD",
-      eventName: benchBoostCandidate?.name ?? null,
+      eventName: benchBoostCandidate?.event.name ?? null,
       reason: benchBoostCandidate
-        ? `${benchBoostCandidate.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s). Bench Boost becomes more attractive as doubles accumulate.`
+        ? `${benchBoostCandidate.event.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s) inside the current chip half (through GW${chipHalfEnd}). Bench Boost becomes more attractive when the manager can also carry 15 dependable starters into that window.`
         : "No obvious Bench Boost window yet.",
     },
     {
@@ -1459,16 +1564,16 @@ function buildFuturePlan(
           : (freeHitCandidate?.blankTeams.length ?? 0) >= 3
             ? "WATCH"
             : "HOLD",
-      eventName: freeHitCandidate?.name ?? null,
+      eventName: freeHitCandidate?.event.name ?? null,
       reason: freeHitCandidate
-        ? `${freeHitCandidate.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) on the current schedule.`
-        : "No major blank/double disruption in the next five Gameweeks.",
+        ? `${freeHitCandidate.event.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) inside the current chip half (through GW${chipHalfEnd}).`
+        : "No major blank/double disruption is currently scheduled.",
     },
     {
       chip: "WILDCARD",
       status: "WATCH",
       eventName: futurePlan[0]?.name ?? null,
-      reason: `Use the next five-Gameweek fixture swing rather than one bad week. Current strongest attacking runs include ${teamRunScores.slice(0,3).map((item)=>item.team).join(", ") || "no clear cluster yet"}.`,
+      reason: `Use the next six-Gameweek structure rather than one bad week. Current strongest attacking runs include ${teamRunScores.slice(0,3).map((item)=>item.team).join(", ") || "no clear cluster yet"}; Wildcard remains a squad-structure decision, not an automatic response to short-term points.`,
     },
   ];
 
@@ -1480,7 +1585,7 @@ function weightedHorizonGain(
   inId: number,
   horizonRankings: RankedPlayer[][],
 ) {
-  const weights = [0.50, 0.25, 0.15, 0.10];
+  const weights = [0.28, 0.22, 0.18, 0.13, 0.11, 0.08];
   let total = 0;
   let used = 0;
   horizonRankings.slice(0, weights.length).forEach((ranked, index) => {
@@ -1492,6 +1597,317 @@ function weightedHorizonGain(
     used += weights[index];
   });
   return used > 0 ? total / used : 0;
+}
+
+function bestXiModelScore(
+  squadIds: Set<number>,
+  ranked: RankedPlayer[],
+) {
+  const squad = ranked.filter(
+    (player) =>
+      squadIds.has(player.id) &&
+      player.availability > 0 &&
+      player.fixtureCount > 0,
+  );
+  const byPosition = new Map<string, RankedPlayer[]>();
+  for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+    byPosition.set(
+      position,
+      squad
+        .filter((player) => player.position === position)
+        .sort((a, b) => b.assistantScore - a.assistantScore),
+    );
+  }
+
+  const keepers = byPosition.get("GKP") ?? [];
+  if (!keepers.length) return 0;
+
+  let best = 0;
+  for (let defenders = 3; defenders <= 5; defenders += 1) {
+    for (let midfielders = 2; midfielders <= 5; midfielders += 1) {
+      const forwards = 10 - defenders - midfielders;
+      if (forwards < 1 || forwards > 3) continue;
+      const def = byPosition.get("DEF") ?? [];
+      const mid = byPosition.get("MID") ?? [];
+      const fwd = byPosition.get("FWD") ?? [];
+      if (
+        def.length < defenders ||
+        mid.length < midfielders ||
+        fwd.length < forwards
+      ) {
+        continue;
+      }
+      const score =
+        keepers[0].assistantScore +
+        def.slice(0, defenders).reduce((sum, player) => sum + player.assistantScore, 0) +
+        mid.slice(0, midfielders).reduce((sum, player) => sum + player.assistantScore, 0) +
+        fwd.slice(0, forwards).reduce((sum, player) => sum + player.assistantScore, 0);
+      best = Math.max(best, score);
+    }
+  }
+  return best;
+}
+
+function buildPortfolioHealth(
+  squad: RankedPlayer[],
+  starters: RankedPlayer[],
+  bench: RankedPlayer[],
+  ranked: RankedPlayer[],
+  horizonRankings: RankedPlayer[][],
+  bank: number,
+): PortfolioHealth {
+  const squadIds = new Set(squad.map((player) => player.id));
+  const reliableBench = bench.filter(
+    (player) =>
+      player.availability >= 75 &&
+      player.startReliability >= 0.72 &&
+      player.fixtureCount > 0,
+  ).length;
+  const lowReliabilityPlayers = squad.filter(
+    (player) => player.startReliability < 0.72,
+  ).length;
+  const unavailablePlayers = squad.filter(
+    (player) => player.availability < 75,
+  ).length;
+  const premiumCount = squad.filter((player) => player.price >= 8.5).length;
+  const differentialCount = squad.filter(
+    (player) => player.selectedBy < 10 && player.availability >= 75,
+  ).length;
+  const highOwnershipCount = squad.filter(
+    (player) => player.selectedBy >= 30,
+  ).length;
+  const averageFieldOwnership = squad.length
+    ? squad.reduce((sum, player) => sum + player.selectedBy, 0) / squad.length
+    : 0;
+  const totalSquadSpend = squad.reduce((sum, player) => sum + player.price, 0);
+  const benchSpend = bench.reduce((sum, player) => sum + player.price, 0);
+  const benchSpendShare =
+    totalSquadSpend > 0 ? benchSpend / totalSquadSpend : 0;
+  const benchModelScore = bench.reduce(
+    (sum, player) => sum + player.assistantScore,
+    0,
+  );
+  const expensiveBenchPlayers = bench.filter(
+    (player) =>
+      (player.position === "GKP" && player.price > 4.5) ||
+      (player.position !== "GKP" && player.price > 5.0),
+  ).length;
+
+  const midBandMidfielders = squad.filter(
+    (player) =>
+      player.position === "MID" &&
+      player.price >= 6.5 &&
+      player.price <= 8.0,
+  ).length;
+  const midBandForwards = squad.filter(
+    (player) =>
+      player.position === "FWD" &&
+      player.price >= 7.0 &&
+      player.price <= 8.5,
+  ).length;
+
+  const goalkeepers = squad.filter((player) => player.position === "GKP");
+  const defenders = squad.filter((player) => player.position === "DEF");
+  const midfielders = squad.filter((player) => player.position === "MID");
+  const forwards = squad.filter((player) => player.position === "FWD");
+  const goalkeeperSpend = goalkeepers.reduce(
+    (sum, player) => sum + player.price,
+    0,
+  );
+  const budgetGoalkeepers = goalkeepers.filter((player) => player.price <= 4.5).length;
+  const premiumDefenders = defenders.filter((player) => player.price >= 6.0).length;
+  const midDefenders = defenders.filter(
+    (player) => player.price > 4.5 && player.price <= 5.5,
+  ).length;
+  const budgetDefenders = defenders.filter((player) => player.price <= 4.5).length;
+  const premiumMidfielders = midfielders.filter((player) => player.price >= 8.5).length;
+  const midMidfielders = midfielders.filter(
+    (player) => player.price >= 6.5 && player.price <= 8.0,
+  ).length;
+  const enablerMidfielders = midfielders.filter((player) => player.price <= 5.5).length;
+  const premiumMidForwards = forwards.filter((player) => player.price >= 7.5).length;
+  const valueForwards = forwards.filter(
+    (player) => player.price >= 5.5 && player.price < 7.5,
+  ).length;
+  const budgetForwards = forwards.filter((player) => player.price < 5.5).length;
+
+  const midfieldTarget =
+    ranked.find(
+      (player) =>
+        player.position === "MID" &&
+        player.price >= 6.5 &&
+        player.price <= 8.0 &&
+        player.availability >= 75 &&
+        player.startReliability >= 0.76 &&
+        !squadIds.has(player.id),
+    ) ?? null;
+  const forwardTarget =
+    ranked.find(
+      (player) =>
+        player.position === "FWD" &&
+        player.price >= 7.0 &&
+        player.price <= 8.5 &&
+        player.availability >= 75 &&
+        player.startReliability >= 0.76 &&
+        !squadIds.has(player.id),
+    ) ?? null;
+
+  const midfieldRoute =
+    !midfieldTarget ||
+    squad
+      .filter((player) => player.position === "MID")
+      .some((player) => player.price + bank >= midfieldTarget.price);
+  const forwardRoute =
+    !forwardTarget ||
+    squad
+      .filter((player) => player.position === "FWD")
+      .some((player) => player.price + bank >= forwardTarget.price);
+
+  const horizonScores = horizonRankings.map((week) =>
+    bestXiModelScore(squadIds, week),
+  );
+  const average = (values: number[]) =>
+    values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+  const nextGwBestXi =
+    horizonScores[0] ?? bestXiModelScore(squadIds, ranked);
+  const sixGwAverageBestXi = average(horizonScores.slice(0, 6));
+  const eightGwAverageBestXi = average(horizonScores.slice(0, 8));
+
+  let score = 100;
+  if (reliableBench < 2) score -= (2 - reliableBench) * 12;
+  if (lowReliabilityPlayers > 2) score -= (lowReliabilityPlayers - 2) * 5;
+  score -= unavailablePlayers * 5;
+  if (bank < 0.5) score -= 8;
+  if (bank > 2.0) score -= 3;
+  if (benchSpendShare > 0.22) score -= 4;
+  if (expensiveBenchPlayers > 1) score -= 3;
+  if (goalkeeperSpend > 9.5) score -= 4;
+  if (!midfieldRoute) score -= 8;
+  if (!forwardRoute) score -= 8;
+  if (differentialCount > 3) score -= (differentialCount - 3) * 4;
+  score = Math.round(clamp(score, 0, 100));
+
+  const status: PortfolioHealth["status"] =
+    score >= 82
+      ? "STRONG"
+      : score >= 68
+        ? "BALANCED"
+        : score >= 52
+          ? "FRAGILE"
+          : "REPAIR";
+  const bankStatus: PortfolioHealth["bankStatus"] =
+    bank < 0.5 ? "LEAN" : bank <= 1.5 ? "BUFFERED" : "CASH_HEAVY";
+
+  const reasons = [
+    `${reliableBench}/4 bench players currently clear Footy's availability, start-reliability and fixture-availability test.`,
+    `Bank is £${bank.toFixed(1)}m (${bankStatus.toLowerCase()}); a £0.5m–£1.0m buffer is treated as useful optionality, not a hard rule.`,
+    `Price structure has ${midBandMidfielders} midfielder(s) in £6.5m–£8.0m and ${midBandForwards} forward(s) in £7.0m–£8.5m.`,
+    `Current bench carries £${benchSpend.toFixed(1)}m (${Math.round(benchSpendShare * 100)}% of squad market value) and ${benchModelScore.toFixed(1)} model-score points this Gameweek.`,
+    `Goalkeeper spend is £${goalkeeperSpend.toFixed(1)}m; defender bands are ${premiumDefenders} premium / ${midDefenders} mid / ${budgetDefenders} budget; midfield has ${premiumMidfielders} premium / ${midMidfielders} mid / ${enablerMidfielders} enabler.`,
+    `Forward bands are ${premiumMidForwards} at £7.5m+ / ${valueForwards} value / ${budgetForwards} budget. These bands are structural heuristics, not hard selection rules.`,
+    `Six-Gameweek best-XI model average is ${sixGwAverageBestXi.toFixed(1)}; eight-Gameweek average is ${eightGwAverageBestXi.toFixed(1)}.`,
+  ];
+
+  const risks: string[] = [];
+  if (reliableBench < 2) {
+    risks.push("Bench resilience is thin: fewer than two substitutes currently project as dependable cover.");
+  }
+  if (benchSpendShare > 0.22 || expensiveBenchPlayers > 1) {
+    risks.push(
+      `Bench capital is heavy: £${benchSpend.toFixed(1)}m is outside the current XI and ${expensiveBenchPlayers} bench player(s) sit above Footy's usual value-band threshold.`,
+    );
+  }
+  if (goalkeeperSpend > 9.5) {
+    risks.push(
+      `£${goalkeeperSpend.toFixed(1)}m is currently tied up in goalkeepers; Footy flags the opportunity cost but will not force a downgrade if save/clean-sheet value justifies it.`,
+    );
+  }
+  if (!midfieldRoute) {
+    risks.push(
+      `Current cash/price structure has no one-transfer route to ${midfieldTarget?.name ?? "the leading mid-priced midfielder"}.`,
+    );
+  }
+  if (!forwardRoute) {
+    risks.push(
+      `Current cash/price structure has no one-transfer route to ${forwardTarget?.name ?? "the leading mid-priced forward"}.`,
+    );
+  }
+  if (differentialCount > 3) {
+    risks.push(
+      `${differentialCount} squad players are below 10% official ownership; that is a high concentration of low-ownership exposure rather than one or two targeted differentials.`,
+    );
+  }
+  if (unavailablePlayers) {
+    risks.push(
+      `${unavailablePlayers} squad player(s) are currently below the 75% availability threshold.`,
+    );
+  }
+  if (!risks.length) {
+    risks.push("No single structural weakness currently dominates; the main failure mode is fresh availability, role or fixture information changing the inputs.");
+  }
+
+  return {
+    score,
+    status,
+    bank,
+    bankStatus,
+    reliableBench,
+    lowReliabilityPlayers,
+    unavailablePlayers,
+    premiumCount,
+    differentialCount,
+    highOwnershipCount,
+    averageFieldOwnership,
+    bench: {
+      spend: benchSpend,
+      spendShare: benchSpendShare,
+      currentModelScore: benchModelScore,
+      reliable: reliableBench,
+      expensiveBenchPlayers,
+    },
+    priceStructure: {
+      midBandMidfielders,
+      midBandForwards,
+      midfieldRoute,
+      forwardRoute,
+      midfieldTarget: midfieldTarget?.name ?? null,
+      forwardTarget: forwardTarget?.name ?? null,
+      bands: {
+        goalkeeperSpend,
+        budgetGoalkeepers,
+        premiumDefenders,
+        midDefenders,
+        budgetDefenders,
+        premiumMidfielders,
+        midMidfielders,
+        enablerMidfielders,
+        premiumMidForwards,
+        valueForwards,
+        budgetForwards,
+      },
+    },
+    horizon: {
+      nextGwBestXi,
+      sixGwAverageBestXi,
+      eightGwAverageBestXi,
+    },
+    reasons,
+    risks,
+    underlying: [
+      "Official FPL prices, ownership, availability, starts and minutes",
+      "Regressed player process and team attack/defence process",
+      "Best-XI formation-constrained model score across 6GW and 8GW",
+      "Actual FPL bench positions, current bench market value and current model-score leakage",
+      "Indicative price-band escape routes using current bank and public market prices",
+    ],
+    missing: [
+      "True global effective ownership (official ownership is shown only as a field-ownership proxy)",
+      "Verified player NPxG/90 and player share of team non-penalty xGI",
+      "Manager-specific selling prices are private; price-band routes use current market price and should be treated as indicative",
+    ],
+  };
 }
 
 function minimumTransferGain(
@@ -1539,9 +1955,16 @@ async function analyseTeam(
     300,
   );
   const rankedById = new Map(ranked.map((player) => [player.id, player]));
+  const pickByElement = new Map(picks.picks.map((pick) => [pick.element, pick]));
   const squad = picks.picks
     .map((pick) => rankedById.get(pick.element))
     .filter((player): player is RankedPlayer => Boolean(player));
+  const starters = squad.filter(
+    (player) => (pickByElement.get(player.id)?.position ?? 99) <= 11,
+  );
+  const bench = squad.filter(
+    (player) => (pickByElement.get(player.id)?.position ?? 0) > 11,
+  );
   const squadIds = new Set(squad.map((player) => player.id));
   const currentCaptainPick = picks.picks.find((pick) => pick.is_captain);
   const currentCaptain = currentCaptainPick
@@ -1631,7 +2054,7 @@ async function analyseTeam(
       const timing = selected?.timing ?? ("HOLD" as const);
 
       const reason = bestNow
-        ? `${bestNow.candidate.name} clears the move-now threshold: +${bestNow.gain.toFixed(1)} this Gameweek vs +${bestNow.minimumGain.toFixed(1)} required, with a +${bestNow.horizonGain.toFixed(1)} weighted four-Gameweek edge.`
+        ? `${bestNow.candidate.name} clears the move-now threshold: +${bestNow.gain.toFixed(1)} this Gameweek vs +${bestNow.minimumGain.toFixed(1)} required, with a +${bestNow.horizonGain.toFixed(1)} weighted six-Gameweek edge.`
         : bestWait
           ? `${bestWait.candidate.name} looks stronger over the horizon (+${bestWait.horizonGain.toFixed(1)}), but the immediate edge does not justify spending the transfer yet. Watch next Gameweek.`
           : "No same-position option clears Footy's transfer-value and timing thresholds.";
@@ -1647,6 +2070,15 @@ async function analyseTeam(
       };
     });
 
+  const portfolio = buildPortfolioHealth(
+    squad,
+    starters,
+    bench,
+    ranked,
+    horizonRankings,
+    bank,
+  );
+
   return {
     entryId,
     teamName: entry.name,
@@ -1659,6 +2091,9 @@ async function analyseTeam(
     recommendedCaptain,
     weakLinks,
     squad: [...squad].sort((a, b) => b.assistantScore - a.assistantScore),
+    starters: [...starters].sort((a, b) => b.assistantScore - a.assistantScore),
+    bench: [...bench].sort((a, b) => b.assistantScore - a.assistantScore),
+    portfolio,
   };
 }
 
@@ -1674,7 +2109,7 @@ function buildManagerFuturePlan(
   const upcomingEvents = bootstrap.events
     .filter((event) => event.id >= nextEvent.id && !event.finished)
     .sort((a, b) => a.id - b.id)
-    .slice(0, 4);
+    .slice(0, 6);
 
   const squadIds = new Set(manager.squad.map((player) => player.id));
   const currentTeamCounts = new Map<string, number>();
@@ -1959,7 +2394,7 @@ export async function getLeagueManagerEdgeAnalysis(
         next && event.id >= next.id && !event.finished,
     )
     .sort((a, b) => a.id - b.id)
-    .slice(0, 4)
+    .slice(0, 8)
     .map((event) => event.id);
   const horizonRankings = upcomingEventIds.length
     ? upcomingEventIds.map((eventId) =>
@@ -2101,9 +2536,13 @@ export async function getLeagueManagerEdgeAnalysis(
         "Player-match process trends plus cup/Europe workload and short-rest signals",
         "Prior-season player baselines joined by stable player code and progressively discounted by current minutes",
         "Recent attack/defence process trend with regression",
-        "Mini-league ownership, points gaps, chips, hits and estimated free transfers",
+        "Official field ownership plus actual connected mini-league squad/captain overlap",
+        "Mini-league points gaps, chips, hits and estimated free transfers",
+        "Portfolio structure: bank buffer, actual bench cover, price-band routes and 6GW/8GW best-XI model scores",
       ],
       notMeasured: [
+        "True global effective ownership (EO); official ownership is not relabelled as EO",
+        "Verified player NPxG/90 and non-penalty xGI share of team output",
         "Player chemistry",
         "Confirmed tactical role changes without reliable public data",
         "True field tilt and defensive line height when not present in a verified feed",
@@ -2242,6 +2681,14 @@ export type ScoutPlayerProfile = {
   coreSources: string[];
   evidence: PlayerProcessEvidence | null;
   decisionConfidence: "HIGH" | "MEDIUM" | "LOW";
+  riskProfile: {
+    downsideRisk: number;
+    floor: number;
+    ceiling: number;
+    volatility: number;
+    assetType: "FLOOR" | "BALANCED" | "CEILING";
+    drivers: string[];
+  };
 };
 
 export type ScoutTeamProfile = {
@@ -2269,6 +2716,45 @@ export type ScoutTeamProfile = {
   }>;
 };
 
+export type FixturePrediction = {
+  eventId: number;
+  eventName: string;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeTeam: string;
+  awayTeam: string;
+  homeShort: string;
+  awayShort: string;
+  homeExpectedGoals: number;
+  awayExpectedGoals: number;
+  homeWinProbability: number;
+  drawProbability: number;
+  awayWinProbability: number;
+  homeCleanSheetProbability: number;
+  awayCleanSheetProbability: number;
+  mostLikelyScore: string;
+  modelLean: "HOME" | "DRAW" | "AWAY";
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  reason: string;
+  evidence: {
+    homeAttackIndex: number | null;
+    homeDefenceIndex: number | null;
+    awayAttackIndex: number | null;
+    awayDefenceIndex: number | null;
+    homeXg: number | null;
+    homeXga: number | null;
+    awayXg: number | null;
+    awayXga: number | null;
+    homeAttackTrend: number | null;
+    awayAttackTrend: number | null;
+    homeDefenceTrend: number | null;
+    awayDefenceTrend: number | null;
+    homeScoringPrior: number;
+    awayScoringPrior: number;
+    sourceConfidence: number;
+  };
+};
+
 export type ScoutIntelligencePayload = {
   currentEvent: FplEvent | null;
   nextEvent: FplEvent | null;
@@ -2280,6 +2766,7 @@ export type ScoutIntelligencePayload = {
   undervalued: ScoutPlayerProfile[];
   players: ScoutPlayerProfile[];
   teams: ScoutTeamProfile[];
+  fixturePredictions: FixturePrediction[];
 };
 
 type FplElementHistory = {
@@ -2307,6 +2794,92 @@ type FplElementSummary = {
 function average(values: number[]) {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildPlayerRiskProfile(
+  player: RankedPlayer,
+  evidence: PlayerProcessEvidence | null,
+) {
+  const minutesReliability = evidence
+    ? clamp(evidence.minutes7 / Math.max(1, 180), 0, 1)
+    : player.startReliability;
+  const rotationRisk = 1 - clamp(
+    player.startReliability * 0.7 + minutesReliability * 0.3,
+    0,
+    1,
+  );
+  const attackingVolatility =
+    player.position === "MID" || player.position === "FWD"
+      ? Math.min(2.4, player.xgiPer90 * 2.4)
+      : Math.min(1.4, player.xgiPer90 * 1.5);
+  const cleanSheetVolatility =
+    player.position === "GKP" || player.position === "DEF" ? 1.0 : 0.25;
+  const fixtureVariance = Math.max(
+    0,
+    (player.fixtureDifficulty - 2.5) * 0.28,
+  );
+  const setPieceFloor = player.setPieceRole ? 0.22 : 0;
+  const volatility = clamp(
+    1.15 +
+      rotationRisk * 2.9 +
+      attackingVolatility +
+      cleanSheetVolatility +
+      fixtureVariance -
+      setPieceFloor,
+    1.0,
+    5.8,
+  );
+  const mean = Math.max(0, player.assistantScore);
+  const floor = Math.max(-1, mean - volatility * 1.28);
+  const ceiling = mean + volatility * 1.65;
+  const downsideRisk = Math.round(
+    clamp(
+      rotationRisk * 55 +
+        (1 - player.availability / 100) * 25 +
+        Math.max(0, player.fixtureDifficulty - 3) * 6 +
+        (evidence?.loadRisk ?? 0) * 120,
+      0,
+      100,
+    ),
+  );
+
+  const assetType: "FLOOR" | "BALANCED" | "CEILING" =
+    downsideRisk <= 28 &&
+    player.startReliability >= 0.9 &&
+    volatility <= 2.6
+      ? "FLOOR"
+      : ceiling - mean >= 3.6 &&
+          (player.xgiPer90 >= 0.45 || rotationRisk >= 0.18)
+        ? "CEILING"
+        : "BALANCED";
+
+  const drivers: string[] = [];
+  if (player.startReliability >= 0.9) {
+    drivers.push("High start reliability supports the downside floor.");
+  } else {
+    drivers.push("Rotation/early-sub uncertainty widens the downside distribution.");
+  }
+  if (player.xgiPer90 >= 0.45) {
+    drivers.push("Strong attacking involvement raises the upside tail.");
+  }
+  if (player.setPieceRole) {
+    drivers.push(player.setPieceRole + " adds repeatable set-piece involvement.");
+  }
+  if ((evidence?.loadRisk ?? 0) >= 0.08) {
+    drivers.push("Recent multi-competition workload increases rotation risk.");
+  }
+  if (player.position === "GKP" || player.position === "DEF") {
+    drivers.push("Clean-sheet scoring introduces additional binary fixture variance.");
+  }
+
+  return {
+    downsideRisk,
+    floor,
+    ceiling,
+    volatility,
+    assetType,
+    drivers,
+  };
 }
 
 function bestRollingWindow(
@@ -2347,6 +2920,181 @@ function bestRollingWindow(
   }
 
   return best;
+}
+
+function fixtureOutcomeModel(
+  homeLambda: number,
+  awayLambda: number,
+) {
+  let home = 0;
+  let draw = 0;
+  let away = 0;
+  let total = 0;
+  let bestProbability = -1;
+  let bestHome = 0;
+  let bestAway = 0;
+
+  for (let homeGoals = 0; homeGoals <= 8; homeGoals += 1) {
+    for (let awayGoals = 0; awayGoals <= 8; awayGoals += 1) {
+      const probability =
+        poissonProbability(homeLambda, homeGoals) *
+        poissonProbability(awayLambda, awayGoals);
+      total += probability;
+      if (homeGoals > awayGoals) home += probability;
+      else if (homeGoals === awayGoals) draw += probability;
+      else away += probability;
+      if (probability > bestProbability) {
+        bestProbability = probability;
+        bestHome = homeGoals;
+        bestAway = awayGoals;
+      }
+    }
+  }
+
+  const normaliser = total > 0 ? total : 1;
+  return {
+    home: home / normaliser,
+    draw: draw / normaliser,
+    away: away / normaliser,
+    score: `${bestHome}–${bestAway}`,
+  };
+}
+
+function buildFixturePredictions(
+  bootstrap: Bootstrap,
+  fixtures: Fixture[],
+  process: Map<string, TeamProcess>,
+  events: FplEvent[],
+): FixturePrediction[] {
+  const teamsById = new Map(bootstrap.teams.map((team) => [team.id, team]));
+  const eventNames = new Map(events.map((event) => [event.id, event.name]));
+  const eventIds = new Set(events.map((event) => event.id));
+
+  return fixtures
+    .filter(
+      (fixture) =>
+        fixture.event != null && eventIds.has(Number(fixture.event)),
+    )
+    .map((fixture) => {
+      const eventId = Number(fixture.event);
+      const home = teamsById.get(fixture.team_h);
+      const away = teamsById.get(fixture.team_a);
+      const homeProcess = home
+        ? process.get(canonicalTeam(home.name)) ?? null
+        : null;
+      const awayProcess = away
+        ? process.get(canonicalTeam(away.name)) ?? null
+        : null;
+
+      const homeAttack = homeProcess?.attackIndex ?? 1;
+      const awayAttack = awayProcess?.attackIndex ?? 1;
+      const homeDefence = homeProcess?.defenceIndex ?? 1;
+      const awayDefence = awayProcess?.defenceIndex ?? 1;
+      const homeAttackTrend = homeProcess?.attackTrend ?? 0;
+      const awayAttackTrend = awayProcess?.attackTrend ?? 0;
+      const homeDefenceTrend = homeProcess?.defenceTrend ?? 0;
+      const awayDefenceTrend = awayProcess?.defenceTrend ?? 0;
+
+      // League-level home/away scoring priors are then modified by the
+      // regressed attack/defence process indices. Positive defence index/trend
+      // means a stronger defence, so it reduces the opponent's expected goals.
+      const homeExpectedGoals = clamp(
+        1.52 *
+          (homeAttack / Math.max(0.72, awayDefence)) *
+          (1 + homeAttackTrend * 0.45) /
+          Math.max(0.82, 1 + awayDefenceTrend * 0.30),
+        0.35,
+        3.6,
+      );
+      const awayExpectedGoals = clamp(
+        1.18 *
+          (awayAttack / Math.max(0.72, homeDefence)) *
+          (1 + awayAttackTrend * 0.45) /
+          Math.max(0.82, 1 + homeDefenceTrend * 0.30),
+        0.30,
+        3.4,
+      );
+
+      const outcome = fixtureOutcomeModel(
+        homeExpectedGoals,
+        awayExpectedGoals,
+      );
+      const sourceConfidence = Math.min(
+        homeProcess?.sourceConfidence ?? 0.45,
+        awayProcess?.sourceConfidence ?? 0.45,
+      );
+      const confidence: FixturePrediction["confidence"] =
+        homeProcess &&
+        awayProcess &&
+        homeProcess.matches >= 5 &&
+        awayProcess.matches >= 5 &&
+        sourceConfidence >= 0.75
+          ? "HIGH"
+          : homeProcess && awayProcess
+            ? "MEDIUM"
+            : "LOW";
+
+      const modelLean: FixturePrediction["modelLean"] =
+        outcome.draw >= outcome.home && outcome.draw >= outcome.away
+          ? "DRAW"
+          : outcome.home >= outcome.away
+            ? "HOME"
+            : "AWAY";
+
+      const homeName = home?.name ?? "Home";
+      const awayName = away?.name ?? "Away";
+      const scoringGap = homeExpectedGoals - awayExpectedGoals;
+      const reason =
+        Math.abs(scoringGap) < 0.18
+          ? `The model sees a balanced scoring matchup: ${homeName} ${homeExpectedGoals.toFixed(2)} xG vs ${awayName} ${awayExpectedGoals.toFixed(2)} xG after regressed attack, defence and recent-trend adjustments.`
+          : scoringGap > 0
+            ? `${homeName} projects the stronger scoring process (${homeExpectedGoals.toFixed(2)} vs ${awayExpectedGoals.toFixed(2)} expected goals), driven by its attack index against ${awayName}'s defensive process plus home advantage.`
+            : `${awayName} projects the stronger scoring process (${awayExpectedGoals.toFixed(2)} vs ${homeExpectedGoals.toFixed(2)} expected goals), with its attack/trajectory overcoming the home-side prior.`;
+
+      return {
+        eventId,
+        eventName: eventNames.get(eventId) ?? `Gameweek ${eventId}`,
+        homeTeamId: fixture.team_h,
+        awayTeamId: fixture.team_a,
+        homeTeam: homeName,
+        awayTeam: awayName,
+        homeShort: home?.short_name ?? "—",
+        awayShort: away?.short_name ?? "—",
+        homeExpectedGoals,
+        awayExpectedGoals,
+        homeWinProbability: outcome.home,
+        drawProbability: outcome.draw,
+        awayWinProbability: outcome.away,
+        homeCleanSheetProbability: Math.exp(-awayExpectedGoals),
+        awayCleanSheetProbability: Math.exp(-homeExpectedGoals),
+        mostLikelyScore: outcome.score,
+        modelLean,
+        confidence,
+        reason,
+        evidence: {
+          homeAttackIndex: homeProcess?.attackIndex ?? null,
+          homeDefenceIndex: homeProcess?.defenceIndex ?? null,
+          awayAttackIndex: awayProcess?.attackIndex ?? null,
+          awayDefenceIndex: awayProcess?.defenceIndex ?? null,
+          homeXg: homeProcess?.metrics.xg ?? null,
+          homeXga: homeProcess?.metrics.xga ?? null,
+          awayXg: awayProcess?.metrics.xg ?? null,
+          awayXga: awayProcess?.metrics.xga ?? null,
+          homeAttackTrend: homeProcess?.attackTrend ?? null,
+          awayAttackTrend: awayProcess?.attackTrend ?? null,
+          homeDefenceTrend: homeProcess?.defenceTrend ?? null,
+          awayDefenceTrend: awayProcess?.defenceTrend ?? null,
+          homeScoringPrior: 1.52,
+          awayScoringPrior: 1.18,
+          sourceConfidence,
+        },
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.eventId - b.eventId ||
+        a.homeTeam.localeCompare(b.homeTeam),
+    );
 }
 
 function positionGoalPoints(position: string) {
@@ -2744,7 +3492,9 @@ function scoutRisks(
   return risks.slice(0, 3);
 }
 
-export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> {
+export async function getScoutIntelligence(
+  options: { allFixtureForecasts?: boolean } = {},
+): Promise<ScoutIntelligencePayload> {
   const [bootstrapSnapshot, fixturesSnapshot, process, playerProcesses] =
     await Promise.all([
       cachedFpl<Bootstrap>("bootstrap-static"),
@@ -2780,10 +3530,10 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
   }
 
   const { current, next } = currentAndNext(bootstrap.events);
-  const upcomingEvents = bootstrap.events
+  const futureEvents = bootstrap.events
     .filter((event) => next && event.id >= next.id && !event.finished)
-    .sort((a, b) => a.id - b.id)
-    .slice(0, 8);
+    .sort((a, b) => a.id - b.id);
+  const upcomingEvents = futureEvents.slice(0, 8);
 
   const rankings = upcomingEvents.map((event) => ({
     event,
@@ -2925,6 +3675,7 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
       ],
       evidence: playerEvidence,
       decisionConfidence,
+      riskProfile: buildPlayerRiskProfile(basePlayer, playerEvidence),
     };
   });
 
@@ -3104,6 +3855,13 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     };
   });
 
+  const fixturePredictions = buildFixturePredictions(
+    bootstrap,
+    fixtures,
+    process,
+    options.allFixtureForecasts ? futureEvents : upcomingEvents,
+  );
+
   return {
     currentEvent: current,
     nextEvent: next,
@@ -3178,6 +3936,7 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         b.averageDifficulty * 0.03;
       return bStrength - aStrength;
     }),
+    fixturePredictions,
   };
 }
 

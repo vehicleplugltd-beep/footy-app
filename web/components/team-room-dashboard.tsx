@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FplPitchPlayer } from "@/lib/fpl-team";
 import type {
   ScoutIntelligencePayload,
+  PortfolioHealth,
   ScoutPlayerProfile,
   ScoutTeamProfile,
 } from "@/lib/fpl";
@@ -73,6 +74,169 @@ type ManagerResponse = {
     chip_threats: string[];
     recommendation: string;
   } | null;
+  decision_quality?: {
+    status: "ACTIVE" | "ACCUMULATING" | "UNAVAILABLE";
+    tracked_from_event: number;
+    completed: Array<{
+      event: number;
+      generated_at: string;
+      model_version: string | null;
+      battle_mode: string | null;
+      captain: {
+        process: string;
+        actual_player_id: number | null;
+        model_player_id: number | null;
+        model_player_name: string | null;
+        model_expected: number | null;
+        actual_choice_expected: number | null;
+        expected_ev_gap: number | null;
+        actual_choice_points: number | null;
+        model_choice_points: number | null;
+        actual_vs_model_expectation: number | null;
+      };
+      transfers: {
+        process: string;
+        actual_in_ids: number[];
+        actual_out_ids: number[];
+        model_top: {
+          out: { id: number; name: string; team: string; score: number };
+          in: { id: number; name: string; team: string; score: number } | null;
+          reason: string;
+        } | null;
+        model_expected_delta: number | null;
+        model_actual_delta: number | null;
+        hit_cost: number;
+      };
+      bench_points: number;
+    }>;
+    summary: {
+      deadlines: number;
+      captain_process_alignment: number;
+      total_hit_cost: number;
+      average_bench_points: number;
+      negative_variance_deadlines: number;
+      observations: string[];
+    } | null;
+    caveat: string;
+  };
+  counterplay?: {
+    snapshot_event: number | null;
+    managers_in_local_matrix: number;
+    iterations: number;
+    strategy_mode: "PROTECT" | "CHASE" | "RECOVER";
+    objective: string;
+    baseline: {
+      objective_probability: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+    } | null;
+    recommended_scenario: {
+      id: string;
+      label: string;
+      style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+      objective_probability: number;
+      probability_delta: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+      reason: string;
+      transfer: {
+        out: { id: number; name: string; team: string };
+        in: { id: number; name: string; team: string };
+      } | null;
+      captain: { id: number; name: string; team: string } | null;
+    } | null;
+    scenarios: Array<{
+      id: string;
+      label: string;
+      style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+      objective_probability: number;
+      probability_delta: number;
+      mean_score: number;
+      volatility: number;
+      floor_5: number;
+      ceiling_95: number;
+      reason: string;
+    }>;
+    local_exposure: Array<{
+      player_id: number;
+      squad_ownership: number;
+      starter_ownership: number;
+      captain_share: number;
+      effective_exposure: number;
+      player: {
+        id: number;
+        name: string;
+        team: string;
+        assistantScore: number;
+      } | null;
+    }>;
+    primary_threats: Array<{
+      rival_entry_id: number;
+      rival_name: string;
+      player: {
+        id: number;
+        name: string;
+        team: string;
+        assistantScore: number;
+      };
+      threat_score: number;
+      local_exposure: {
+        squad_ownership: number;
+        starter_ownership: number;
+        captain_share: number;
+        effective_exposure: number;
+      } | null;
+      ceiling_proxy: number;
+    }>;
+    rival_vectors: Array<{
+      entry_id: number;
+      name: string;
+      gap: number;
+      bank: number;
+      estimated_free_transfers: number | null;
+      remaining_chips: string[];
+      activity: string | null;
+      transfer_vectors: Array<{
+        out: { id: number; name: string; team: string } | null;
+        in: { id: number; name: string; team: string } | null;
+        label: string;
+        model_share: number;
+        caveat: string;
+      }>;
+    }>;
+    caveats: string[];
+  };
+  portfolio_plan?: {
+    action: "BANK" | "HOLD" | "TRANSFER" | "STRUCTURAL_REPAIR" | "CHIP_PREP";
+    headline: string;
+    portfolio: PortfolioHealth;
+    free_transfers: number | null;
+    hit_cost_for_one_extra_move: number | null;
+    chip_signal: {
+      chip: string;
+      status: string;
+      eventName: string | null;
+      reason: string;
+    } | null;
+    league_mode: "PROTECT" | "CHASE" | "RECOVER";
+    field_ownership_proxy: {
+      average_squad_ownership: number;
+      high_ownership_assets: number;
+      differentials_under_10: number;
+      caveat: string;
+    };
+    differential_guidance: string;
+    why: string[];
+    failure_modes: string[];
+    underlying: string[];
+    missing: string[];
+    resource_status: string;
+    caveat: string;
+  };
 };
 
 function percentileRating(
@@ -263,6 +427,9 @@ export function TeamRoomDashboard({
     .slice(0, 3);
 
   const intelligenceLoading = !error && (!scout || !manager);
+  const portfolioPlan = manager?.portfolio_plan ?? null;
+  const counterPlay = manager?.counterplay ?? null;
+  const decisionQuality = manager?.decision_quality ?? null;
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
   const captain =
@@ -274,13 +441,14 @@ export function TeamRoomDashboard({
       : null;
   const transferEvidence = intelligenceLoading
     ? "CHECKING"
-    : transfer
-      ? transferInProfile?.decisionConfidence ?? "PENDING"
-      : "THRESHOLD HOLD";
+    : portfolioPlan?.portfolio.status ??
+      (transfer ? transferInProfile?.decisionConfidence ?? "PENDING" : "THRESHOLD HOLD");
   const transferWhy =
+    portfolioPlan?.why.at(-1) ??
     transfer?.rationale ??
     "No replacement currently clears Footy’s value, minutes and timing threshold.";
   const transferFailure =
+    portfolioPlan?.failure_modes[0] ??
     transferInProfile?.risks[0] ??
     (transfer
       ? "Late team news, role changes or a price move can reduce the projected gain."
@@ -305,10 +473,16 @@ export function TeamRoomDashboard({
       ? footyQuip("strongSquad")
       : footyQuip("weakSquad");
   const actionQuip = intelligenceLoading
-    ? "Comparing squad quality, player process and league pressure."
-    : transfer
-      ? footyQuip("move", { player: transfer.in.name })
-      : footyQuip("hold");
+    ? "Comparing squad quality, player process, structure and league pressure."
+    : portfolioPlan?.action === "BANK"
+      ? "The free transfer is an asset too. No need to spend it for the sake of activity."
+      : portfolioPlan?.action === "STRUCTURAL_REPAIR"
+        ? "This is bigger than one player. Fix the squad shape before chasing marginal points."
+        : portfolioPlan?.action === "CHIP_PREP"
+          ? "The calendar is becoming the decision. Preserve the squad shape for the chip window."
+          : transfer
+            ? footyQuip("move", { player: transfer.in.name })
+            : footyQuip("hold");
 
   return (
     <div className="team-room-dashboard">
@@ -347,11 +521,10 @@ export function TeamRoomDashboard({
               <h2>
                 {intelligenceLoading
                   ? "Building your plan…"
-                  : transfer
-                    ? transfer.out.name +
-                      " → " +
-                      transfer.in.name
-                    : "Hold the transfer"}
+                  : portfolioPlan?.headline ??
+                    (transfer
+                      ? transfer.out.name + " → " + transfer.in.name
+                      : "Hold the transfer")}
               </h2>
             </div>
           </div>
@@ -359,28 +532,33 @@ export function TeamRoomDashboard({
           <blockquote className="footy-quip compact">{actionQuip}</blockquote>
           <div className="team-room-suggestion">
             <div>
-              <span>TRANSFER</span>
+              <span>PORTFOLIO ACTION</span>
               <strong>
                 {intelligenceLoading
                   ? "CHECKING"
-                  : transfer
-                    ? transfer.out.name +
-                      " → " +
-                      transfer.in.name
-                    : "HOLD"}
+                  : portfolioPlan?.action.replaceAll("_", " ") ??
+                    (transfer ? transfer.out.name + " → " + transfer.in.name : "HOLD")}
               </strong>
               <small>
                 {intelligenceLoading
-                  ? "Comparing replacements against value, minutes and timing thresholds."
-                  : transfer
-                    ? "+" +
-                      transfer.raw_gain.toFixed(1) +
-                      " now · min +" +
-                      (transfer.minimum_gain ?? 0).toFixed(1) +
-                      " · +" +
-                      (transfer.horizon_gain ?? 0).toFixed(1) +
-                      " horizon"
-                    : "No replacement clears the value and timing threshold."}
+                  ? "Comparing football edge, FT option value, squad structure and timing."
+                  : portfolioPlan
+                    ? (portfolioPlan.free_transfers == null
+                        ? "FT bank uncertain"
+                        : portfolioPlan.free_transfers + "/5 FT") +
+                      " · portfolio " +
+                      portfolioPlan.portfolio.score +
+                      "/100 · " +
+                      portfolioPlan.portfolio.status
+                    : transfer
+                      ? "+" +
+                        transfer.raw_gain.toFixed(1) +
+                        " now · min +" +
+                        (transfer.minimum_gain ?? 0).toFixed(1) +
+                        " · +" +
+                        (transfer.horizon_gain ?? 0).toFixed(1) +
+                        " horizon"
+                      : "No replacement clears the value and timing threshold."}
               </small>
             </div>
 
@@ -531,16 +709,526 @@ export function TeamRoomDashboard({
               </button>
             ))}
           </div>
+          <Link
+            className="team-room-deep-link"
+            href={"/league/" + leagueId + "?team=" + teamId}
+          >
+            View full league table & manager analysis →
+          </Link>
         </article>
       </section>
 
+      {portfolioPlan ? (
+        <section className="team-room-block portfolio-health">
+          <div className="team-room-block-head">
+            <div>
+              <span>PORTFOLIO HEALTH</span>
+              <h2>
+                {portfolioPlan.portfolio.score}/100 · {portfolioPlan.portfolio.status}
+              </h2>
+            </div>
+            <small>
+              Long-term squad structure, not last week’s points ·{" "}
+              <Link href="/research#long-term">open long-term research →</Link>
+            </small>
+          </div>
+
+          <div className="portfolio-health-grid">
+            <div>
+              <span>FREE TRANSFERS</span>
+              <strong>{portfolioPlan.free_transfers ?? "—"}/5</strong>
+              <small>
+                {portfolioPlan.hit_cost_for_one_extra_move == null
+                  ? "Hit cost uncertain"
+                  : portfolioPlan.hit_cost_for_one_extra_move === 0
+                    ? "Next extra move currently covered"
+                    : "One move beyond bank = -4"}
+              </small>
+            </div>
+            <div>
+              <span>BANK</span>
+              <strong>£{portfolioPlan.portfolio.bank.toFixed(1)}m</strong>
+              <small>{portfolioPlan.portfolio.bankStatus}</small>
+            </div>
+            <div>
+              <span>BENCH COVER</span>
+              <strong>{portfolioPlan.portfolio.reliableBench}/4</strong>
+              <small>reliable current substitutes</small>
+            </div>
+            <div>
+              <span>BENCH VALUE</span>
+              <strong>£{portfolioPlan.portfolio.bench.spend.toFixed(1)}m</strong>
+              <small>
+                {Math.round(portfolioPlan.portfolio.bench.spendShare * 100)}% of squad value ·{" "}
+                {portfolioPlan.portfolio.bench.currentModelScore.toFixed(1)} model points
+              </small>
+            </div>
+            <div>
+              <span>6GW XI</span>
+              <strong>{portfolioPlan.portfolio.horizon.sixGwAverageBestXi.toFixed(1)}</strong>
+              <small>formation-constrained model average</small>
+            </div>
+            <div>
+              <span>8GW XI</span>
+              <strong>{portfolioPlan.portfolio.horizon.eightGwAverageBestXi.toFixed(1)}</strong>
+              <small>structural horizon</small>
+            </div>
+            <div>
+              <span>DIFFERENTIALS</span>
+              <strong>{portfolioPlan.portfolio.differentialCount}</strong>
+              <small>&lt;10% official ownership</small>
+            </div>
+            <div>
+              <span>MIDFIELD ROUTE</span>
+              <strong>{portfolioPlan.portfolio.priceStructure.midfieldRoute ? "OPEN" : "BLOCKED"}</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.midfieldTarget ?? "No urgent target"}
+              </small>
+            </div>
+            <div>
+              <span>FORWARD ROUTE</span>
+              <strong>{portfolioPlan.portfolio.priceStructure.forwardRoute ? "OPEN" : "BLOCKED"}</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
+              </small>
+            </div>
+            <div>
+              <span>FIELD OWNERSHIP</span>
+              <strong>{portfolioPlan.field_ownership_proxy.average_squad_ownership.toFixed(1)}%</strong>
+              <small>official ownership average · not EO</small>
+            </div>
+            <div>
+              <span>PREMIUMS</span>
+              <strong>{portfolioPlan.portfolio.premiumCount}</strong>
+              <small>£8.5m+ squad assets</small>
+            </div>
+          </div>
+
+          <div className="portfolio-price-bands">
+            <div>
+              <span>GOALKEEPERS</span>
+              <strong>£{portfolioPlan.portfolio.priceStructure.bands.goalkeeperSpend.toFixed(1)}m</strong>
+              <small>
+                {portfolioPlan.portfolio.priceStructure.bands.budgetGoalkeepers}/2 at £4.5m or below
+              </small>
+            </div>
+            <div>
+              <span>DEFENDERS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumDefenders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.midDefenders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.budgetDefenders}
+              </strong>
+              <small>premium / mid / budget</small>
+            </div>
+            <div>
+              <span>MIDFIELDERS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumMidfielders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.midMidfielders} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.enablerMidfielders}
+              </strong>
+              <small>£8.5m+ / £6.5–8.0m / ≤£5.5m</small>
+            </div>
+            <div>
+              <span>FORWARDS</span>
+              <strong>
+                {portfolioPlan.portfolio.priceStructure.bands.premiumMidForwards} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.valueForwards} /{" "}
+                {portfolioPlan.portfolio.priceStructure.bands.budgetForwards}
+              </strong>
+              <small>£7.5m+ / £5.5–7.4m / &lt;£5.5m</small>
+            </div>
+          </div>
+
+          <div className="portfolio-evidence-grid">
+            <section>
+              <span>WHY</span>
+              {portfolioPlan.why.map((reason, index) => (
+                <p key={"why-" + index}>{reason}</p>
+              ))}
+            </section>
+            <section>
+              <span>FAILURE MODES</span>
+              {portfolioPlan.failure_modes.map((risk, index) => (
+                <p key={"risk-" + index}>{risk}</p>
+              ))}
+            </section>
+            <section>
+              <span>UNDERLYING DATA</span>
+              {portfolioPlan.underlying.map((item, index) => (
+                <p key={"data-" + index}>{item}</p>
+              ))}
+            </section>
+            <section>
+              <span>GAME THEORY</span>
+              <p>{portfolioPlan.differential_guidance}</p>
+              <p>{portfolioPlan.field_ownership_proxy.caveat}</p>
+              <p>
+                League mode: <b>{portfolioPlan.league_mode}</b> · resource state:{" "}
+                <b>{portfolioPlan.resource_status}</b>
+              </p>
+            </section>
+          </div>
+
+          {portfolioPlan.missing.length ? (
+            <div className="portfolio-missing">
+              <span>NOT YET MEASURED — NOT INVENTED</span>
+              {portfolioPlan.missing.map((item, index) => (
+                <p key={"missing-" + index}>{item}</p>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {counterPlay ? (
+        <section className="team-room-block counterplay-panel">
+          <div className="team-room-block-head">
+            <div>
+              <span>COUNTERPLAY</span>
+              <h2>
+                {counterPlay.strategy_mode} ·{" "}
+                {counterPlay.recommended_scenario?.label ?? "Hold structure"}
+              </h2>
+            </div>
+            <small>
+              {counterPlay.iterations.toLocaleString()} correlated simulations ·{" "}
+              {counterPlay.managers_in_local_matrix} league squads in local exposure matrix
+            </small>
+          </div>
+
+          <p className="counterplay-objective">{counterPlay.objective}</p>
+
+          <div className="counterplay-hero-grid">
+            <div>
+              <span>BASELINE OBJECTIVE</span>
+              <strong>
+                {counterPlay.baseline
+                  ? Math.round(counterPlay.baseline.objective_probability * 1000) / 10 + "%"
+                  : "—"}
+              </strong>
+              <small>Hold / current structure</small>
+            </div>
+            <div>
+              <span>BEST SCENARIO</span>
+              <strong>
+                {counterPlay.recommended_scenario
+                  ? Math.round(counterPlay.recommended_scenario.objective_probability * 1000) / 10 + "%"
+                  : "—"}
+              </strong>
+              <small>
+                {counterPlay.recommended_scenario
+                  ? (counterPlay.recommended_scenario.probability_delta >= 0 ? "+" : "") +
+                    (counterPlay.recommended_scenario.probability_delta * 100).toFixed(1) +
+                    "pp vs baseline"
+                  : "No scenario edge"}
+              </small>
+            </div>
+            <div>
+              <span>5TH–95TH</span>
+              <strong>
+                {counterPlay.recommended_scenario
+                  ? counterPlay.recommended_scenario.floor_5.toFixed(1) +
+                    "–" +
+                    counterPlay.recommended_scenario.ceiling_95.toFixed(1)
+                  : "—"}
+              </strong>
+              <small>model Gameweek score band</small>
+            </div>
+            <div>
+              <span>VOLATILITY</span>
+              <strong>
+                {counterPlay.recommended_scenario?.volatility.toFixed(1) ?? "—"}
+              </strong>
+              <small>lower = tighter outcome distribution</small>
+            </div>
+          </div>
+
+          {counterPlay.recommended_scenario ? (
+            <div className="counterplay-primary-reason">
+              <span>WHY THIS MOVES WIN/CONTROL PROBABILITY</span>
+              <p>{counterPlay.recommended_scenario.reason}</p>
+            </div>
+          ) : null}
+
+          <div className="counterplay-layout">
+            <section>
+              <span>SCENARIOS</span>
+              <div className="counterplay-scenarios">
+                {counterPlay.scenarios.map((scenario) => (
+                  <article key={scenario.id}>
+                    <div>
+                      <b>{scenario.label}</b>
+                      <small>{scenario.style}</small>
+                    </div>
+                    <strong>
+                      {(scenario.objective_probability * 100).toFixed(1)}%
+                    </strong>
+                    <small>
+                      {(scenario.probability_delta >= 0 ? "+" : "") +
+                        (scenario.probability_delta * 100).toFixed(1)}
+                      pp · mean {scenario.mean_score.toFixed(1)}
+                    </small>
+                    <p>{scenario.reason}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <span>PRIMARY RIVAL THREATS</span>
+              <div className="counterplay-threats">
+                {counterPlay.primary_threats.slice(0, 8).map((threat) => (
+                  <Link
+                    key={threat.rival_entry_id + "-" + threat.player.id}
+                    href={"/research?player=" + threat.player.id}
+                  >
+                    <div>
+                      <b>{threat.player.name}</b>
+                      <small>{threat.rival_name} · {threat.player.team}</small>
+                    </div>
+                    <strong>{threat.threat_score}/100</strong>
+                    <small>
+                      ceiling {threat.ceiling_proxy.toFixed(1)} · local starter{" "}
+                      {threat.local_exposure
+                        ? threat.local_exposure.starter_ownership.toFixed(0) + "%"
+                        : "—"}
+                    </small>
+                  </Link>
+                ))}
+              </div>
+              {counterPlay.primary_threats.length > 8 ? (
+                <details className="counterplay-full-list">
+                  <summary>View all {counterPlay.primary_threats.length} rival threat assets</summary>
+                  <div className="counterplay-threats">
+                    {counterPlay.primary_threats.map((threat) => (
+                      <Link
+                        key={"all-" + threat.rival_entry_id + "-" + threat.player.id}
+                        href={"/research?player=" + threat.player.id}
+                      >
+                        <div>
+                          <b>{threat.player.name}</b>
+                          <small>{threat.rival_name} · {threat.player.team}</small>
+                        </div>
+                        <strong>{threat.threat_score}/100</strong>
+                        <small>
+                          ceiling {threat.ceiling_proxy.toFixed(1)} · local starter{" "}
+                          {threat.local_exposure
+                            ? threat.local_exposure.starter_ownership.toFixed(0) + "%"
+                            : "—"}
+                        </small>
+                      </Link>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </section>
+          </div>
+
+          <div className="counterplay-layout secondary">
+            <section>
+              <span>LOCAL LEAGUE EXPOSURE</span>
+              <div className="counterplay-exposure">
+                {counterPlay.local_exposure.slice(0, 12).map((item) => (
+                  <Link key={item.player_id} href={"/research?player=" + item.player_id}>
+                    <b>{item.player?.name ?? "Player " + item.player_id}</b>
+                    <small>
+                      squad {item.squad_ownership.toFixed(0)}% · starters{" "}
+                      {item.starter_ownership.toFixed(0)}% · captains{" "}
+                      {item.captain_share.toFixed(0)}%
+                    </small>
+                    <strong>{item.effective_exposure.toFixed(0)}% local exposure</strong>
+                  </Link>
+                ))}
+              </div>
+              {counterPlay.local_exposure.length > 12 ? (
+                <details className="counterplay-full-list">
+                  <summary>View all {counterPlay.local_exposure.length} league-owned players</summary>
+                  <div className="counterplay-exposure">
+                    {counterPlay.local_exposure.map((item) => (
+                      <Link
+                        key={"all-exposure-" + item.player_id}
+                        href={"/research?player=" + item.player_id}
+                      >
+                        <b>{item.player?.name ?? "Player " + item.player_id}</b>
+                        <small>
+                          squad {item.squad_ownership.toFixed(0)}% · starters{" "}
+                          {item.starter_ownership.toFixed(0)}% · captains{" "}
+                          {item.captain_share.toFixed(0)}%
+                        </small>
+                        <strong>{item.effective_exposure.toFixed(0)}% local exposure</strong>
+                      </Link>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </section>
+
+            <section>
+              <span>RIVAL TRANSFER VECTORS</span>
+              <div className="counterplay-vectors">
+                {counterPlay.rival_vectors.map((rival) => (
+                  <article key={rival.entry_id}>
+                    <header>
+                      <b>{rival.name}</b>
+                      <small>
+                        gap {rival.gap >= 0 ? "+" : ""}{rival.gap} · £{rival.bank.toFixed(1)}m bank ·{" "}
+                        {rival.estimated_free_transfers == null
+                          ? "FT unknown"
+                          : rival.estimated_free_transfers + "/5 FT"}
+                      </small>
+                    </header>
+                    <small className="counterplay-rival-meta">
+                      {rival.activity ?? "resource style unknown"} ·{" "}
+                      {rival.remaining_chips.length
+                        ? rival.remaining_chips.join(", ") + " available"
+                        : "no tracked chips remaining in current half"}
+                    </small>
+                    {rival.transfer_vectors.length ? (
+                      rival.transfer_vectors.map((vector, vectorIndex) => (
+                        <p key={rival.entry_id + "-" + vectorIndex}>
+                          {vector.label} ·{" "}
+                          <b>{(vector.model_share * 100).toFixed(0)}% relative response weight</b>
+                        </p>
+                      ))
+                    ) : (
+                      <p>No current response vector is available.</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <details className="counterplay-caveats" open>
+            <summary>Simulation assumptions & limitations</summary>
+            {counterPlay.caveats.map((item, index) => (
+              <p key={"counter-caveat-" + index}>{item}</p>
+            ))}
+          </details>
+        </section>
+      ) : null}
+
+      {decisionQuality ? (
+        <section className="team-room-block decision-quality-panel">
+          <div className="team-room-block-head">
+            <div>
+              <span>DECISION QUALITY</span>
+              <h2>
+                {decisionQuality.status === "ACTIVE"
+                  ? decisionQuality.summary?.deadlines + " tracked deadline" +
+                    (decisionQuality.summary?.deadlines === 1 ? "" : "s")
+                  : decisionQuality.status === "ACCUMULATING"
+                    ? "Building the clean history"
+                    : "Audit temporarily unavailable"}
+              </h2>
+            </div>
+            <small>Process EV and outcome variance are scored separately</small>
+          </div>
+
+          {decisionQuality.status === "ACTIVE" && decisionQuality.summary ? (
+            <>
+              <div className="decision-quality-grid">
+                <div>
+                  <span>CAPTAIN PROCESS</span>
+                  <strong>
+                    {(decisionQuality.summary.captain_process_alignment * 100).toFixed(0)}%
+                  </strong>
+                  <small>model-aligned / close-call deadlines</small>
+                </div>
+                <div>
+                  <span>HIT COST</span>
+                  <strong>-{decisionQuality.summary.total_hit_cost}</strong>
+                  <small>tracked transfer points spent</small>
+                </div>
+                <div>
+                  <span>BENCH LEAKAGE</span>
+                  <strong>{decisionQuality.summary.average_bench_points.toFixed(1)}</strong>
+                  <small>average actual bench points</small>
+                </div>
+                <div>
+                  <span>BAD VARIANCE</span>
+                  <strong>{decisionQuality.summary.negative_variance_deadlines}</strong>
+                  <small>captain outcomes ≥2 below deadline expectation</small>
+                </div>
+              </div>
+
+              <div className="decision-quality-observations">
+                <span>WHAT THE SAMPLE ACTUALLY SAYS</span>
+                {decisionQuality.summary.observations.map((item, index) => (
+                  <p key={"decision-observation-" + index}>{item}</p>
+                ))}
+              </div>
+
+              <div className="decision-quality-history">
+                {decisionQuality.completed.map((item) => (
+                  <article key={item.event}>
+                    <header>
+                      <b>GW{item.event}</b>
+                      <small>{item.battle_mode ?? "—"} · {item.model_version ?? "model receipt"}</small>
+                    </header>
+                    <div>
+                      <span>Captain process</span>
+                      <strong>{item.captain.process.replaceAll("_", " ")}</strong>
+                      <small>
+                        {item.captain.model_player_name
+                          ? "Model: " + item.captain.model_player_name
+                          : "No comparable captain receipt"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Captain variance</span>
+                      <strong>
+                        {item.captain.actual_vs_model_expectation == null
+                          ? "—"
+                          : (item.captain.actual_vs_model_expectation >= 0 ? "+" : "") +
+                            item.captain.actual_vs_model_expectation.toFixed(1)}
+                      </strong>
+                      <small>actual raw points vs deadline expectation</small>
+                    </div>
+                    <div>
+                      <span>Transfer process</span>
+                      <strong>{item.transfers.process.replaceAll("_", " ")}</strong>
+                      <small>
+                        {item.transfers.hit_cost
+                          ? "-" + item.transfers.hit_cost + " hit"
+                          : "no hit cost"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Bench</span>
+                      <strong>{item.bench_points}</strong>
+                      <small>actual points left on bench</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="decision-quality-empty">
+              <strong>
+                Footy started storing genuine pre-deadline decision receipts in GW
+                {decisionQuality.tracked_from_event}.
+              </strong>
+              <p>
+                Earlier Gameweeks are deliberately not reconstructed with hindsight. Once the
+                first tracked deadline is complete, this section will compare what the model knew
+                then with the manager’s actual choice and eventual outcome.
+              </p>
+            </div>
+          )}
+
+          <p className="decision-quality-caveat">{decisionQuality.caveat}</p>
+        </section>
+      ) : null}
 
       <section className="team-room-scoreboard">
         <div>
           <span>SQUAD RATING</span>
           <strong>{squadNow ?? "—"}</strong>
           <small>
-            {squadNow != null ? ratingBand(squadNow) : "Loading"}
+            {squadNow != null ? ratingBand(squadNow) + " · squad percentile model" : "Loading"}
           </small>
         </div>
         <div>
@@ -548,7 +1236,7 @@ export function TeamRoomDashboard({
           <strong>{squadFuture ?? "—"}</strong>
           <small>
             {squadFuture != null
-              ? ratingBand(squadFuture)
+              ? ratingBand(squadFuture) + " · six-Gameweek process + fixtures"
               : "Loading"}
           </small>
         </div>
@@ -560,16 +1248,18 @@ export function TeamRoomDashboard({
         <div>
           <span>NEXT ACTION</span>
           <strong>
-            {intelligenceLoading ? "CHECKING" : transfer ? "MOVE" : "HOLD"}
+            {intelligenceLoading
+              ? "CHECKING"
+              : portfolioPlan?.action.replaceAll("_", " ") ??
+                (transfer ? "MOVE" : "HOLD")}
           </strong>
           <small>
             {intelligenceLoading
               ? "Building recommendation"
-              : transfer
-                ? transfer.out.name +
-                  " → " +
-                  transfer.in.name
-                : "No move clears threshold"}
+              : portfolioPlan?.headline ??
+                (transfer
+                  ? transfer.out.name + " → " + transfer.in.name
+                  : "No move clears threshold")}
           </small>
         </div>
       </section>
@@ -580,7 +1270,10 @@ export function TeamRoomDashboard({
             <span>SQUAD</span>
             <h2>Current team + player ratings</h2>
           </div>
-          <small>Tap any player for EPA, fixtures, risks and source detail</small>
+          <small>
+            Tap any player for EPA, fixtures, risks and source detail ·{" "}
+            <Link href="/research#players">research every player →</Link>
+          </small>
         </div>
 
         <div className="team-room-player-table">
@@ -602,6 +1295,7 @@ export function TeamRoomDashboard({
                     {pick.team} · {pick.position} · £
                     {pick.price.toFixed(1)}m
                   </small>
+                  <em>{profile.reasons[0] ?? "Role, process and fixtures drive the rating."}</em>
                 </div>
                 <div>
                   <span>Now</span>
@@ -649,7 +1343,7 @@ export function TeamRoomDashboard({
             <span>OPPONENT RESOURCES</span>
             <h2>Chips, transfers and behaviour</h2>
           </div>
-          <small>Public FPL history only</small>
+          <small>Public FPL history only · tap any manager for the full dossier</small>
         </div>
 
         <div className="team-room-rivals">
@@ -686,6 +1380,12 @@ export function TeamRoomDashboard({
             ),
           )}
         </div>
+        <Link
+          className="team-room-deep-link"
+          href={"/league/" + leagueId + "?team=" + teamId}
+        >
+          View every league manager & full standings →
+        </Link>
       </section>
 
       <section className="team-room-next">

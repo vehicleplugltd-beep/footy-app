@@ -19,6 +19,10 @@ type LeaguePayload = {
   standings?: {
     page?: number;
     has_next: boolean;
+    fully_loaded?: boolean;
+    pages_loaded?: number;
+    total_entries?: number;
+    safety_page_cap?: number;
     results: Standing[];
   };
 };
@@ -545,14 +549,29 @@ export function LeagueView({
             <span className="eyebrow">Standings</span>
             <h2>Who you actually need to beat</h2>
           </div>
-          <span>{rows.length} managers shown</span>
+          <span>{rows.length} managers shown · tap any row to focus the analysis</span>
         </div>
 
+        {payload?.standings?.fully_loaded === false ? (
+          <div className="league-full-warning">
+            This league is exceptionally large. Footy loaded{" "}
+            {payload.standings.total_entries ?? rows.length} managers across{" "}
+            {payload.standings.pages_loaded ?? "many"} pages before the sync safety cap.
+            The table below is explicitly marked partial rather than pretending to be complete.
+          </div>
+        ) : null}
+
         <div className="league-table">
-          {sortedRows.slice(0, 50).map((row) => {
+          {sortedRows.map((row) => {
             const delta = rankDelta(row);
             return (
-              <div className="league-row" key={row.entry_id}>
+              <button
+                type="button"
+                className={"league-row " + (selected?.entry_id === row.entry_id ? "active" : "")}
+                key={row.entry_id}
+                onClick={() => setSelectedEntryId(row.entry_id)}
+                aria-label={"Inspect " + row.entry_name}
+              >
                 <span className="league-rank">{row.rank}</span>
                 <div>
                   <strong>{row.entry_name}</strong>
@@ -571,7 +590,7 @@ export function LeagueView({
                 </span>
                 <span>{row.event_total} GW</span>
                 <strong>{row.total} pts</strong>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -710,7 +729,6 @@ export function LeagueView({
                           </article>
                         ))
                       : edgePreview.analysis.manager.weakLinks
-                          .slice(0, 3)
                           .map(({ player, replacement, reason }) => (
                             <article key={player.id}>
                               <strong>
@@ -781,26 +799,22 @@ export function LeagueView({
                 <div className="beta-analysis-split">
                   <div>
                     <span>Your rival-only threats</span>
-                    {edgePreview.analysis.overlap.rivalOnly
-                      .slice(0, 4)
-                      .map((player) => (
-                        <small key={player.id}>
-                          {player.name} · {player.team}
-                        </small>
-                      ))}
+                    {edgePreview.analysis.overlap.rivalOnly.map((player) => (
+                      <Link key={player.id} href={"/research?player=" + player.id}>
+                        {player.name} · {player.team}
+                      </Link>
+                    ))}
                     {!edgePreview.analysis.overlap.rivalOnly.length ? (
                       <small>No unique rival players in the current squad.</small>
                     ) : null}
                   </div>
                   <div>
                     <span>Your differentials vs this rival</span>
-                    {edgePreview.analysis.overlap.managerOnly
-                      .slice(0, 4)
-                      .map((player) => (
-                        <small key={player.id}>
-                          {player.name} · {player.team}
-                        </small>
-                      ))}
+                    {edgePreview.analysis.overlap.managerOnly.map((player) => (
+                      <Link key={player.id} href={"/research?player=" + player.id}>
+                        {player.name} · {player.team}
+                      </Link>
+                    ))}
                     {!edgePreview.analysis.overlap.managerOnly.length ? (
                       <small>Your squads currently fully overlap.</small>
                     ) : null}
@@ -810,23 +824,26 @@ export function LeagueView({
                 <div className="beta-trends">
                   <div>
                     <span>Player trend radar</span>
-                    {edgePreview.analysis.playerTrends.slice(0, 4).map((player) => (
-                      <small key={player.id}>
+                    {edgePreview.analysis.playerTrends.map((player) => (
+                      <Link key={player.id} href={"/research?player=" + player.id}>
                         <b>{player.name}</b> · {player.team} · form {player.form.toFixed(1)}
                         {" · "}
                         {player.transfersNet >= 0 ? "+" : ""}
                         {player.transfersNet.toLocaleString()} transfers
-                      </small>
+                      </Link>
                     ))}
                   </div>
                   <div>
                     <span>Recent team process</span>
-                    {edgePreview.analysis.teamTrends.slice(0, 4).map((team) => (
-                      <small key={team.team}>
+                    {edgePreview.analysis.teamTrends.map((team) => (
+                      <Link
+                        key={team.team}
+                        href={"/research?club=" + encodeURIComponent(team.team)}
+                      >
                         <b>{team.team}</b> · ATT {team.attackIndex.toFixed(2)}
                         {" · "}DEF {team.defenceIndex.toFixed(2)}
                         {" · "}{team.matches} match sample
-                      </small>
+                      </Link>
                     ))}
                   </div>
                 </div>

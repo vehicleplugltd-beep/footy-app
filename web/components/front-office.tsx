@@ -1,6 +1,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { FplTeamDiscovery } from "@/lib/fpl-team";
 import type {
@@ -42,6 +43,8 @@ function PlayerRow({
           {profile.player.team} · {profile.player.position} · £
           {profile.player.price.toFixed(1)}m
         </small>
+        <p>{profile.reasons[0] ?? "Modelled from role, process and fixtures."}</p>
+        <em>{profile.risks[0] ?? "No dominant failure mode currently."}</em>
       </div>
       <div>
         <b>{profile.player.totalPoints} pts</b>
@@ -213,7 +216,7 @@ export function FrontOffice({
             <div className="hq-league-list">
               {(team.miniLeagues.length
                 ? team.miniLeagues
-                : team.otherClassicLeagues.slice(0, 8)
+                : team.otherClassicLeagues
               ).map((league) => {
                 const delta =
                   league.entry_rank && league.entry_last_rank
@@ -256,17 +259,20 @@ export function FrontOffice({
             <span>LIVE FPL MARKET</span>
             <h3>Players Footy thinks matter right now — and next.</h3>
           </div>
-          <small>
-            {data
-              ? data.horizonGameweeks +
-                "GW horizon · " +
-                (data.freshness === "LIVE_FPL"
-                  ? "live FPL"
-                  : "latest snapshot")
-              : error
-                ? "Data unavailable"
-                : "Loading live data…"}
-          </small>
+          <div className="hq-section-actions">
+            <small>
+              {data
+                ? data.horizonGameweeks +
+                  "GW horizon · " +
+                  (data.freshness === "LIVE_FPL"
+                    ? "live FPL"
+                    : "latest snapshot")
+                : error
+                  ? "Data unavailable"
+                  : "Loading live data…"}
+            </small>
+            <Link href="/research">View all players, clubs & fixtures →</Link>
+          </div>
         </div>
 
         {data ? (
@@ -347,6 +353,7 @@ export function FrontOffice({
                 <span>ESSENTIAL</span>
                 <strong>High-confidence core</strong>
                 <small>Strong now + strong six-Gameweek outlook.</small>
+                <Link className="hq-view-all" href="/research#short-term">View full short-term list →</Link>
               </header>
               <div>
                 {essentials.map((profile) => (
@@ -368,6 +375,7 @@ export function FrontOffice({
                 <strong>Not necessarily now</strong>
                 <small>Players whose better window may open later.</small>
                 <em className="hq-inline-quip">{footyQuip("watchlist")}</em>
+                <Link className="hq-view-all" href="/research#long-term">View full long-term list →</Link>
               </header>
               <div>
                 {watchlist.map((profile) => (
@@ -390,6 +398,7 @@ export function FrontOffice({
                 <small>
                   Undervalued or buy-now players that clear model filters.
                 </small>
+                <Link className="hq-view-all" href="/research#players">View every player →</Link>
               </header>
               <div>
                 {transfers.map((profile) => (

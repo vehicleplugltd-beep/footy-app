@@ -578,7 +578,7 @@ export function NextMoveCommand({
         </section>
       ) : null}
 
-      <details className="minimal-why">
+      <details className="minimal-why" open>
         <summary>Why this decision?</summary>
         <div className="minimal-evidence-list">
           <div className="evidence-row">
