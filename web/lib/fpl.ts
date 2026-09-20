@@ -2324,6 +2324,16 @@ export type LeagueManagerEdgeAnalysis = {
   };
   futurePlan: FutureGameweekPlan[];
   managerFuturePlan: ManagerFutureGameweek[];
+  counterPlayHorizon: Array<{
+    eventId: number;
+    name: string;
+    scores: Array<{
+      id: number;
+      score: number;
+      fixtureCount: number;
+      availability: number;
+    }>;
+  }>;
   chipRadar: ChipSignal[];
 };
 
@@ -2464,6 +2474,42 @@ export async function getLeagueManagerEdgeAnalysis(
     next,
   );
 
+  const relevantPlayerIds = new Set([
+    ...manager.squad.map((player) => player.id),
+    ...rivals.flatMap((team) => team.squad.map((player) => player.id)),
+    ...manager.weakLinks
+      .map((move) => move.replacement?.id ?? null)
+      .filter((id): id is number => id != null),
+    ...rivals.flatMap((team) =>
+      team.weakLinks
+        .map((move) => move.replacement?.id ?? null)
+        .filter((id): id is number => id != null),
+    ),
+  ]);
+  const eventNames = new Map(
+    bootstrap.events.map((event) => [event.id, event.name]),
+  );
+  const counterPlayHorizon = upcomingEventIds
+    .slice(0, 5)
+    .map((eventId, index) => {
+      const byId = new Map(
+        (horizonRankings[index] ?? ranked).map((player) => [player.id, player]),
+      );
+      return {
+        eventId,
+        name: eventNames.get(eventId) ?? `Gameweek ${eventId}`,
+        scores: [...relevantPlayerIds].map((id) => {
+          const player = byId.get(id);
+          return {
+            id,
+            score: player?.assistantScore ?? 0,
+            fixtureCount: player?.fixtureCount ?? 0,
+            availability: player?.availability ?? 0,
+          };
+        }),
+      };
+    });
+
   const playerTrends = [...ranked]
     .map((player) => {
       const transferMomentum =
@@ -2552,6 +2598,7 @@ export async function getLeagueManagerEdgeAnalysis(
     },
     futurePlan,
     managerFuturePlan,
+    counterPlayHorizon,
     chipRadar,
   };
 }
