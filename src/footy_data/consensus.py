@@ -207,14 +207,18 @@ def synthesize_match_team_metrics(frame: pd.DataFrame) -> pd.DataFrame:
             elif metric in group.columns:
                 row[metric] = np.nan
 
-        retrieved = pd.to_datetime(
-            group.get("retrieved_at"), errors="coerce", utc=True
-        )
-        row["retrieved_at"] = (
-            retrieved.max().isoformat()
-            if hasattr(retrieved, "max") and not pd.isna(retrieved.max())
-            else None
-        )
+        if "retrieved_at" in group.columns:
+            retrieved = pd.to_datetime(
+                group["retrieved_at"], errors="coerce", utc=True
+            )
+            latest_retrieved = retrieved.max()
+            row["retrieved_at"] = (
+                latest_retrieved.isoformat()
+                if not pd.isna(latest_retrieved)
+                else None
+            )
+        else:
+            row["retrieved_at"] = None
         row["source"] = "consensus:" + "+".join(sources)
         row["source_count"] = len(sources)
         row["source_confidence"] = (
