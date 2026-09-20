@@ -10,7 +10,7 @@ export default function Home() {
           <span>Footy</span>
         </div>
         <div className="nav-links">
-          <Link href="/results">Receipts</Link>
+          <Link href="/review">Review</Link>
         </div>
       </nav>
 
@@ -66,13 +66,13 @@ export default function Home() {
           <p>Underlying team process and player xGI</p>
           <p>Fixtures, availability and expected output</p>
           <p>Rival ownership, chips, hits and free transfers</p>
-          <p>Receipts that keep old recommendations visible</p>
+          <p>Gameweek Review keeps old recommendations visible</p>
         </div>
       </section>
 
       <footer className="shell footer minimal-footer">
         <p>Free while Footy is being tested.</p>
-        <p>CONNECT → DECIDE → UNDERSTAND → TEST</p>
+        <p>CONNECT → BRIEF → SCOUT → REVIEW</p>
       </footer>
     </main>
   );

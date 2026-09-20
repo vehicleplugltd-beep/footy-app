@@ -7,10 +7,12 @@ export function LeaguePreference({
   teamId,
   leagueId,
   validLeagueIds,
+  view = "today",
 }: {
   teamId: number;
   leagueId?: number;
   validLeagueIds: number[];
+  view?: string;
 }) {
   const router = useRouter();
 
@@ -26,9 +28,9 @@ export function LeaguePreference({
 
     const saved = Number(window.localStorage.getItem(key) || 0);
     if (saved > 0 && validLeagueIds.includes(saved)) {
-      router.replace(`/team/${teamId}?league=${saved}#today`);
+      router.replace(`/team/${teamId}?league=${saved}&view=${view}`);
     }
-  }, [leagueId, router, teamId, validLeagueIds]);
+  }, [leagueId, router, teamId, validLeagueIds, view]);
 
   return null;
 }
