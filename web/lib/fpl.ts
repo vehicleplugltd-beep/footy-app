@@ -84,6 +84,8 @@ type Entry = {
 type Pick = {
   element: number;
   is_captain: boolean;
+  position: number;
+  multiplier: number;
 };
 
 type PicksResponse = { picks: Pick[] };
@@ -252,6 +254,37 @@ export type SquadSuggestion = {
   timing: "NOW" | "WAIT" | "HOLD";
 };
 
+export type PortfolioHealth = {
+  score: number;
+  status: "STRONG" | "BALANCED" | "FRAGILE" | "REPAIR";
+  bank: number;
+  bankStatus: "LEAN" | "BUFFERED" | "CASH_HEAVY";
+  reliableBench: number;
+  lowReliabilityPlayers: number;
+  unavailablePlayers: number;
+  premiumCount: number;
+  differentialCount: number;
+  highOwnershipCount: number;
+  averageFieldOwnership: number;
+  priceStructure: {
+    midBandMidfielders: number;
+    midBandForwards: number;
+    midfieldRoute: boolean;
+    forwardRoute: boolean;
+    midfieldTarget: string | null;
+    forwardTarget: string | null;
+  };
+  horizon: {
+    nextGwBestXi: number;
+    sixGwAverageBestXi: number;
+    eightGwAverageBestXi: number;
+  };
+  reasons: string[];
+  risks: string[];
+  underlying: string[];
+  missing: string[];
+};
+
 export type TeamAnalysis = {
   entryId: number;
   teamName: string;
@@ -264,6 +297,9 @@ export type TeamAnalysis = {
   recommendedCaptain: RankedPlayer | null;
   weakLinks: SquadSuggestion[];
   squad: RankedPlayer[];
+  starters: RankedPlayer[];
+  bench: RankedPlayer[];
+  portfolio: PortfolioHealth;
 };
 
 export type ManagerFutureGameweek = {
@@ -1480,7 +1516,7 @@ function weightedHorizonGain(
   inId: number,
   horizonRankings: RankedPlayer[][],
 ) {
-  const weights = [0.50, 0.25, 0.15, 0.10];
+  const weights = [0.28, 0.22, 0.18, 0.13, 0.11, 0.08];
   let total = 0;
   let used = 0;
   horizonRankings.slice(0, weights.length).forEach((ranked, index) => {
@@ -1492,6 +1528,242 @@ function weightedHorizonGain(
     used += weights[index];
   });
   return used > 0 ? total / used : 0;
+}
+
+function bestXiModelScore(
+  squadIds: Set<number>,
+  ranked: RankedPlayer[],
+) {
+  const squad = ranked.filter(
+    (player) =>
+      squadIds.has(player.id) &&
+      player.availability > 0 &&
+      player.fixtureCount > 0,
+  );
+  const byPosition = new Map<string, RankedPlayer[]>();
+  for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+    byPosition.set(
+      position,
+      squad
+        .filter((player) => player.position === position)
+        .sort((a, b) => b.assistantScore - a.assistantScore),
+    );
+  }
+
+  const keepers = byPosition.get("GKP") ?? [];
+  if (!keepers.length) return 0;
+
+  let best = 0;
+  for (let defenders = 3; defenders <= 5; defenders += 1) {
+    for (let midfielders = 2; midfielders <= 5; midfielders += 1) {
+      const forwards = 10 - defenders - midfielders;
+      if (forwards < 1 || forwards > 3) continue;
+      const def = byPosition.get("DEF") ?? [];
+      const mid = byPosition.get("MID") ?? [];
+      const fwd = byPosition.get("FWD") ?? [];
+      if (
+        def.length < defenders ||
+        mid.length < midfielders ||
+        fwd.length < forwards
+      ) {
+        continue;
+      }
+      const score =
+        keepers[0].assistantScore +
+        def.slice(0, defenders).reduce((sum, player) => sum + player.assistantScore, 0) +
+        mid.slice(0, midfielders).reduce((sum, player) => sum + player.assistantScore, 0) +
+        fwd.slice(0, forwards).reduce((sum, player) => sum + player.assistantScore, 0);
+      best = Math.max(best, score);
+    }
+  }
+  return best;
+}
+
+function buildPortfolioHealth(
+  squad: RankedPlayer[],
+  starters: RankedPlayer[],
+  bench: RankedPlayer[],
+  ranked: RankedPlayer[],
+  horizonRankings: RankedPlayer[][],
+  bank: number,
+): PortfolioHealth {
+  const squadIds = new Set(squad.map((player) => player.id));
+  const reliableBench = bench.filter(
+    (player) =>
+      player.availability >= 75 &&
+      player.startReliability >= 0.72 &&
+      player.fixtureCount > 0,
+  ).length;
+  const lowReliabilityPlayers = squad.filter(
+    (player) => player.startReliability < 0.72,
+  ).length;
+  const unavailablePlayers = squad.filter(
+    (player) => player.availability < 75,
+  ).length;
+  const premiumCount = squad.filter((player) => player.price >= 8.5).length;
+  const differentialCount = squad.filter(
+    (player) => player.selectedBy < 10 && player.availability >= 75,
+  ).length;
+  const highOwnershipCount = squad.filter(
+    (player) => player.selectedBy >= 30,
+  ).length;
+  const averageFieldOwnership = squad.length
+    ? squad.reduce((sum, player) => sum + player.selectedBy, 0) / squad.length
+    : 0;
+
+  const midBandMidfielders = squad.filter(
+    (player) =>
+      player.position === "MID" &&
+      player.price >= 6.5 &&
+      player.price <= 8.0,
+  ).length;
+  const midBandForwards = squad.filter(
+    (player) =>
+      player.position === "FWD" &&
+      player.price >= 7.0 &&
+      player.price <= 8.5,
+  ).length;
+
+  const midfieldTarget =
+    ranked.find(
+      (player) =>
+        player.position === "MID" &&
+        player.price >= 6.5 &&
+        player.price <= 8.0 &&
+        player.availability >= 75 &&
+        player.startReliability >= 0.76 &&
+        !squadIds.has(player.id),
+    ) ?? null;
+  const forwardTarget =
+    ranked.find(
+      (player) =>
+        player.position === "FWD" &&
+        player.price >= 7.0 &&
+        player.price <= 8.5 &&
+        player.availability >= 75 &&
+        player.startReliability >= 0.76 &&
+        !squadIds.has(player.id),
+    ) ?? null;
+
+  const midfieldRoute =
+    !midfieldTarget ||
+    squad
+      .filter((player) => player.position === "MID")
+      .some((player) => player.price + bank >= midfieldTarget.price);
+  const forwardRoute =
+    !forwardTarget ||
+    squad
+      .filter((player) => player.position === "FWD")
+      .some((player) => player.price + bank >= forwardTarget.price);
+
+  const horizonScores = horizonRankings.map((week) =>
+    bestXiModelScore(squadIds, week),
+  );
+  const average = (values: number[]) =>
+    values.length
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+  const nextGwBestXi =
+    horizonScores[0] ?? bestXiModelScore(squadIds, ranked);
+  const sixGwAverageBestXi = average(horizonScores.slice(0, 6));
+  const eightGwAverageBestXi = average(horizonScores.slice(0, 8));
+
+  let score = 100;
+  if (reliableBench < 2) score -= (2 - reliableBench) * 12;
+  if (lowReliabilityPlayers > 2) score -= (lowReliabilityPlayers - 2) * 5;
+  score -= unavailablePlayers * 5;
+  if (bank < 0.5) score -= 8;
+  if (bank > 2.0) score -= 3;
+  if (!midfieldRoute) score -= 8;
+  if (!forwardRoute) score -= 8;
+  if (differentialCount > 3) score -= (differentialCount - 3) * 4;
+  score = Math.round(clamp(score, 0, 100));
+
+  const status: PortfolioHealth["status"] =
+    score >= 82
+      ? "STRONG"
+      : score >= 68
+        ? "BALANCED"
+        : score >= 52
+          ? "FRAGILE"
+          : "REPAIR";
+  const bankStatus: PortfolioHealth["bankStatus"] =
+    bank < 0.5 ? "LEAN" : bank <= 1.5 ? "BUFFERED" : "CASH_HEAVY";
+
+  const reasons = [
+    `${reliableBench}/4 bench players currently clear Footy's availability, start-reliability and fixture-availability test.`,
+    `Bank is £${bank.toFixed(1)}m (${bankStatus.toLowerCase()}); a £0.5m–£1.0m buffer is treated as useful optionality, not a hard rule.`,
+    `Price structure has ${midBandMidfielders} midfielder(s) in £6.5m–£8.0m and ${midBandForwards} forward(s) in £7.0m–£8.5m.`,
+    `Six-Gameweek best-XI model average is ${sixGwAverageBestXi.toFixed(1)}; eight-Gameweek average is ${eightGwAverageBestXi.toFixed(1)}.`,
+  ];
+
+  const risks: string[] = [];
+  if (reliableBench < 2) {
+    risks.push("Bench resilience is thin: fewer than two substitutes currently project as dependable cover.");
+  }
+  if (!midfieldRoute) {
+    risks.push(
+      `Current cash/price structure has no one-transfer route to ${midfieldTarget?.name ?? "the leading mid-priced midfielder"}.`,
+    );
+  }
+  if (!forwardRoute) {
+    risks.push(
+      `Current cash/price structure has no one-transfer route to ${forwardTarget?.name ?? "the leading mid-priced forward"}.`,
+    );
+  }
+  if (differentialCount > 3) {
+    risks.push(
+      `${differentialCount} squad players are below 10% official ownership; that is a high concentration of low-ownership exposure rather than one or two targeted differentials.`,
+    );
+  }
+  if (unavailablePlayers) {
+    risks.push(
+      `${unavailablePlayers} squad player(s) are currently below the 75% availability threshold.`,
+    );
+  }
+  if (!risks.length) {
+    risks.push("No single structural weakness currently dominates; the main failure mode is fresh availability, role or fixture information changing the inputs.");
+  }
+
+  return {
+    score,
+    status,
+    bank,
+    bankStatus,
+    reliableBench,
+    lowReliabilityPlayers,
+    unavailablePlayers,
+    premiumCount,
+    differentialCount,
+    highOwnershipCount,
+    averageFieldOwnership,
+    priceStructure: {
+      midBandMidfielders,
+      midBandForwards,
+      midfieldRoute,
+      forwardRoute,
+      midfieldTarget: midfieldTarget?.name ?? null,
+      forwardTarget: forwardTarget?.name ?? null,
+    },
+    horizon: {
+      nextGwBestXi,
+      sixGwAverageBestXi,
+      eightGwAverageBestXi,
+    },
+    reasons,
+    risks,
+    underlying: [
+      "Official FPL prices, ownership, availability, starts and minutes",
+      "Regressed player process and team attack/defence process",
+      "Best-XI formation-constrained model score across 6GW and 8GW",
+      "Actual FPL bench positions from the current squad",
+      "Price-band escape routes using current bank and same-position sale value",
+    ],
+    missing: [
+      "True global effective ownership (official ownership is shown only as a field-ownership proxy)",
+      "Verified player NPxG/90 and player share of team non-penalty xGI",
+    ],
+  };
 }
 
 function minimumTransferGain(
@@ -1539,9 +1811,16 @@ async function analyseTeam(
     300,
   );
   const rankedById = new Map(ranked.map((player) => [player.id, player]));
+  const pickByElement = new Map(picks.picks.map((pick) => [pick.element, pick]));
   const squad = picks.picks
     .map((pick) => rankedById.get(pick.element))
     .filter((player): player is RankedPlayer => Boolean(player));
+  const starters = squad.filter(
+    (player) => (pickByElement.get(player.id)?.position ?? 99) <= 11,
+  );
+  const bench = squad.filter(
+    (player) => (pickByElement.get(player.id)?.position ?? 0) > 11,
+  );
   const squadIds = new Set(squad.map((player) => player.id));
   const currentCaptainPick = picks.picks.find((pick) => pick.is_captain);
   const currentCaptain = currentCaptainPick
@@ -1631,7 +1910,7 @@ async function analyseTeam(
       const timing = selected?.timing ?? ("HOLD" as const);
 
       const reason = bestNow
-        ? `${bestNow.candidate.name} clears the move-now threshold: +${bestNow.gain.toFixed(1)} this Gameweek vs +${bestNow.minimumGain.toFixed(1)} required, with a +${bestNow.horizonGain.toFixed(1)} weighted four-Gameweek edge.`
+        ? `${bestNow.candidate.name} clears the move-now threshold: +${bestNow.gain.toFixed(1)} this Gameweek vs +${bestNow.minimumGain.toFixed(1)} required, with a +${bestNow.horizonGain.toFixed(1)} weighted six-Gameweek edge.`
         : bestWait
           ? `${bestWait.candidate.name} looks stronger over the horizon (+${bestWait.horizonGain.toFixed(1)}), but the immediate edge does not justify spending the transfer yet. Watch next Gameweek.`
           : "No same-position option clears Footy's transfer-value and timing thresholds.";
@@ -1647,6 +1926,15 @@ async function analyseTeam(
       };
     });
 
+  const portfolio = buildPortfolioHealth(
+    squad,
+    starters,
+    bench,
+    ranked,
+    horizonRankings,
+    bank,
+  );
+
   return {
     entryId,
     teamName: entry.name,
@@ -1659,6 +1947,9 @@ async function analyseTeam(
     recommendedCaptain,
     weakLinks,
     squad: [...squad].sort((a, b) => b.assistantScore - a.assistantScore),
+    starters: [...starters].sort((a, b) => b.assistantScore - a.assistantScore),
+    bench: [...bench].sort((a, b) => b.assistantScore - a.assistantScore),
+    portfolio,
   };
 }
 
@@ -1674,7 +1965,7 @@ function buildManagerFuturePlan(
   const upcomingEvents = bootstrap.events
     .filter((event) => event.id >= nextEvent.id && !event.finished)
     .sort((a, b) => a.id - b.id)
-    .slice(0, 4);
+    .slice(0, 6);
 
   const squadIds = new Set(manager.squad.map((player) => player.id));
   const currentTeamCounts = new Map<string, number>();
@@ -1959,7 +2250,7 @@ export async function getLeagueManagerEdgeAnalysis(
         next && event.id >= next.id && !event.finished,
     )
     .sort((a, b) => a.id - b.id)
-    .slice(0, 4)
+    .slice(0, 8)
     .map((event) => event.id);
   const horizonRankings = upcomingEventIds.length
     ? upcomingEventIds.map((eventId) =>
@@ -2101,9 +2392,13 @@ export async function getLeagueManagerEdgeAnalysis(
         "Player-match process trends plus cup/Europe workload and short-rest signals",
         "Prior-season player baselines joined by stable player code and progressively discounted by current minutes",
         "Recent attack/defence process trend with regression",
-        "Mini-league ownership, points gaps, chips, hits and estimated free transfers",
+        "Official field ownership plus actual connected mini-league squad/captain overlap",
+        "Mini-league points gaps, chips, hits and estimated free transfers",
+        "Portfolio structure: bank buffer, actual bench cover, price-band routes and 6GW/8GW best-XI model scores",
       ],
       notMeasured: [
+        "True global effective ownership (EO); official ownership is not relabelled as EO",
+        "Verified player NPxG/90 and non-penalty xGI share of team output",
         "Player chemistry",
         "Confirmed tactical role changes without reliable public data",
         "True field tilt and defensive line height when not present in a verified feed",
@@ -2283,6 +2578,8 @@ export type FixturePrediction = {
   homeWinProbability: number;
   drawProbability: number;
   awayWinProbability: number;
+  homeCleanSheetProbability: number;
+  awayCleanSheetProbability: number;
   mostLikelyScore: string;
   modelLean: "HOME" | "DRAW" | "AWAY";
   confidence: "HIGH" | "MEDIUM" | "LOW";
@@ -2530,6 +2827,8 @@ function buildFixturePredictions(
         homeWinProbability: outcome.home,
         drawProbability: outcome.draw,
         awayWinProbability: outcome.away,
+        homeCleanSheetProbability: Math.exp(-awayExpectedGoals),
+        awayCleanSheetProbability: Math.exp(-homeExpectedGoals),
         mostLikelyScore: outcome.score,
         modelLean,
         confidence,
