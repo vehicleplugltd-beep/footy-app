@@ -20,11 +20,6 @@ export function AdminLauncher() {
     if (id) router.push(`/league/${id}`);
   }
 
-  async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    router.replace("/admin/login");
-    router.refresh();
-  }
 
   return (
     <div className="admin-launchers">
@@ -54,9 +49,6 @@ export function AdminLauncher() {
         </div>
       </form>
 
-      <button className="admin-logout" type="button" onClick={logout}>
-        Lock admin
-      </button>
     </div>
   );
 }
