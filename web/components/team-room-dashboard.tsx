@@ -477,6 +477,7 @@ export function TeamRoomDashboard({
 
   async function rerunCounterPosture(posture: CounterPosture) {
     if (counterPostureLoading) return;
+    const previousPosture = counterPosture;
     setCounterPosture(posture);
     setCounterPostureLoading(true);
     setCounterPostureError(null);
@@ -496,6 +497,7 @@ export function TeamRoomDashboard({
       }
       setManager(body);
     } catch (err) {
+      setCounterPosture(previousPosture);
       setCounterPostureError(
         err instanceof Error
           ? err.message
