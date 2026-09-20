@@ -83,25 +83,27 @@ Deno.serve(async (req: Request) => {
     }
 
     const requestedEntryId = Number(String(focusEntryId || "").replace(/\D/g, ""));
-    const requestedRank = Number(String(focusRank || "").replace(/\D/g, ""));
-    let results = [...firstPageResults];
+    const byEntry = new Map<number, any>();
+    for (const row of firstPageResults) {
+      byEntry.set(Number(row.entry), row);
+    }
 
-    if (
-      requestedEntryId > 0 &&
-      !results.some((row: any) => Number(row.entry) === requestedEntryId) &&
-      requestedRank > 50
-    ) {
-      const pageNumber = Math.ceil(requestedRank / 50);
-      const focusPayload = await fpl(
+    // A "full league" must really be full. The official endpoint paginates
+    // classic-league standings, so walk every page instead of returning page 1
+    // plus (at most) a single page around the focused manager.
+    let pageNumber = 1;
+    let pagePayload = payload;
+    while (Boolean(pagePayload?.standings?.has_next) && pageNumber < 200) {
+      pageNumber += 1;
+      pagePayload = await fpl(
         `leagues-classic/${cleanLeagueId}/standings/?page_standings=${pageNumber}`,
       );
-      const focusResults = focusPayload?.standings?.results || [];
-      const byEntry = new Map<number, any>();
-      for (const row of [...firstPageResults, ...focusResults]) {
+      const pageResults = pagePayload?.standings?.results || [];
+      for (const row of pageResults) {
         byEntry.set(Number(row.entry), row);
       }
-      results = [...byEntry.values()];
     }
+    const results = [...byEntry.values()];
 
     const now = new Date().toISOString();
     const leagueName = payload?.league?.name || `League ${cleanLeagueId}`;
@@ -161,7 +163,9 @@ Deno.serve(async (req: Request) => {
       league: { id: Number(cleanLeagueId), name: leagueName },
       standings: {
         results: entries,
-        has_next: Boolean(payload?.standings?.has_next),
+        has_next: false,
+        pages_loaded: pageNumber,
+        total_entries: entries.length,
         focused_entry_id: requestedEntryId || null,
       },
       recap: facts,
