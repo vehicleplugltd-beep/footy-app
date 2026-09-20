@@ -104,6 +104,102 @@ function recapFacts(entries) {
   };
 }
 
+async function scoreRecommendationReceipts(
+  leagueId,
+  eventId,
+  currentSnapshots,
+) {
+  if (!currentSnapshots.length || eventId <= 1) return { scored: 0, matched: 0 };
+
+  const receipts =
+    (await sb(
+      `footy_fpl_recommendation_snapshots?select=id,entry_id,deadline_time,generated_at,captain_options,transfer_options&league_id=eq.${leagueId}&event=eq.${eventId}&is_pre_deadline=eq.true&order=generated_at.desc`,
+    )) || [];
+
+  if (!receipts.length) return { scored: 0, matched: 0 };
+
+  const previous =
+    (await sb(
+      `footy_fpl_entry_snapshots?select=entry_id,picks&league_id=eq.${leagueId}&event=eq.${eventId - 1}`,
+    )) || [];
+  const previousByEntry = new Map(
+    previous.map((row) => [Number(row.entry_id), row]),
+  );
+  const currentByEntry = new Map(
+    currentSnapshots.map((row) => [Number(row.entry_id), row]),
+  );
+
+  const official = [];
+  const seen = new Set();
+  for (const receipt of receipts) {
+    const entryId = Number(receipt.entry_id);
+    if (seen.has(entryId)) continue;
+    if (
+      new Date(receipt.generated_at).getTime() >=
+      new Date(receipt.deadline_time).getTime()
+    ) {
+      continue;
+    }
+    seen.add(entryId);
+    official.push(receipt);
+  }
+
+  let scored = 0;
+  let matched = 0;
+
+  for (const receipt of official) {
+    const entryId = Number(receipt.entry_id);
+    const current = currentByEntry.get(entryId);
+    if (!current?.picks?.length) continue;
+
+    const currentIds = new Set(
+      current.picks.map((pick) => Number(pick.element)).filter(Boolean),
+    );
+    const previousIds = new Set(
+      (previousByEntry.get(entryId)?.picks || [])
+        .map((pick) => Number(pick.element))
+        .filter(Boolean),
+    );
+    const incomingIds = [...currentIds].filter((id) => !previousIds.has(id));
+    const actualCaptainId =
+      Number(
+        current.picks.find((pick) => pick.is_captain)?.element || 0,
+      ) || null;
+
+    const captainIds = (receipt.captain_options || [])
+      .map((option) => Number(option.id))
+      .filter(Boolean);
+    const transferIds = (receipt.transfer_options || [])
+      .map((option) => Number(option?.in?.id))
+      .filter(Boolean);
+
+    const matchedCaptain =
+      actualCaptainId !== null && captainIds.includes(actualCaptainId);
+    const matchedTransfer =
+      incomingIds.length > 0 &&
+      incomingIds.some((id) => transferIds.includes(id));
+    const matchedTop3 = matchedCaptain || matchedTransfer;
+
+    await patch(
+      "footy_fpl_recommendation_snapshots",
+      `id=eq.${receipt.id}`,
+      {
+        actual_captain_id: actualCaptainId,
+        actual_incoming_ids: incomingIds,
+        matched_top3: matchedTop3,
+        matched_captain_top3: matchedCaptain,
+        matched_transfer_top3: matchedTransfer,
+        scored_at: new Date().toISOString(),
+      },
+    );
+
+    scored += 1;
+    if (matchedTop3) matched += 1;
+  }
+
+  return { scored, matched };
+}
+
 function recapCopy(name, facts) {
   const gapText = facts.gap === 1 ? "1 point" : `${facts.gap} points`;
   const climb =
@@ -180,6 +276,12 @@ async function syncLeague(league, eventId) {
       "league_id,entry_id,event",
     );
 
+    const receiptScore = await scoreRecommendationReceipts(
+      leagueId,
+      eventId,
+      snapshots,
+    );
+
     const facts = recapFacts(entries);
     await upsert("footy_fpl_league_recaps", [{
       league_id: leagueId,
@@ -207,6 +309,8 @@ async function syncLeague(league, eventId) {
       league_id: leagueId,
       entries: entries.length,
       snapshots: snapshots.length,
+      receipts_scored: receiptScore.scored,
+      receipts_matched: receiptScore.matched,
     };
   } catch (error) {
     await patch(
