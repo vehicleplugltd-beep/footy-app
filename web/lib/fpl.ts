@@ -2788,11 +2788,13 @@ export type PlayerDatabasePayload = {
 };
 
 export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
-    cachedFpl<Bootstrap>("bootstrap-static"),
-    cachedFpl<Fixture[]>("fixtures"),
-    footyProcesses(),
-  ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process, playerProcesses] =
+    await Promise.all([
+      cachedFpl<Bootstrap>("bootstrap-static"),
+      cachedFpl<Fixture[]>("fixtures"),
+      footyProcesses(),
+      footyPlayerProcesses(),
+    ]);
 
   let bootstrap: Bootstrap | null = null;
   let fixtures: Fixture[] | null = null;
@@ -2828,6 +2830,7 @@ export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
     process,
     true,
     true,
+    playerProcesses,
   );
 
   return {
@@ -3765,6 +3768,7 @@ export async function getScoutIntelligence(
       process,
       false,
       true,
+      playerProcesses,
     ),
   }));
   const maps = rankings.map(({ event, players }) => ({
@@ -3781,6 +3785,7 @@ export async function getScoutIntelligence(
       process,
       false,
       true,
+      playerProcesses,
     );
 
   const elementById = new Map(bootstrap.elements.map((item) => [item.id, item]));
