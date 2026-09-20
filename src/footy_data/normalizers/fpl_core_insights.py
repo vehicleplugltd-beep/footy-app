@@ -188,6 +188,65 @@ def reconcile_fpl_core_to_footy(
 
 
 
+def _verified_penalty_xg_value(
+    player_match_stats: pd.DataFrame,
+) -> float | None:
+    """
+    Infer the provider's penalty xG convention from rows where every shot is a
+    recorded penalty. Fail closed unless at least two observations agree
+    tightly enough to support the derivation.
+    """
+    required = {
+        "total_shots",
+        "xg",
+        "penalties_scored",
+        "penalties_missed",
+    }
+    if not required.issubset(player_match_stats.columns):
+        return None
+
+    frame = player_match_stats.copy()
+    shots = pd.to_numeric(frame["total_shots"], errors="coerce")
+    xg = pd.to_numeric(frame["xg"], errors="coerce")
+    scored = pd.to_numeric(
+        frame["penalties_scored"], errors="coerce"
+    ).fillna(0)
+    missed = pd.to_numeric(
+        frame["penalties_missed"], errors="coerce"
+    ).fillna(0)
+    penalties = scored + missed
+
+    pure_penalty = frame[
+        (penalties > 0)
+        & shots.notna()
+        & xg.notna()
+        & (shots == penalties)
+    ].copy()
+    if len(pure_penalty) < 2:
+        return None
+
+    penalty_counts = (
+        pd.to_numeric(
+            pure_penalty["penalties_scored"], errors="coerce"
+        ).fillna(0)
+        + pd.to_numeric(
+            pure_penalty["penalties_missed"], errors="coerce"
+        ).fillna(0)
+    )
+    values = (
+        pd.to_numeric(pure_penalty["xg"], errors="coerce")
+        / penalty_counts.replace(0, pd.NA)
+    ).dropna()
+    if len(values) < 2:
+        return None
+
+    median = float(values.median())
+    max_deviation = float((values - median).abs().max())
+    if not 0.72 <= median <= 0.86 or max_deviation > 0.03:
+        return None
+    return median
+
+
 def normalise_fpl_core_player_match_stats(
     player_match_stats: pd.DataFrame,
     players: pd.DataFrame,
@@ -232,6 +291,8 @@ def normalise_fpl_core_player_match_stats(
         "shots": "total_shots",
         "shots_on_target": "shots_on_target",
         "xg": "xg",
+        "penalties_scored": "penalties_scored",
+        "penalties_missed": "penalties_missed",
         "xa": "xa",
         "xgot": "xgot",
         "big_chances_missed": "big_chances_missed",
@@ -258,6 +319,8 @@ def normalise_fpl_core_player_match_stats(
         "saves_inside_box": "saves_inside_box",
         "defensive_contributions": "defensive_contributions",
     }
+
+    penalty_xg_value = _verified_penalty_xg_value(player_match_stats)
 
     rows: list[dict] = []
     for _, stat in player_match_stats.iterrows():
@@ -320,6 +383,27 @@ def normalise_fpl_core_player_match_stats(
         }
         for target, upstream in numeric_map.items():
             record[target] = _number(stat.get(upstream))
+
+        penalties = (
+            0.0
+            if pd.isna(record["penalties_scored"])
+            else float(record["penalties_scored"])
+        ) + (
+            0.0
+            if pd.isna(record["penalties_missed"])
+            else float(record["penalties_missed"])
+        )
+        if penalty_xg_value is not None and not pd.isna(record["xg"]):
+            record["npxg"] = max(
+                0.0,
+                float(record["xg"]) - penalty_xg_value * penalties,
+            )
+            record["penalty_xg_value"] = penalty_xg_value
+        else:
+            # Reliable current NPxG is preferable to a silent 0.76/0.79
+            # assumption. The web model will exclude NPxG when this is null.
+            record["npxg"] = float("nan")
+            record["penalty_xg_value"] = float("nan")
         rows.append(record)
 
     return pd.DataFrame(rows)
