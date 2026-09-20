@@ -745,3 +745,39 @@ create index if not exists idx_footy_fpl_events_name_created
 alter table public.footy_fpl_events enable row level security;
 revoke all on table public.footy_fpl_events from public, anon, authenticated;
 grant select, insert, update, delete on table public.footy_fpl_events to service_role;
+
+
+-- League Edge recommendation snapshots: append-only inputs for Receipts.
+create table if not exists public.footy_fpl_recommendation_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  league_id bigint not null references public.footy_fpl_leagues(league_id) on delete cascade,
+  entry_id bigint not null,
+  rival_entry_id bigint,
+  event integer not null,
+  deadline_time timestamptz not null,
+  generated_at timestamptz not null default now(),
+  data_retrieved_at timestamptz not null,
+  model_version text not null default 'league-edge-v1',
+  battle_mode text not null check (battle_mode in ('PROTECT','CHASE','RECOVER')),
+  captain_options jsonb not null default '[]'::jsonb,
+  transfer_options jsonb not null default '[]'::jsonb,
+  overlap jsonb not null default '{}'::jsonb,
+  player_trends jsonb not null default '[]'::jsonb,
+  team_trends jsonb not null default '[]'::jsonb,
+  is_pre_deadline boolean not null default true,
+  actual_captain_id bigint,
+  actual_incoming_ids jsonb,
+  matched_top3 boolean,
+  matched_captain_top3 boolean,
+  matched_transfer_top3 boolean,
+  scored_at timestamptz
+);
+
+create index if not exists idx_footy_fpl_reco_entry_event
+  on public.footy_fpl_recommendation_snapshots(league_id, entry_id, event, generated_at desc);
+create index if not exists idx_footy_fpl_reco_deadline
+  on public.footy_fpl_recommendation_snapshots(deadline_time, generated_at desc);
+
+alter table public.footy_fpl_recommendation_snapshots enable row level security;
+revoke all on table public.footy_fpl_recommendation_snapshots from public, anon, authenticated;
+grant select, insert, update, delete on table public.footy_fpl_recommendation_snapshots to service_role;

@@ -850,6 +850,11 @@ export type LeagueManagerEdgeAnalysis = {
   currentEvent: FplEvent | null;
   nextEvent: FplEvent | null;
   processTeams: number;
+  dataRetrievedAt: string;
+  freshness: {
+    source: "LIVE_FPL" | "CACHED_FALLBACK";
+    nearDeadline: boolean;
+  };
   manager: TeamAnalysis;
   rival: TeamAnalysis | null;
   overlap: {
@@ -858,6 +863,10 @@ export type LeagueManagerEdgeAnalysis = {
     managerOnly: RankedPlayer[];
     rivalOnly: RankedPlayer[];
   };
+  captainOptions: RankedPlayer[];
+  transferOptions: SquadSuggestion[];
+  playerTrends: Array<RankedPlayer & { trendScore: number }>;
+  teamTrends: TeamProcess[];
 };
 
 export async function getLeagueManagerEdgeAnalysis(
@@ -874,19 +883,41 @@ export async function getLeagueManagerEdgeAnalysis(
     footyProcesses(),
   ]);
 
-  let bootstrap = bootstrapSnapshot?.payload ?? null;
-  let fixtures = fixturesSnapshot?.payload ?? null;
+  let bootstrap: Bootstrap | null = null;
+  let fixtures: Fixture[] | null = null;
+  let source: "LIVE_FPL" | "CACHED_FALLBACK" = "LIVE_FPL";
+  let dataRetrievedAt = new Date().toISOString();
 
-  if (!bootstrap || !fixtures) {
+  // Manager analysis is an intentional freshness boundary. Always try the
+  // official live feed first, then fall back to the automated snapshots.
+  try {
     const direct = await Promise.all([
-      fplFetch<Bootstrap>("bootstrap-static/"),
-      fplFetch<Fixture[]>("fixtures/"),
+      fplFetch<Bootstrap>("bootstrap-static/", 0),
+      fplFetch<Fixture[]>("fixtures/", 0),
     ]);
     bootstrap = direct[0];
     fixtures = direct[1];
+  } catch {
+    bootstrap = bootstrapSnapshot?.payload ?? null;
+    fixtures = fixturesSnapshot?.payload ?? null;
+    source = "CACHED_FALLBACK";
+    dataRetrievedAt =
+      bootstrapSnapshot?.retrieved_at ??
+      fixturesSnapshot?.retrieved_at ??
+      dataRetrievedAt;
+  }
+
+  if (!bootstrap || !fixtures) {
+    throw new Error("Official FPL data and the Footy fallback cache are unavailable.");
   }
 
   const { current, next } = currentAndNext(bootstrap.events);
+  const deadlineMs = next ? new Date(next.deadline_time).getTime() : 0;
+  const nearDeadline =
+    Boolean(deadlineMs) &&
+    deadlineMs > Date.now() &&
+    deadlineMs - Date.now() <= 90 * 60 * 1000;
+
   const ranked = rankPlayers(
     bootstrap,
     fixtures,
@@ -922,10 +953,54 @@ export async function getLeagueManagerEdgeAnalysis(
         .sort((a, b) => b.assistantScore - a.assistantScore)
     : [];
 
+  const captainOptions = [...manager.squad]
+    .filter((player) => player.availability >= 75)
+    .sort((a, b) => b.assistantScore - a.assistantScore)
+    .slice(0, 3);
+
+  const transferOptions = manager.weakLinks
+    .filter((item) => item.replacement)
+    .sort(
+      (a, b) =>
+        (b.replacement?.assistantScore ?? 0) -
+        (a.replacement?.assistantScore ?? 0),
+    )
+    .slice(0, 3);
+
+  const playerTrends = [...ranked]
+    .map((player) => {
+      const transferMomentum =
+        Math.sign(player.transfersNet) *
+        Math.log1p(Math.abs(player.transfersNet)) /
+        10;
+      const trendScore =
+        player.form * 0.5 +
+        player.xgiPer90 * 2 +
+        player.processBoost * 4 +
+        transferMomentum * 0.6;
+      return { ...player, trendScore };
+    })
+    .filter((player) => player.availability >= 75 && player.fixtureCount > 0)
+    .sort((a, b) => b.trendScore - a.trendScore)
+    .slice(0, 6);
+
+  const teamTrends = [...process.values()]
+    .sort(
+      (a, b) =>
+        Math.max(b.attackIndex, b.defenceIndex) -
+        Math.max(a.attackIndex, a.defenceIndex),
+    )
+    .slice(0, 6);
+
   return {
     currentEvent: current,
     nextEvent: next,
     processTeams: process.size,
+    dataRetrievedAt,
+    freshness: {
+      source,
+      nearDeadline,
+    },
     manager,
     rival,
     overlap: {
@@ -934,5 +1009,9 @@ export async function getLeagueManagerEdgeAnalysis(
       managerOnly,
       rivalOnly,
     },
+    captainOptions,
+    transferOptions,
+    playerTrends,
+    teamTrends,
   };
 }
