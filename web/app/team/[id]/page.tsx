@@ -5,6 +5,7 @@ import { NextMoveCommand } from "@/components/next-move-command";
 import { LeaguePreference } from "@/components/league-preference";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { BuildTestWorkspace } from "@/components/build-test-workspace";
+import { ScoutRoom } from "@/components/scout-room";
 
 function rank(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
@@ -76,6 +77,7 @@ export default async function TeamPage({
         <div className="nav-links">
           <a href="#today">Today</a>
           <a href="#squad">Squad</a>
+          <a href="#scout">Scout</a>
           <a href="#build-test">Build</a>
           <Link href="/results">Receipts</Link>
         </div>
@@ -202,6 +204,18 @@ export default async function TeamPage({
         </aside>
       </section>
 
+      <section className="shell minimal-scout-section" id="scout">
+        <div className="minimal-section-copy">
+          <span>SCOUT</span>
+          <h2>Players, clubs and opportunities — before everyone sees them.</h2>
+          <p>
+            Scan the next eight Gameweeks, inspect player and club profiles,
+            and see when an opportunity becomes a buy, a watch or a future target.
+          </p>
+        </div>
+        <ScoutRoom />
+      </section>
+
       <section className="shell minimal-build-section" id="build-test">
         <div className="minimal-section-copy">
           <span>BUILD &amp; TEST</span>
@@ -222,14 +236,14 @@ export default async function TeamPage({
       <nav className="mobile-workspace-nav" aria-label="Mobile Footy navigation">
         <a href="#today"><span>●</span><b>Today</b></a>
         <a href="#squad"><span>▦</span><b>Squad</b></a>
-        <a href="#leagues"><span>↕</span><b>League</b></a>
+        <a href="#scout"><span>⌕</span><b>Scout</b></a>
         <a href="#build-test"><span>＋</span><b>Build</b></a>
         <Link href="/results"><span>✓</span><b>Receipts</b></Link>
       </nav>
 
       <footer className="shell footer minimal-footer">
         <p>Advice first. Evidence when you want it.</p>
-        <p>DECIDE → UNDERSTAND → TEST</p>
+        <p>DECIDE → SCOUT → UNDERSTAND → TEST</p>
       </footer>
     </main>
   );

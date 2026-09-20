@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Footy League Edge — Beat Your Mini-League",
+  title: "Footy — Your FPL Assistant Manager",
   description:
-    "Connect your FPL mini-league, track the people you want to beat, get automatic weekly recaps and league-specific decision support.",
+    "A live FPL assistant manager for squad decisions, scouting, mini-league intelligence and multi-Gameweek planning.",
 };
 
 export default function RootLayout({

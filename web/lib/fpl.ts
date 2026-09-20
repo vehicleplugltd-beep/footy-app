@@ -1815,6 +1815,464 @@ export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
 }
 
 
+
+export type ScoutHorizonPoint = {
+  eventId: number;
+  name: string;
+  opponent: string | null;
+  opponentName: string | null;
+  homeAway: "H" | "A" | "—";
+  difficulty: number;
+  score: number;
+  fixtureFactor: number;
+  processFactor: number;
+};
+
+export type ScoutPlayerProfile = {
+  player: RankedPlayer;
+  horizon: ScoutHorizonPoint[];
+  score3: number;
+  score6: number;
+  score8: number;
+  bestWindow: {
+    startEventId: number | null;
+    startName: string;
+    endName: string;
+    score: number;
+    index: number;
+  };
+  status: "BUY_NOW" | "WATCH" | "FUTURE_TARGET";
+  reasons: string[];
+  risks: string[];
+};
+
+export type ScoutTeamProfile = {
+  teamId: number;
+  team: string;
+  shortName: string;
+  process: TeamProcess | null;
+  outlook: "STRONG RUN" | "GOOD RUN" | "MIXED" | "TOUGH RUN";
+  averageDifficulty: number;
+  fixtures: Array<{
+    eventId: number;
+    name: string;
+    opponent: string;
+    opponentShort: string;
+    homeAway: "H" | "A";
+    difficulty: number;
+  }>;
+  topPlayers: Array<{
+    id: number;
+    name: string;
+    position: string;
+    price: number;
+    score6: number;
+    status: "BUY_NOW" | "WATCH" | "FUTURE_TARGET";
+  }>;
+};
+
+export type ScoutIntelligencePayload = {
+  currentEvent: FplEvent | null;
+  nextEvent: FplEvent | null;
+  dataRetrievedAt: string;
+  freshness: "LIVE_FPL" | "CACHED_FALLBACK";
+  horizonGameweeks: number;
+  picks: ScoutPlayerProfile[];
+  players: ScoutPlayerProfile[];
+  teams: ScoutTeamProfile[];
+};
+
+function average(values: number[]) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function bestRollingWindow(
+  horizon: ScoutHorizonPoint[],
+  size = 3,
+) {
+  if (!horizon.length) {
+    return {
+      startEventId: null,
+      startName: "—",
+      endName: "—",
+      score: 0,
+      index: 0,
+    };
+  }
+
+  let best = {
+    startEventId: horizon[0].eventId,
+    startName: horizon[0].name,
+    endName: horizon[Math.min(size - 1, horizon.length - 1)].name,
+    score: average(horizon.slice(0, size).map((item) => item.score)),
+    index: 0,
+  };
+
+  for (let index = 1; index < horizon.length; index += 1) {
+    const window = horizon.slice(index, index + size);
+    if (!window.length) continue;
+    const score = average(window.map((item) => item.score));
+    if (score > best.score) {
+      best = {
+        startEventId: window[0].eventId,
+        startName: window[0].name,
+        endName: window[window.length - 1].name,
+        score,
+        index,
+      };
+    }
+  }
+
+  return best;
+}
+
+function scoutReasons(
+  player: RankedPlayer,
+  process: TeamProcess | undefined,
+  horizon: ScoutHorizonPoint[],
+  bestWindow: ScoutPlayerProfile["bestWindow"],
+) {
+  const reasons: string[] = [];
+  const firstThree = horizon.slice(0, 3);
+  const firstSix = horizon.slice(0, 6);
+  const avgFdr3 = average(firstThree.map((item) => item.difficulty));
+  const avgFdr6 = average(firstSix.map((item) => item.difficulty));
+
+  if (player.xgiPer90 >= 0.55) {
+    reasons.push(
+      `Strong underlying involvement: ${player.xgiPer90.toFixed(2)} xGI/90.`,
+    );
+  } else if (player.xgiPer90 >= 0.35) {
+    reasons.push(
+      `Useful underlying involvement: ${player.xgiPer90.toFixed(2)} xGI/90.`,
+    );
+  }
+
+  if (player.setPieceRole) {
+    reasons.push(`${player.setPieceRole} increases repeatable route-to-points.`);
+  }
+
+  if ((process?.attackTrend ?? 0) >= 0.05) {
+    reasons.push(
+      `${player.teamName} attacking process is improving (${(
+        (process?.attackTrend ?? 0) * 100
+      ).toFixed(0)}% recent trend).`,
+    );
+  }
+
+  if (
+    (player.position === "DEF" || player.position === "GKP") &&
+    (process?.defenceTrend ?? 0) >= 0.05
+  ) {
+    reasons.push(
+      `${player.teamName} defensive process is improving (${(
+        (process?.defenceTrend ?? 0) * 100
+      ).toFixed(0)}% recent trend).`,
+    );
+  }
+
+  if (avgFdr3 > 0 && avgFdr3 <= 2.7) {
+    reasons.push(`Strong immediate fixture run: average FDR ${avgFdr3.toFixed(1)} over 3 GWs.`);
+  } else if (avgFdr6 > 0 && avgFdr6 <= 3.0) {
+    reasons.push(`Good six-Gameweek runway: average FDR ${avgFdr6.toFixed(1)}.`);
+  }
+
+  if (bestWindow.index > 0) {
+    reasons.push(
+      `Best 3-GW window starts ${bestWindow.startName}; this is a timing opportunity, not necessarily a buy-now call.`,
+    );
+  }
+
+  if (player.selectedBy < 10 && player.assistantScore > 0) {
+    reasons.push(
+      `Low ownership (${player.selectedBy.toFixed(1)}%) gives upside if the football case continues to hold.`,
+    );
+  }
+
+  if (player.startReliability >= 0.95) {
+    reasons.push("Strong starting reliability in the current sample.");
+  }
+
+  return reasons.slice(0, 4);
+}
+
+function scoutRisks(
+  player: RankedPlayer,
+  process: TeamProcess | undefined,
+  horizon: ScoutHorizonPoint[],
+) {
+  const risks: string[] = [];
+  const first = horizon[0];
+
+  if (player.availability < 100) {
+    risks.push(
+      `Availability is ${player.availability}%; recheck official news before acting.`,
+    );
+  }
+  if (player.startReliability < 0.9) {
+    risks.push("Minutes/start security is not yet strong enough to treat as locked.");
+  }
+  if (first && first.difficulty >= 4) {
+    risks.push(
+      `Immediate fixture is difficult (${first.opponent ?? "opponent"}, FDR ${first.difficulty}).`,
+    );
+  }
+  if ((process?.sourceConfidence ?? 1) < 0.7) {
+    risks.push("Team-process source confidence is below Footy's preferred level.");
+  }
+  if (player.minutes < 270) {
+    risks.push("Player per-90 data is still a small sample and is being regressed.");
+  }
+  if (!risks.length) {
+    risks.push("No major current blocker; still re-run close to deadline for news and role changes.");
+  }
+
+  return risks.slice(0, 3);
+}
+
+export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> {
+  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
+    footyProcesses(),
+  ]);
+
+  let bootstrap: Bootstrap | null = null;
+  let fixtures: Fixture[] | null = null;
+  let freshness: "LIVE_FPL" | "CACHED_FALLBACK" = "LIVE_FPL";
+  let dataRetrievedAt = new Date().toISOString();
+
+  try {
+    const direct = await Promise.all([
+      fplFetch<Bootstrap>("bootstrap-static/", 0),
+      fplFetch<Fixture[]>("fixtures/", 0),
+    ]);
+    bootstrap = direct[0];
+    fixtures = direct[1];
+  } catch {
+    bootstrap = bootstrapSnapshot?.payload ?? null;
+    fixtures = fixturesSnapshot?.payload ?? null;
+    freshness = "CACHED_FALLBACK";
+    dataRetrievedAt =
+      bootstrapSnapshot?.retrieved_at ??
+      fixturesSnapshot?.retrieved_at ??
+      dataRetrievedAt;
+  }
+
+  if (!bootstrap || !fixtures) {
+    throw new Error("Scout intelligence is temporarily unavailable.");
+  }
+
+  const { current, next } = currentAndNext(bootstrap.events);
+  const upcomingEvents = bootstrap.events
+    .filter((event) => next && event.id >= next.id && !event.finished)
+    .sort((a, b) => a.id - b.id)
+    .slice(0, 8);
+
+  const rankings = upcomingEvents.map((event) => ({
+    event,
+    players: rankPlayers(
+      bootstrap!,
+      fixtures!,
+      event.id,
+      process,
+      false,
+      true,
+    ),
+  }));
+  const maps = rankings.map(({ event, players }) => ({
+    event,
+    byId: new Map(players.map((player) => [player.id, player])),
+  }));
+
+  const currentPlayers =
+    rankings[0]?.players ??
+    rankPlayers(
+      bootstrap,
+      fixtures,
+      next?.id ?? current?.id ?? null,
+      process,
+      false,
+      true,
+    );
+
+  const elementById = new Map(bootstrap.elements.map((item) => [item.id, item]));
+
+  const profiles: ScoutPlayerProfile[] = currentPlayers.map((basePlayer) => {
+    const teamId = elementById.get(basePlayer.id)?.team ?? 0;
+    const horizon = maps.map(({ event, byId }) => {
+      const ranked = byId.get(basePlayer.id) ?? basePlayer;
+      const fixture = fixturesForTeam(teamId, event.id, fixtures!)[0];
+      const isHome = fixture ? fixture.team_h === teamId : false;
+      const opponentId = fixture
+        ? isHome
+          ? fixture.team_a
+          : fixture.team_h
+        : null;
+      const opponentTeam = opponentId
+        ? bootstrap!.teams.find((team) => team.id === opponentId)
+        : null;
+
+      return {
+        eventId: event.id,
+        name: event.name,
+        opponent: ranked.opponent,
+        opponentName: opponentTeam?.name ?? ranked.opponentName ?? null,
+        homeAway: fixture ? (isHome ? "H" : "A") : "—",
+        difficulty: ranked.fixtureDifficulty,
+        score: ranked.assistantScore,
+        fixtureFactor: ranked.fixtureFactor,
+        processFactor: ranked.processFactor,
+      } satisfies ScoutHorizonPoint;
+    });
+
+    const score3 = average(horizon.slice(0, 3).map((item) => item.score));
+    const score6 = average(horizon.slice(0, 6).map((item) => item.score));
+    const score8 = average(horizon.slice(0, 8).map((item) => item.score));
+    const bestWindow = bestRollingWindow(horizon, 3);
+    const processRow = process.get(canonicalTeam(basePlayer.teamName));
+    const firstDifficulty = horizon[0]?.difficulty ?? 5;
+
+    let status: ScoutPlayerProfile["status"] = "WATCH";
+    if (
+      basePlayer.availability >= 75 &&
+      basePlayer.startReliability >= 0.9 &&
+      bestWindow.index === 0 &&
+      firstDifficulty <= 3 &&
+      score3 >= score6 * 0.94
+    ) {
+      status = "BUY_NOW";
+    } else if (bestWindow.index >= 3) {
+      status = "FUTURE_TARGET";
+    }
+
+    return {
+      player: basePlayer,
+      horizon,
+      score3,
+      score6,
+      score8,
+      bestWindow,
+      status,
+      reasons: scoutReasons(basePlayer, processRow, horizon, bestWindow),
+      risks: scoutRisks(basePlayer, processRow, horizon),
+    };
+  });
+
+  const pickScore = (profile: ScoutPlayerProfile) =>
+    profile.bestWindow.score * 0.38 +
+    profile.score6 * 0.34 +
+    profile.score8 * 0.14 +
+    profile.player.xgiPer90 * 1.35 +
+    profile.player.valueScore * 0.22;
+
+  const picks = profiles
+    .filter(
+      (profile) =>
+        profile.player.availability >= 75 &&
+        profile.player.startReliability >= 0.76 &&
+        profile.horizon.some((item) => item.score > 0),
+    )
+    .sort((a, b) => pickScore(b) - pickScore(a))
+    .slice(0, 24);
+
+  const profileByTeam = new Map<string, ScoutPlayerProfile[]>();
+  for (const profile of profiles) {
+    const group = profileByTeam.get(profile.player.teamName) ?? [];
+    group.push(profile);
+    profileByTeam.set(profile.player.teamName, group);
+  }
+
+  const teams: ScoutTeamProfile[] = bootstrap.teams.map((team) => {
+    const teamFixtures = upcomingEvents
+      .map((event) => {
+        const fixture = fixturesForTeam(team.id, event.id, fixtures!)[0];
+        if (!fixture) return null;
+        const isHome = fixture.team_h === team.id;
+        const opponentId = isHome ? fixture.team_a : fixture.team_h;
+        const opponent = bootstrap!.teams.find((item) => item.id === opponentId);
+        return {
+          eventId: event.id,
+          name: event.name,
+          opponent: opponent?.name ?? "—",
+          opponentShort: opponent?.short_name ?? "—",
+          homeAway: isHome ? ("H" as const) : ("A" as const),
+          difficulty: isHome
+            ? fixture.team_h_difficulty
+            : fixture.team_a_difficulty,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          eventId: number;
+          name: string;
+          opponent: string;
+          opponentShort: string;
+          homeAway: "H" | "A";
+          difficulty: number;
+        } => Boolean(item),
+      );
+
+    const averageDifficulty = average(
+      teamFixtures.slice(0, 6).map((item) => item.difficulty),
+    );
+    const processRow = process.get(canonicalTeam(team.name)) ?? null;
+    const teamPlayers = [...(profileByTeam.get(team.name) ?? [])]
+      .sort((a, b) => b.score6 - a.score6)
+      .slice(0, 5)
+      .map((profile) => ({
+        id: profile.player.id,
+        name: profile.player.name,
+        position: profile.player.position,
+        price: profile.player.price,
+        score6: profile.score6,
+        status: profile.status,
+      }));
+
+    let outlook: ScoutTeamProfile["outlook"] = "MIXED";
+    if (averageDifficulty > 0 && averageDifficulty <= 2.6) {
+      outlook = "STRONG RUN";
+    } else if (averageDifficulty > 0 && averageDifficulty <= 3.1) {
+      outlook = "GOOD RUN";
+    } else if (averageDifficulty >= 3.8) {
+      outlook = "TOUGH RUN";
+    }
+
+    return {
+      teamId: team.id,
+      team: team.name,
+      shortName: team.short_name,
+      process: processRow,
+      outlook,
+      averageDifficulty,
+      fixtures: teamFixtures,
+      topPlayers: teamPlayers,
+    };
+  });
+
+  return {
+    currentEvent: current,
+    nextEvent: next,
+    dataRetrievedAt,
+    freshness,
+    horizonGameweeks: upcomingEvents.length,
+    picks,
+    players: profiles.sort((a, b) => b.score6 - a.score6),
+    teams: teams.sort((a, b) => {
+      const aStrength =
+        Math.max(a.process?.attackIndex ?? 1, a.process?.defenceIndex ?? 1) -
+        a.averageDifficulty * 0.03;
+      const bStrength =
+        Math.max(b.process?.attackIndex ?? 1, b.process?.defenceIndex ?? 1) -
+        b.averageDifficulty * 0.03;
+      return bStrength - aStrength;
+    }),
+  };
+}
+
 type EntryHistoryGameweek = {
   event: number;
   points: number;
