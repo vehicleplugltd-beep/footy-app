@@ -33,6 +33,9 @@ class FPLCoreInsightsSource:
     def teams(self, gameweek: int) -> pd.DataFrame:
         return self._csv(gameweek, "teams.csv")
 
+    def players(self, gameweek: int) -> pd.DataFrame:
+        return self._csv(gameweek, "players.csv")
+
     def player_match_stats(self, gameweek: int) -> pd.DataFrame:
         return self._csv(gameweek, "playermatchstats.csv")
 

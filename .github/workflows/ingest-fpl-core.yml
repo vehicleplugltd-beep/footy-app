@@ -10,7 +10,9 @@ on:
       - "src/footy_data/identity.py"
       - "src/footy_data/verification.py"
       - "src/footy_data/storage.py"
+      - "src/footy_data/consensus.py"
       - "src/footy_data/cli.py"
+      - "sql/schema.sql"
   schedule:
     # Upstream advertises twice-daily refreshes at 07:30 and 17:30 UTC.
     - cron: "15 8,18 * * *"
@@ -28,7 +30,7 @@ concurrency:
 jobs:
   verify-ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

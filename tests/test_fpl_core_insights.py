@@ -2,7 +2,10 @@ import pandas as pd
 
 from footy_data.normalizers.fpl_core_insights import (
     normalise_fpl_core_matches,
+    normalise_fpl_core_player_match_stats,
     reconcile_fpl_core_to_footy,
+    attach_fpl_core_player_match_ids,
+    enrich_fpl_core_team_rows_from_players,
 )
 
 
@@ -71,3 +74,85 @@ def test_fpl_core_enrichment_does_not_replace_designated_xg():
     reconciled, rate = reconcile_fpl_core_to_footy(frame, footy)
     assert rate == 1.0
     assert set(reconciled["match_id"]) == {"understat-abc"}
+
+
+
+def test_player_match_enrichment_promotes_only_supported_team_metrics():
+    teams = pd.DataFrame([
+        {"code": 3, "id": 1, "name": "Arsenal"},
+        {"code": 36, "id": 5, "name": "Brighton"},
+    ])
+    players = pd.DataFrame([
+        {
+            "player_code": 208706,
+            "player_id": 12,
+            "web_name": "Saka",
+            "team_code": 3,
+        },
+        {
+            "player_code": 116535,
+            "player_id": 1,
+            "web_name": "Raya",
+            "team_code": 3,
+        },
+    ])
+    matches = pd.DataFrame([
+        {
+            "gameweek": 5,
+            "kickoff_time": "2026-09-19T14:00:00Z",
+            "home_team": 5,
+            "away_team": 1,
+            "match_id": "provider-1",
+            "tournament": "prem",
+        }
+    ])
+    player_stats = pd.DataFrame([
+        {
+            "player_id": 12,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "xg": 0.4,
+            "xa": 0.3,
+            "xgot": 0.5,
+            "chances_created": 4,
+            "final_third_passes": 11,
+            "touches_opposition_box": 7,
+            "defensive_contributions": 2,
+        },
+        {
+            "player_id": 1,
+            "match_id": "provider-1",
+            "minutes_played": 90,
+            "xgot_faced": 1.2,
+            "goals_prevented": 0.2,
+            "saves": 4,
+        },
+    ])
+
+    player_rows = normalise_fpl_core_player_match_stats(
+        player_stats, players, teams, matches, season="2627"
+    )
+    assert len(player_rows) == 2
+    saka = player_rows[player_rows["player_id"] == 12].iloc[0]
+    assert saka["team"] == "Arsenal"
+    assert saka["opponent"] == "Brighton"
+    assert saka["xa"] == 0.3
+    assert saka["final_third_passes"] == 11
+
+    team_rows = pd.DataFrame([
+        {
+            "provider_match_id": "provider-1",
+            "match_id": "understat-abc",
+            "team": "Arsenal",
+        }
+    ])
+    linked = attach_fpl_core_player_match_ids(player_rows, team_rows)
+    assert set(linked["footy_match_id"]) == {"understat-abc"}
+
+    enriched = enrich_fpl_core_team_rows_from_players(team_rows, linked)
+    row = enriched.iloc[0]
+    assert row["xa"] == 0.3
+    assert row["key_passes"] == 4
+    assert row["final_third_passes"] == 11
+    assert row["xgot_faced"] == 1.2
+    assert row["goals_prevented"] == 0.2

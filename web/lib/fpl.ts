@@ -117,6 +117,14 @@ type MetricRow = {
   ppda: number | string | null;
   field_tilt: number | string | null;
   deep_completions: number | string | null;
+  crosses: number | string | null;
+  shots_inside_box: number | string | null;
+  xgot: number | string | null;
+  final_third_passes: number | string | null;
+  opposition_half_passes: number | string | null;
+  territory_proxy: number | string | null;
+  xgot_faced: number | string | null;
+  goals_prevented: number | string | null;
   source: string | null;
   retrieved_at: string | null;
   source_confidence?: number;
@@ -150,6 +158,14 @@ export type TeamProcess = {
     ppda: number;
     fieldTilt: number;
     deepCompletions: number;
+    crosses: number;
+    shotsInsideBox: number;
+    xgot: number;
+    finalThirdPasses: number;
+    oppositionHalfPasses: number;
+    territoryProxy: number;
+    xgotFaced: number;
+    goalsPrevented: number;
   };
 };
 
@@ -390,6 +406,7 @@ const SOURCE_RELIABILITY: Record<string, number> = {
   statsbomb: 0.98,
   "statsbomb-open": 0.96,
   understat: 0.96,
+  "fpl-core-insights": 0.88,
   fbref: 0.9,
   sofascore: 0.86,
   "football-data.co.uk": 0.82,
@@ -466,6 +483,14 @@ function canonicaliseMetricRows(rows: MetricRow[]) {
     "ppda",
     "field_tilt",
     "deep_completions",
+    "crosses",
+    "shots_inside_box",
+    "xgot",
+    "final_third_passes",
+    "opposition_half_passes",
+    "territory_proxy",
+    "xgot_faced",
+    "goals_prevented",
   ];
 
   return [...groups.values()].map((group) => {
@@ -554,6 +579,14 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
     "ppda",
     "field_tilt",
     "deep_completions",
+    "crosses",
+    "shots_inside_box",
+    "xgot",
+    "final_third_passes",
+    "opposition_half_passes",
+    "territory_proxy",
+    "xgot_faced",
+    "goals_prevented",
   ] as const;
 
   const league: Record<string, number> = {};
@@ -619,29 +652,35 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
     };
 
     const attack = weightedComposite([
-      { field: "npxg", value: ratio("npxg"), weight: 0.24 },
-      { field: "xg", value: ratio("xg"), weight: 0.18 },
-      { field: "shots_on_target", value: ratio("shots_on_target"), weight: 0.12 },
-      { field: "big_chances", value: ratio("big_chances"), weight: 0.10 },
-      { field: "box_touches", value: ratio("box_touches"), weight: 0.08 },
-      { field: "xa", value: ratio("xa"), weight: 0.08 },
+      { field: "npxg", value: ratio("npxg"), weight: 0.20 },
+      { field: "xg", value: ratio("xg"), weight: 0.15 },
+      { field: "shots_on_target", value: ratio("shots_on_target"), weight: 0.10 },
+      { field: "big_chances", value: ratio("big_chances"), weight: 0.09 },
+      { field: "box_touches", value: ratio("box_touches"), weight: 0.07 },
+      { field: "xa", value: ratio("xa"), weight: 0.07 },
       { field: "key_passes", value: ratio("key_passes"), weight: 0.05 },
-      { field: "shots", value: ratio("shots"), weight: 0.05 },
+      { field: "shots_inside_box", value: ratio("shots_inside_box"), weight: 0.05 },
+      { field: "shots", value: ratio("shots"), weight: 0.04 },
       { field: "set_piece_xg", value: ratio("set_piece_xg"), weight: 0.04 },
-      { field: "deep_completions", value: ratio("deep_completions"), weight: 0.03 },
-      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.02 },
-      { field: "ppda", value: inverseRatio("ppda"), weight: 0.01 },
+      { field: "deep_completions", value: ratio("deep_completions"), weight: 0.04 },
+      { field: "final_third_passes", value: ratio("final_third_passes"), weight: 0.03 },
+      { field: "territory_proxy", value: ratio("territory_proxy"), weight: 0.025 },
+      { field: "xgot", value: ratio("xgot"), weight: 0.025 },
+      { field: "ppda", value: inverseRatio("ppda"), weight: 0.02 },
+      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.01 },
     ]);
 
     const defence = weightedComposite([
-      { field: "npxga", value: inverseRatio("npxga"), weight: 0.30 },
-      { field: "xga", value: inverseRatio("xga"), weight: 0.22 },
-      { field: "big_chances_conceded", value: inverseRatio("big_chances_conceded"), weight: 0.14 },
-      { field: "sot_conceded", value: inverseRatio("sot_conceded"), weight: 0.12 },
-      { field: "shots_conceded", value: inverseRatio("shots_conceded"), weight: 0.10 },
-      { field: "set_piece_xga", value: inverseRatio("set_piece_xga"), weight: 0.07 },
-      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.03 },
-      { field: "possession", value: ratio("possession"), weight: 0.02 },
+      { field: "npxga", value: inverseRatio("npxga"), weight: 0.27 },
+      { field: "xga", value: inverseRatio("xga"), weight: 0.20 },
+      { field: "big_chances_conceded", value: inverseRatio("big_chances_conceded"), weight: 0.13 },
+      { field: "sot_conceded", value: inverseRatio("sot_conceded"), weight: 0.10 },
+      { field: "shots_conceded", value: inverseRatio("shots_conceded"), weight: 0.08 },
+      { field: "xgot_faced", value: inverseRatio("xgot_faced"), weight: 0.07 },
+      { field: "set_piece_xga", value: inverseRatio("set_piece_xga"), weight: 0.06 },
+      { field: "territory_proxy", value: ratio("territory_proxy"), weight: 0.04 },
+      { field: "possession", value: ratio("possession"), weight: 0.025 },
+      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.025 },
     ]);
 
     // Recent form is useful, but three-match swings are noisy. Regress the
@@ -698,6 +737,14 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
         ppda: avg("ppda"),
         fieldTilt: avg("field_tilt"),
         deepCompletions: avg("deep_completions"),
+        crosses: avg("crosses"),
+        shotsInsideBox: avg("shots_inside_box"),
+        xgot: avg("xgot"),
+        finalThirdPasses: avg("final_third_passes"),
+        oppositionHalfPasses: avg("opposition_half_passes"),
+        territoryProxy: avg("territory_proxy"),
+        xgotFaced: avg("xgot_faced"),
+        goalsPrevented: avg("goals_prevented"),
       },
     });
   }
@@ -711,9 +758,188 @@ async function footyProcesses() {
   if (!matches.length) return new Map<string, TeamProcess>();
   const ids = matches.map((match) => `"${match.match_id}"`).join(",");
   const metrics = await supabaseRest<MetricRow>(
-    `footy_match_team_metrics?select=match_id,team,opponent,xg,npxg,xga,npxga,shots,shots_on_target,shots_conceded,sot_conceded,big_chances,big_chances_conceded,box_touches,key_passes,xa,set_piece_xg,set_piece_xga,possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,source,retrieved_at&verified=eq.true&match_id=in.(${encodeURIComponent(ids)})`,
+    `footy_match_team_metrics?select=match_id,team,opponent,xg,npxg,xga,npxga,shots,shots_on_target,shots_conceded,sot_conceded,big_chances,big_chances_conceded,box_touches,key_passes,xa,set_piece_xg,set_piece_xga,possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,final_third_passes,opposition_half_passes,territory_proxy,xgot_faced,goals_prevented,source,retrieved_at&verified=eq.true&match_id=in.(${encodeURIComponent(ids)})`,
   );
   return buildTeamProcess(matches, metrics);
+}
+
+
+export type PlayerProcessEvidence = {
+  premierLeagueMinutes: number;
+  premierLeagueMatches: number;
+  recentXgPer90: number;
+  recentXaPer90: number;
+  recentXgotPer90: number;
+  chancesCreatedPer90: number;
+  boxTouchesPer90: number;
+  finalThirdPassesPer90: number;
+  defensiveContributionsPer90: number;
+  xgotFacedPer90: number;
+  goalsPreventedPer90: number;
+  attackTrend: number;
+  minutes7: number;
+  minutes14: number;
+  nonLeagueMinutes14: number;
+  matches14: number;
+  daysRest: number | null;
+  loadRisk: number;
+  sourceConfidence: number;
+};
+
+type PlayerMetricRow = {
+  player_id: number;
+  competition: string;
+  kickoff_at: string | null;
+  minutes: number | string | null;
+  xg: number | string | null;
+  xa: number | string | null;
+  xgot: number | string | null;
+  chances_created: number | string | null;
+  box_touches: number | string | null;
+  final_third_passes: number | string | null;
+  defensive_contributions: number | string | null;
+  xgot_faced: number | string | null;
+  goals_prevented: number | string | null;
+  verification_status: string | null;
+};
+
+function playerRate90(
+  rows: PlayerMetricRow[],
+  field: keyof PlayerMetricRow,
+) {
+  let numerator = 0;
+  let minutes = 0;
+  for (const row of rows) {
+    const raw = row[field];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const value = num(raw as number | string | null);
+    const played = num(row.minutes);
+    if (played <= 0) continue;
+    numerator += value;
+    minutes += played;
+  }
+  return minutes > 0 ? (numerator * 90) / minutes : 0;
+}
+
+function playerMinutesInWindow(
+  rows: PlayerMetricRow[],
+  days: number,
+  nonLeagueOnly = false,
+) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return rows.reduce((sum, row) => {
+    const time = row.kickoff_at ? new Date(row.kickoff_at).getTime() : NaN;
+    if (!Number.isFinite(time) || time < cutoff || time > Date.now()) return sum;
+    if (nonLeagueOnly && String(row.competition).toLowerCase() === "prem") {
+      return sum;
+    }
+    return sum + Math.max(0, num(row.minutes));
+  }, 0);
+}
+
+async function footyPlayerProcesses() {
+  const rows = await supabaseRest<PlayerMetricRow>(
+    `footy_player_match_metrics?select=player_id,competition,kickoff_at,minutes,xg,xa,xgot,chances_created,box_touches,final_third_passes,defensive_contributions,xgot_faced,goals_prevented,verification_status&season=eq.${CURRENT_FOOTY_SEASON}&verified=eq.true&order=kickoff_at.asc`,
+  );
+  const byPlayer = new Map<number, PlayerMetricRow[]>();
+  for (const row of rows) {
+    const id = Number(row.player_id);
+    if (!Number.isFinite(id)) continue;
+    const group = byPlayer.get(id) ?? [];
+    group.push(row);
+    byPlayer.set(id, group);
+  }
+
+  const output = new Map<number, PlayerProcessEvidence>();
+  for (const [playerId, allRows] of byPlayer) {
+    const played = allRows.filter((row) => num(row.minutes) > 0);
+    const leagueRows = played.filter(
+      (row) => String(row.competition).toLowerCase() === "prem",
+    );
+    const recent = leagueRows.slice(-5);
+    const latestThree = leagueRows.slice(-3);
+    const premierLeagueMinutes = leagueRows.reduce(
+      (sum, row) => sum + Math.max(0, num(row.minutes)),
+      0,
+    );
+    const baseXgi =
+      playerRate90(recent, "xg") + playerRate90(recent, "xa");
+    const recentXgi =
+      playerRate90(latestThree, "xg") + playerRate90(latestThree, "xa");
+    const latestThreeMinutes = latestThree.reduce(
+      (sum, row) => sum + Math.max(0, num(row.minutes)),
+      0,
+    );
+    const trendReliability = clamp(latestThreeMinutes / 270, 0, 1) * 0.45;
+    const attackTrend =
+      baseXgi > 0
+        ? clamp((recentXgi / baseXgi - 1) * trendReliability, -0.25, 0.25)
+        : 0;
+
+    const minutes7 = playerMinutesInWindow(played, 7);
+    const minutes14 = playerMinutesInWindow(played, 14);
+    const nonLeagueMinutes14 = playerMinutesInWindow(played, 14, true);
+    const cutoff14 = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    const matches14 = played.filter((row) => {
+      const time = row.kickoff_at ? new Date(row.kickoff_at).getTime() : NaN;
+      return Number.isFinite(time) && time >= cutoff14 && time <= Date.now();
+    }).length;
+    const latestTime = played
+      .map((row) => (row.kickoff_at ? new Date(row.kickoff_at).getTime() : NaN))
+      .filter((value) => Number.isFinite(value) && value <= Date.now())
+      .sort((a, b) => b - a)[0];
+    const daysRest = Number.isFinite(latestTime)
+      ? Math.max(0, (Date.now() - latestTime) / (24 * 60 * 60 * 1000))
+      : null;
+
+    let loadRisk = 0;
+    if (minutes7 >= 180) loadRisk += 0.06;
+    else if (minutes7 >= 120) loadRisk += 0.04;
+    else if (minutes7 >= 90) loadRisk += 0.02;
+    if (nonLeagueMinutes14 >= 120) loadRisk += 0.035;
+    else if (nonLeagueMinutes14 >= 60) loadRisk += 0.02;
+    if (daysRest != null && daysRest < 4) loadRisk += 0.035;
+    else if (daysRest != null && daysRest < 5) loadRisk += 0.02;
+    loadRisk = clamp(loadRisk, 0, 0.12);
+
+    const passShare = leagueRows.length
+      ? leagueRows.filter((row) => row.verification_status === "PASS").length /
+        leagueRows.length
+      : 0;
+    const sourceConfidence = clamp(
+      0.48 +
+        Math.min(0.34, premierLeagueMinutes / 900 * 0.34) +
+        passShare * 0.14,
+      0.45,
+      0.96,
+    );
+
+    output.set(playerId, {
+      premierLeagueMinutes,
+      premierLeagueMatches: leagueRows.length,
+      recentXgPer90: playerRate90(recent, "xg"),
+      recentXaPer90: playerRate90(recent, "xa"),
+      recentXgotPer90: playerRate90(recent, "xgot"),
+      chancesCreatedPer90: playerRate90(recent, "chances_created"),
+      boxTouchesPer90: playerRate90(recent, "box_touches"),
+      finalThirdPassesPer90: playerRate90(recent, "final_third_passes"),
+      defensiveContributionsPer90: playerRate90(
+        recent,
+        "defensive_contributions",
+      ),
+      xgotFacedPer90: playerRate90(recent, "xgot_faced"),
+      goalsPreventedPer90: playerRate90(recent, "goals_prevented"),
+      attackTrend,
+      minutes7,
+      minutes14,
+      nonLeagueMinutes14,
+      matches14,
+      daysRest,
+      loadRisk,
+      sourceConfidence,
+    });
+  }
+  return output;
 }
 
 function fixturesForTeam(
@@ -1761,14 +1987,17 @@ export async function getLeagueManagerEdgeAnalysis(
         "Starts, minutes, availability and official player news",
         "Fixture difficulty and opponent-adjusted team process",
         "Team xG/xGA, shots/SOT, shots conceded",
-        "Set-piece xG/xGA, PPDA and deep completions",
+        "Set-piece xG/xGA, PPDA, deep completions and territory/progression proxies",
+        "Verified xA/chances-created, xGOT and goalkeeper goals-prevented enrichment when available",
+        "Player-match process trends plus cup/Europe workload and short-rest signals",
         "Recent attack/defence process trend with regression",
         "Mini-league ownership, points gaps, chips, hits and estimated free transfers",
       ],
       notMeasured: [
         "Player chemistry",
         "Confirmed tactical role changes without reliable public data",
-        "Field tilt / defensive line height when not present in the data feed",
+        "True field tilt and defensive line height when not present in a verified feed",
+        "Transition/rest-defence events and defensive errors until a trustworthy event feed is configured",
         "Unconfirmed line-ups before official team news",
       ],
     },
@@ -1901,6 +2130,8 @@ export type ScoutPlayerProfile = {
   reasons: string[];
   risks: string[];
   coreSources: string[];
+  evidence: PlayerProcessEvidence | null;
+  decisionConfidence: "HIGH" | "MEDIUM" | "LOW";
 };
 
 export type ScoutTeamProfile = {
@@ -2250,6 +2481,7 @@ function scoutReasons(
   process: TeamProcess | undefined,
   horizon: ScoutHorizonPoint[],
   bestWindow: ScoutPlayerProfile["bestWindow"],
+  evidence: PlayerProcessEvidence | null,
 ) {
   const reasons: string[] = [];
   const firstThree = horizon.slice(0, 3);
@@ -2308,6 +2540,24 @@ function scoutReasons(
     );
   }
 
+  if (evidence && evidence.premierLeagueMinutes >= 180) {
+    if (evidence.attackTrend >= 0.05) {
+      reasons.push(
+        `Recent player process is improving (${(evidence.attackTrend * 100).toFixed(0)}% regressed trend).`,
+      );
+    }
+    if (evidence.chancesCreatedPer90 >= 2) {
+      reasons.push(
+        `Chance creation is holding: ${evidence.chancesCreatedPer90.toFixed(1)} chances created/90 recently.`,
+      );
+    }
+    if (player.position === "GKP" && evidence.goalsPreventedPer90 >= 0.10) {
+      reasons.push(
+        `Goalkeeper shot-stopping is positive: +${evidence.goalsPreventedPer90.toFixed(2)} goals prevented/90 in the recent sample.`,
+      );
+    }
+  }
+
   if (player.startReliability >= 0.95) {
     reasons.push("Strong starting reliability in the current sample.");
   }
@@ -2319,6 +2569,7 @@ function scoutRisks(
   player: RankedPlayer,
   process: TeamProcess | undefined,
   horizon: ScoutHorizonPoint[],
+  evidence: PlayerProcessEvidence | null,
 ) {
   const risks: string[] = [];
   const first = horizon[0];
@@ -2342,6 +2593,23 @@ function scoutRisks(
   if (player.minutes < 270) {
     risks.push("Player per-90 data is still a small sample and is being regressed.");
   }
+  if (evidence?.loadRisk != null && evidence.loadRisk >= 0.06) {
+    risks.push(
+      `Congestion/rotation watch: ${evidence.minutes7.toFixed(0)} minutes in 7 days, including ${evidence.nonLeagueMinutes14.toFixed(0)} non-league minutes in 14 days.`,
+    );
+  }
+  if (
+    evidence &&
+    evidence.premierLeagueMinutes >= 180 &&
+    evidence.attackTrend <= -0.08
+  ) {
+    risks.push(
+      `Recent attacking process is cooling (${(evidence.attackTrend * 100).toFixed(0)}% regressed trend).`,
+    );
+  }
+  if (evidence && evidence.sourceConfidence < 0.62) {
+    risks.push("Player-match evidence is still too thin for a high-confidence role call.");
+  }
   if (!risks.length) {
     risks.push("No major current blocker; still re-run close to deadline for news and role changes.");
   }
@@ -2350,11 +2618,13 @@ function scoutRisks(
 }
 
 export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> {
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
-    cachedFpl<Bootstrap>("bootstrap-static"),
-    cachedFpl<Fixture[]>("fixtures"),
-    footyProcesses(),
-  ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process, playerProcesses] =
+    await Promise.all([
+      cachedFpl<Bootstrap>("bootstrap-static"),
+      cachedFpl<Fixture[]>("fixtures"),
+      footyProcesses(),
+      footyPlayerProcesses(),
+    ]);
 
   let bootstrap: Bootstrap | null = null;
   let fixtures: Fixture[] | null = null;
@@ -2450,6 +2720,7 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     const score8 = average(horizon.slice(0, 8).map((item) => item.score));
     const bestWindow = bestRollingWindow(horizon, 3);
     const processRow = process.get(canonicalTeam(basePlayer.teamName));
+    const playerEvidence = playerProcesses.get(basePlayer.id) ?? null;
     const firstDifficulty = horizon[0]?.difficulty ?? 5;
 
     let status: ScoutPlayerProfile["status"] = "WATCH";
@@ -2464,8 +2735,22 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
     } else if (bestWindow.index >= 3) {
       status = "FUTURE_TARGET";
     }
+    if (status === "BUY_NOW" && (playerEvidence?.loadRisk ?? 0) >= 0.08) {
+      status = "WATCH";
+    }
 
     const base = calculateBaseXP(basePlayer, process, null);
+    const decisionConfidence: ScoutPlayerProfile["decisionConfidence"] =
+      basePlayer.minutes < 180 ||
+      (playerEvidence && playerEvidence.sourceConfidence < 0.62)
+        ? "LOW"
+        : basePlayer.availability >= 100 &&
+            basePlayer.startReliability >= 0.9 &&
+            (processRow?.sourceConfidence ?? 0.7) >= 0.7 &&
+            playerEvidence != null &&
+            playerEvidence.sourceConfidence >= 0.75
+          ? "HIGH"
+          : "MEDIUM";
 
     return {
       player: basePlayer,
@@ -2485,12 +2770,23 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         volumeFloorPass: null,
         undervalued: false,
       },
-      reasons: scoutReasons(basePlayer, processRow, horizon, bestWindow),
-      risks: scoutRisks(basePlayer, processRow, horizon),
+      reasons: scoutReasons(
+        basePlayer,
+        processRow,
+        horizon,
+        bestWindow,
+        playerEvidence,
+      ),
+      risks: scoutRisks(basePlayer, processRow, horizon, playerEvidence),
       coreSources: [
         "Official FPL live player/market data",
-        "Footy canonical team-process layer (currently Understat production feed)",
+        "Footy canonical team-process layer (Understat + verified FPL-Core enrichment)",
+        ...(playerEvidence
+          ? ["FPL-Core player-match process and multi-competition workload"]
+          : []),
       ],
+      evidence: playerEvidence,
+      decisionConfidence,
     };
   });
 
@@ -2568,11 +2864,20 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
       epaByPosition.get(profile.player.position) ?? [],
       0.65,
     );
+    const processSupport =
+      !profile.evidence ||
+      profile.evidence.premierLeagueMinutes < 180 ||
+      profile.evidence.attackTrend > -0.12;
+    const workloadAcceptable =
+      !profile.evidence || profile.evidence.loadRisk < 0.10;
     profile.epa.undervalued =
       profile.epa.underperformanceGap > 0.20 &&
       profile.epa.epa > 0.30 &&
       profile.epa.epaPerMillion >= threshold &&
-      profile.epa.volumeFloorPass === true;
+      profile.epa.volumeFloorPass === true &&
+      processSupport &&
+      workloadAcceptable &&
+      profile.decisionConfidence !== "LOW";
   });
 
   const picks = shortlist.slice(0, 24);
@@ -2684,7 +2989,13 @@ export async function getScoutIntelligence(): Promise<ScoutIntelligencePayload> 
         source: "Understat via Footy canonical layer",
         status: "ACTIVE",
         provides:
-          "Production team process: xG/npxG, xGA/npxGA, shots/SOT, set pieces, PPDA and deep completions.",
+          "Designated team xG/npxG and xGA/npxGA source plus PPDA, deep completions and shot-level set-piece xG.",
+      },
+      {
+        source: "FPL-Core-Insights",
+        status: "ACTIVE",
+        provides:
+          "Verified team enrichment plus player-match xA/xGOT, chances created, box/territory progression, goalkeeper post-shot data and cup/Europe workload.",
       },
       {
         source: "StatMuse",
