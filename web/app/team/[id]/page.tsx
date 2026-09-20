@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { TeamPitch } from "@/components/team-pitch";
 import { NextMoveCommand } from "@/components/next-move-command";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
@@ -56,6 +57,10 @@ export default async function TeamPage({
   const leagues = team.miniLeagues.length
     ? team.miniLeagues
     : team.otherClassicLeagues.slice(0, 12);
+  if (!leagueId && leagues.length === 1) {
+    redirect(`/team/${team.id}?league=${leagues[0].id}#today`);
+  }
+
   const selectedLeague =
     leagueId && Number.isInteger(leagueId)
       ? leagues.find((league) => league.id === leagueId) ?? null
@@ -233,6 +238,14 @@ export default async function TeamPage({
           teamName={team.teamName}
         />
       </section>
+
+      <nav className="mobile-workspace-nav" aria-label="Mobile Footy navigation">
+        <a href="#today"><span>●</span><b>Today</b></a>
+        <a href="#squad"><span>▦</span><b>Squad</b></a>
+        <a href="#leagues"><span>↕</span><b>League</b></a>
+        <a href="#build-test"><span>＋</span><b>Build</b></a>
+        <Link href="/results"><span>✓</span><b>Receipts</b></Link>
+      </nav>
 
       <footer className="shell footer">
         <p>
