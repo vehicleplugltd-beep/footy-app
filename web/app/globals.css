@@ -10596,3 +10596,338 @@ body.intel-open {
     grid-template-columns: 1fr repeat(3,.55fr);
   }
 }
+
+
+/* Decision-first Team Room — dense-data mobile hierarchy */
+.team-room-status-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 12px;
+  color: #7a828d;
+  font-size: 7px;
+  font-weight: 750;
+}
+
+.team-room-status-row > span + span {
+  padding-left: 9px;
+  border-left: 1px solid #e5e8ec;
+}
+
+.team-room-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #087b56;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.team-room-live-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(8,123,86,.09);
+}
+
+.team-room-command-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.18fr) minmax(300px,.82fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.team-room-command-grid > .team-room-block {
+  margin: 0;
+  min-width: 0;
+}
+
+.team-room-command-card,
+.team-room-pressure-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.team-room-command-card {
+  border-color: #cde7dc;
+  background:
+    linear-gradient(135deg, rgba(16,185,129,.055), transparent 46%),
+    #fff;
+}
+
+.team-room-command-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #0b8b61;
+}
+
+.team-room-pressure-card {
+  background:
+    linear-gradient(135deg, rgba(17,19,24,.025), transparent 52%),
+    #fff;
+}
+
+.team-room-pitch-disclosure {
+  margin-top: 12px;
+}
+
+.team-room-pitch-disclosure > summary {
+  display: none;
+}
+
+.team-room-pitch-disclosure > .team-room-pitch {
+  display: block;
+}
+
+.team-room-player-row {
+  transition: background-color .16s ease, transform .16s ease;
+}
+
+.team-room-player-row:hover {
+  background: #fafbfc;
+}
+
+@media (max-width: 700px) {
+  .team-room-page {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .team-room-page .shell {
+    width: min(100% - 18px, 1180px);
+  }
+
+  .team-room-nav {
+    min-height: 52px;
+  }
+
+  .team-room-nav .hq-nav-right {
+    gap: 12px;
+  }
+
+  .team-room-nav .hq-nav-right a {
+    font-size: 7px;
+  }
+
+  .team-room-header {
+    gap: 10px;
+    padding-top: 14px;
+    padding-bottom: 11px;
+  }
+
+  .team-room-header h1 {
+    font-size: 24px;
+  }
+
+  .team-room-context {
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .team-room-context > div {
+    min-width: 0;
+  }
+
+  .team-room-context strong {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .team-room-dashboard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .team-room-quip {
+    margin-bottom: 8px;
+    font-size: 9px;
+  }
+
+  .team-room-status-row {
+    gap: 7px;
+    overflow-x: auto;
+    margin-bottom: 10px;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .team-room-status-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .team-room-command-grid {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    order: 0;
+  }
+
+  .team-room-command-grid .team-room-block {
+    padding: 13px;
+    border-radius: 13px;
+  }
+
+  .team-room-command-card .team-room-block-head h2 {
+    font-size: 20px;
+    line-height: 1.08;
+  }
+
+  .team-room-suggestion {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .team-room-suggestion > div {
+    padding: 11px 0;
+  }
+
+  .team-room-suggestion > div + div {
+    border-top: 1px solid #e8ebef;
+    border-left: 0;
+  }
+
+  .team-room-primary {
+    min-height: 44px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .team-room-scoreboard {
+    display: grid;
+    grid-template-columns: repeat(4,minmax(118px,1fr));
+    gap: 7px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    margin-bottom: 10px;
+  }
+
+  .team-room-scoreboard::-webkit-scrollbar {
+    display: none;
+  }
+
+  .team-room-scoreboard > div {
+    scroll-snap-align: start;
+    min-width: 118px;
+    border: 1px solid #e6e9ed;
+    border-radius: 11px;
+    padding: 11px;
+    background: #fff;
+  }
+
+  .team-room-scoreboard > div + div {
+    border-left: 1px solid #e6e9ed;
+  }
+
+  .team-room-player-table {
+    overflow: hidden;
+  }
+
+  .team-room-player-row {
+    grid-template-columns: minmax(120px,1.5fr) repeat(3,minmax(55px,.7fr));
+    gap: 7px;
+    min-height: 58px;
+    padding: 9px 0;
+  }
+
+  .team-room-player-row > div:nth-child(5) {
+    display: none;
+  }
+
+  .team-room-player-name strong {
+    font-size: 10px;
+  }
+
+  .team-room-player-name small,
+  .team-room-player-row small {
+    font-size: 6px;
+  }
+
+  .team-room-player-row b {
+    font-size: 11px;
+  }
+
+  .team-room-pressure {
+    grid-template-columns: repeat(3,minmax(0,1fr));
+  }
+
+  .team-room-pressure strong {
+    font-size: 10px;
+  }
+
+  .team-room-standings {
+    max-height: 235px;
+    overflow-y: auto;
+  }
+
+  .team-room-pitch-disclosure {
+    border: 1px solid #e3e6ea;
+    border-radius: 13px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .team-room-pitch-disclosure > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 64px;
+    padding: 13px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .team-room-pitch-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .team-room-pitch-disclosure > summary span,
+  .team-room-pitch-disclosure > summary strong {
+    display: block;
+  }
+
+  .team-room-pitch-disclosure > summary span {
+    color: #0b8b61;
+    font-size: 6px;
+    font-weight: 900;
+    letter-spacing: .1em;
+  }
+
+  .team-room-pitch-disclosure > summary strong {
+    margin-top: 3px;
+    color: #15181d;
+    font-size: 14px;
+  }
+
+  .team-room-pitch-disclosure > summary small {
+    max-width: 155px;
+    color: #7b838e;
+    font-size: 7px;
+    line-height: 1.35;
+    text-align: right;
+  }
+
+  .team-room-pitch-disclosure[open] > summary {
+    border-bottom: 1px solid #eceef2;
+  }
+
+  .team-room-pitch-disclosure > .team-room-pitch {
+    padding: 12px;
+  }
+
+  .team-room-pitch-disclosure:not([open]) > .team-room-pitch {
+    display: none;
+  }
+}
+
+@media (min-width: 701px) {
+  .team-room-pitch-disclosure:not([open]) > .team-room-pitch {
+    display: block;
+  }
+}

@@ -296,112 +296,29 @@ export function TeamRoomDashboard({
 
       <blockquote className="footy-quip team-room-quip">{squadQuip}</blockquote>
 
-      <section className="team-room-scoreboard">
-        <div>
-          <span>SQUAD RATING</span>
-          <strong>{squadNow ?? "—"}</strong>
-          <small>
-            {squadNow != null ? ratingBand(squadNow) : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>6GW RATING</span>
-          <strong>{squadFuture ?? "—"}</strong>
-          <small>
-            {squadFuture != null
-              ? ratingBand(squadFuture)
-              : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>LEAGUE RANK</span>
-          <strong>#{leagueRank ?? "—"}</strong>
-          <small>{leagueName}</small>
-        </div>
-        <div>
-          <span>NEXT ACTION</span>
-          <strong>{transfer ? "MOVE" : "HOLD"}</strong>
-          <small>
-            {transfer
-              ? transfer.out.name +
-                " → " +
-                transfer.in.name
-              : "No move clears threshold"}
-          </small>
-        </div>
-      </section>
+      <div className="team-room-status-row" aria-label="Live data status">
+        <span className="team-room-live-pill">
+          <i />
+          {scout?.freshness === "LIVE_FPL" ? "LIVE FPL" : "FPL DATA"}
+        </span>
+        <span>
+          {scout?.dataRetrievedAt
+            ? "Updated " +
+              new Date(scout.dataRetrievedAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Loading live intelligence"}
+        </span>
+        <span>
+          {scout
+            ? scout.undervalued.length + " value flags in Scout"
+            : "Scanning player value"}
+        </span>
+      </div>
 
-      <section className="team-room-block">
-        <div className="team-room-block-head">
-          <div>
-            <span>SQUAD</span>
-            <h2>Current team + player ratings</h2>
-          </div>
-          <small>Now vs six-Gameweek outlook</small>
-        </div>
-
-        <div className="team-room-player-table">
-          {squadRatings.map(
-            ({ pick, profile, now, future }) => (
-              <button
-                type="button"
-                key={pick.id}
-                className="team-room-player-row"
-                onClick={() => {
-                  setSelectedTeam(null);
-                  setSelectedPlayer(profile);
-                }}
-                aria-label={"Open " + pick.name + " player profile"}
-              >
-                <div className="team-room-player-name">
-                  <strong>{pick.name}</strong>
-                  <small>
-                    {pick.team} · {pick.position} · £
-                    {pick.price.toFixed(1)}m
-                  </small>
-                </div>
-                <div>
-                  <span>Now</span>
-                  <b>{now}</b>
-                  <small>{ratingBand(now)}</small>
-                </div>
-                <div>
-                  <span>6GW</span>
-                  <b>{future}</b>
-                  <small>
-                    {profile.bestWindow.startName}–
-                    {profile.bestWindow.endName}
-                  </small>
-                </div>
-                <div>
-                  <span>EPA</span>
-                  <b>
-                    {profile.epa.epa >= 0 ? "+" : ""}
-                    {profile.epa.epa.toFixed(2)}
-                  </b>
-                  <small>
-                    {profile.epa.undervalued
-                      ? "Undervalued"
-                      : profile.player.selectedBy.toFixed(1) +
-                        "% owned"}
-                  </small>
-                </div>
-                <div>
-                  <span>Available</span>
-                  <b>{profile.player.availability}%</b>
-                  <small>
-                    {profile.player.news ||
-                      "No current blocker"}
-                  </small>
-                </div>
-              </button>
-            ),
-          )}
-        </div>
-      </section>
-
-      <section className="team-room-two-col">
-        <article className="team-room-block">
+      <section className="team-room-command-grid">
+        <article className="team-room-block team-room-command-card">
           <div className="team-room-block-head">
             <div>
               <span>FOOTY SUGGESTS</span>
@@ -492,7 +409,7 @@ export function TeamRoomDashboard({
           </Link>
         </article>
 
-        <article className="team-room-block">
+        <article className="team-room-block team-room-pressure-card">
           <div className="team-room-block-head">
             <div>
               <span>LEAGUE BATTLE</span>
@@ -549,6 +466,111 @@ export function TeamRoomDashboard({
             ))}
           </div>
         </article>
+      </section>
+
+
+      <section className="team-room-scoreboard">
+        <div>
+          <span>SQUAD RATING</span>
+          <strong>{squadNow ?? "—"}</strong>
+          <small>
+            {squadNow != null ? ratingBand(squadNow) : "Loading"}
+          </small>
+        </div>
+        <div>
+          <span>6GW RATING</span>
+          <strong>{squadFuture ?? "—"}</strong>
+          <small>
+            {squadFuture != null
+              ? ratingBand(squadFuture)
+              : "Loading"}
+          </small>
+        </div>
+        <div>
+          <span>LEAGUE RANK</span>
+          <strong>#{leagueRank ?? "—"}</strong>
+          <small>{leagueName}</small>
+        </div>
+        <div>
+          <span>NEXT ACTION</span>
+          <strong>{transfer ? "MOVE" : "HOLD"}</strong>
+          <small>
+            {transfer
+              ? transfer.out.name +
+                " → " +
+                transfer.in.name
+              : "No move clears threshold"}
+          </small>
+        </div>
+      </section>
+
+      <section className="team-room-block">
+        <div className="team-room-block-head">
+          <div>
+            <span>SQUAD</span>
+            <h2>Current team + player ratings</h2>
+          </div>
+          <small>Tap any player for EPA, fixtures, risks and source detail</small>
+        </div>
+
+        <div className="team-room-player-table">
+          {squadRatings.map(
+            ({ pick, profile, now, future }) => (
+              <button
+                type="button"
+                key={pick.id}
+                className="team-room-player-row"
+                onClick={() => {
+                  setSelectedTeam(null);
+                  setSelectedPlayer(profile);
+                }}
+                aria-label={"Open " + pick.name + " player profile"}
+              >
+                <div className="team-room-player-name">
+                  <strong>{pick.name}</strong>
+                  <small>
+                    {pick.team} · {pick.position} · £
+                    {pick.price.toFixed(1)}m
+                  </small>
+                </div>
+                <div>
+                  <span>Now</span>
+                  <b>{now}</b>
+                  <small>{ratingBand(now)}</small>
+                </div>
+                <div>
+                  <span>6GW</span>
+                  <b>{future}</b>
+                  <small>
+                    {profile.bestWindow.startName}–
+                    {profile.bestWindow.endName}
+                  </small>
+                </div>
+                <div>
+                  <span>EPA</span>
+                  <b>
+                    {profile.epa.epa >= 0 ? "+" : ""}
+                    {profile.epa.epa.toFixed(2)}
+                  </b>
+                  <small>
+                    {profile.epa.undervalued
+                      ? "Undervalued"
+                      : profile.player.selectedBy.toFixed(1) +
+                        "% owned"}
+                  </small>
+                </div>
+                <div>
+                  <span>Available</span>
+                  <b>{profile.player.availability}%</b>
+                  <small>
+                    {profile.player.news ||
+                      "No current blocker"}
+                  </small>
+                </div>
+              </button>
+            ),
+          )}
+        </div>
       </section>
 
       <section className="team-room-block">

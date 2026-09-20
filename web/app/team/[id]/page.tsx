@@ -131,7 +131,25 @@ export default async function TeamPage({
         </div>
       </header>
 
-      <section className="shell team-room-pitch">
+      <section className="shell">
+        <TeamRoomDashboard
+          teamId={team.id}
+          leagueId={selectedLeague.id}
+          leagueName={selectedLeague.name}
+          leagueRank={selectedLeague.entry_rank}
+          squad={team.squad}
+        />
+      </section>
+
+      <details className="shell team-room-pitch-disclosure">
+        <summary>
+          <div>
+            <span>SQUAD MAP</span>
+            <strong>View current squad</strong>
+          </div>
+          <small>Formation, captain, bench and availability →</small>
+        </summary>
+        <section className="team-room-pitch">
         <div className="team-room-block-head">
           <div>
             <span>CURRENT SQUAD</span>
@@ -148,17 +166,8 @@ export default async function TeamPage({
             Current public squad temporarily unavailable.
           </div>
         )}
-      </section>
-
-      <section className="shell">
-        <TeamRoomDashboard
-          teamId={team.id}
-          leagueId={selectedLeague.id}
-          leagueName={selectedLeague.name}
-          leagueRank={selectedLeague.entry_rank}
-          squad={team.squad}
-        />
-      </section>
+        </section>
+      </details>
 
       <footer className="shell footer minimal-footer">
         <p>Team Room combines squad quality with the league battle.</p>
