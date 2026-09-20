@@ -2088,3 +2088,223 @@ h1 {
     font-size: 26px;
   }
 }
+
+
+/* Live market interactions */
+.feed-tabs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.feed-tabs > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(7, 19, 13, .72);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 900;
+}
+.feed-tabs > a.active {
+  color: #06110c;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.feed-health {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--amber);
+  font-size: 10px;
+  font-weight: 800;
+}
+.feed-health.live {
+  color: var(--accent);
+}
+
+.live-bookmaker-prices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 9px;
+}
+.live-bookmaker-prices > div {
+  border: 1px solid var(--line-soft);
+  border-radius: 11px;
+  background: rgba(3, 14, 9, .66);
+  padding: 10px 11px;
+}
+.live-bookmaker-prices span,
+.live-bookmaker-prices small,
+.live-bookmaker-prices strong {
+  display: block;
+}
+.live-bookmaker-prices span {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+.live-bookmaker-prices strong {
+  margin-top: 5px;
+  font-size: 18px;
+}
+.live-bookmaker-prices small {
+  color: var(--muted);
+  margin-top: 3px;
+  font-size: 9px;
+}
+.price-move-up {
+  color: var(--accent) !important;
+}
+.price-move-down {
+  color: var(--red) !important;
+}
+
+.market-message {
+  margin-top: 9px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.4;
+}
+.market-message-clears-take {
+  color: var(--accent);
+  background: rgba(114,245,158,.07);
+  border: 1px solid rgba(114,245,158,.20);
+}
+.market-message-too-short {
+  color: var(--amber);
+  background: rgba(255,209,102,.06);
+  border: 1px solid rgba(255,209,102,.19);
+}
+.market-message-no-feed {
+  color: var(--muted);
+  background: rgba(255,255,255,.025);
+  border: 1px solid var(--line-soft);
+}
+
+.consumer-card-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+.consumer-card-actions > a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  color: #d8e8dd;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 900;
+}
+.watch-price-wrap {
+  display: grid;
+  gap: 4px;
+}
+.watch-price-button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--accent);
+  color: #06110c;
+  font-size: 10px;
+  font-weight: 950;
+  cursor: pointer;
+}
+.watch-price-button:disabled {
+  opacity: .72;
+  cursor: default;
+}
+.watch-price-wrap small {
+  color: var(--red);
+  font-size: 8px;
+}
+
+.ticker-live {
+  color: #d8e8dd;
+}
+.price-hit-inbox {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0 20px;
+  border: 1px solid rgba(114,245,158,.20);
+  border-radius: 13px;
+  background: rgba(114,245,158,.035);
+  padding: 10px;
+}
+.price-hit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 3px 7px;
+}
+.price-hit-head strong {
+  color: var(--accent);
+  font-size: 11px;
+}
+.price-hit-head span {
+  color: var(--muted);
+  font-size: 9px;
+}
+.price-hit-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid rgba(114,245,158,.18);
+  border-radius: 10px;
+  background: rgba(5,18,12,.78);
+  color: var(--text);
+  padding: 10px;
+  cursor: pointer;
+}
+.price-hit-row.read {
+  opacity: .58;
+  border-color: var(--line-soft);
+}
+.price-hit-row strong,
+.price-hit-row small,
+.price-hit-row b {
+  display: block;
+}
+.price-hit-row small {
+  color: var(--muted);
+  font-size: 9px;
+  margin-top: 3px;
+}
+.price-hit-row b {
+  color: var(--accent);
+  font-size: 17px;
+  text-align: right;
+}
+
+@media (max-width: 620px) {
+  .feed-health {
+    width: 100%;
+    margin-left: 0;
+  }
+  .live-bookmaker-prices {
+    grid-template-columns: 1fr 1fr;
+  }
+  .consumer-card-actions {
+    grid-template-columns: 1fr;
+  }
+}
