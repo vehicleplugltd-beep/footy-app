@@ -706,21 +706,21 @@ function simulateTeamScore(
 
 function counterObjectiveProbability(
   posture: CounterPosture,
-  attackProbability: number,
-  protectProbability: number,
+  attackProbability: number | null,
+  protectProbability: number | null,
   controlProbability: number,
 ) {
-  if (posture === "PROTECT") return protectProbability;
-  if (posture === "ATTACK") return attackProbability;
+  if (posture === "PROTECT") return protectProbability ?? controlProbability;
+  if (posture === "ATTACK") return attackProbability ?? controlProbability;
   // HYBRID rewards plans that are simultaneously strong above and below.
   // The geometric mean penalises a path that achieves one side by giving away
   // too much on the other, unlike a simple midpoint average.
-  if (Number.isFinite(attackProbability) && Number.isFinite(protectProbability)) {
+  if (attackProbability != null && protectProbability != null) {
     return Math.sqrt(
       Math.max(0, attackProbability) * Math.max(0, protectProbability),
     );
   }
-  return controlProbability;
+  return attackProbability ?? protectProbability ?? controlProbability;
 }
 
 function buildCounterPlay(
@@ -768,7 +768,7 @@ function buildCounterPlay(
       ? selectedRivals.find(
           (item) => item.standing.entry_id === targetStanding.entry_id,
         ) ?? null
-      : selectedRivals[0] ?? null;
+      : null;
   const primaryChaser =
     chaserStandings.length > 0
       ? selectedRivals.find(
@@ -965,10 +965,10 @@ function buildCounterPlay(
     const sd = Math.sqrt(variance);
     const attackProbability = target
       ? beatTarget / iterations
-      : controlAll / iterations;
+      : null;
     const protectProbability = primaryChaser
       ? stayAheadChaser / iterations
-      : controlAll / iterations;
+      : null;
     const controlProbability = controlAll / iterations;
     const objectiveProbability = counterObjectiveProbability(
       posture,
@@ -1733,10 +1733,10 @@ function buildCounterPlay(
       const volatility = Math.sqrt(variance);
       const attackProbability = target
         ? item.beatTarget / pathIterations
-        : item.controlAll / pathIterations;
+        : null;
       const protectProbability = primaryChaser
         ? item.stayAheadChaser / pathIterations
-        : item.controlAll / pathIterations;
+        : null;
       const controlProbability = item.controlAll / pathIterations;
       const objectiveProbability = counterObjectiveProbability(
         posture,
@@ -1914,8 +1914,14 @@ function buildCounterPlay(
       posture === "PROTECT"
         ? "Protect: maximise the probability of staying ahead of the nearest chasing pressure, with downside floor and tighter variance breaking close calls."
         : posture === "ATTACK"
-          ? "Attack: maximise the probability of overtaking the nearest target above, with upside ceiling breaking close calls."
-          : "Hybrid: balance overtaking the nearest target and staying ahead of the nearest chaser. The joint objective penalises paths that improve one side by sacrificing too much on the other.",
+          ? target
+            ? "Attack: maximise the probability of overtaking the nearest target above, with upside ceiling breaking close calls."
+            : "Attack: there is no target above, so maximise overall league-control probability and use upside ceiling to break close calls."
+          : target && primaryChaser
+            ? "Hybrid: balance overtaking the nearest target and staying ahead of the nearest chaser. The joint objective penalises paths that improve one side by sacrificing too much on the other."
+            : target
+              ? "Hybrid: there is no immediate chaser pressure, so the objective reduces to overtaking the nearest target while keeping football quality primary."
+              : "Hybrid: there is no target above, so the objective reduces to protecting league control while keeping expected football output central.",
     baseline: baseline
       ? {
           objective_probability: baseline.objective_probability,
