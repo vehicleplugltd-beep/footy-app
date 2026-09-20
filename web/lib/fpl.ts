@@ -29,6 +29,20 @@ type FplPlayer = {
   status: string;
   minutes: number;
   expected_goal_involvements: string;
+  expected_goals: string;
+  expected_assists: string;
+  expected_goals_conceded: string;
+  starts: number;
+  news: string;
+  news_added: string | null;
+  ict_index: string;
+  influence: string;
+  creativity: string;
+  threat: string;
+  defensive_contribution: string | number | null;
+  penalties_order: number | null;
+  direct_freekicks_order: number | null;
+  corners_and_indirect_freekicks_order: number | null;
   transfers_in_event: number;
   transfers_out_event: number;
 };
@@ -94,6 +108,20 @@ export type TeamProcess = {
   matches: number;
   attackIndex: number;
   defenceIndex: number;
+  attackTrend: number;
+  defenceTrend: number;
+  metrics: {
+    xg: number;
+    xga: number;
+    shots: number;
+    shotsOnTarget: number;
+    shotsConceded: number;
+    sotConceded: number;
+    setPieceXg: number;
+    setPieceXga: number;
+    ppda: number;
+    deepCompletions: number;
+  };
 };
 
 export type RankedPlayer = {
@@ -108,14 +136,34 @@ export type RankedPlayer = {
   fixtureDifficulty: number;
   availability: number;
   xgiPer90: number;
+  xgPer90: number;
+  xaPer90: number;
+  xgcPer90: number;
+  minutes: number;
+  starts: number;
+  news: string;
+  newsAdded: string | null;
+  setPieceRole: string | null;
   selectedBy: number;
   transfersNet: number;
   valueScore: number;
   processBoost: number;
+  processFactor: number;
+  fixtureFactor: number;
+  trendFactor: number;
+  startReliability: number;
   teamAttackIndex: number;
   teamDefenceIndex: number;
   opponent: string | null;
   fixtureCount: number;
+  scoreBreakdown: {
+    base: number;
+    processMultiplier: number;
+    fixtureMultiplier: number;
+    teamTrendMultiplier: number;
+    availabilityMultiplier: number;
+    startMultiplier: number;
+  };
 };
 
 export type FutureGameweekPlan = {
@@ -140,6 +188,10 @@ export type SquadSuggestion = {
   player: RankedPlayer;
   replacement: RankedPlayer | null;
   reason: string;
+  gain: number;
+  minimumGain: number;
+  horizonGain: number;
+  timing: "NOW" | "WAIT" | "HOLD";
 };
 
 export type TeamAnalysis = {
@@ -358,11 +410,42 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
       inverseRatio("shots_conceded") * 0.15 +
       inverseRatio("set_piece_xga") * 0.15;
 
+    // Recent form is useful, but three-match swings are noisy. Regress the
+    // latest three toward the already-regressed eight-match process baseline.
+    const recent = last.slice(-3);
+    const recentRegression = recent.length / (recent.length + 5);
+    const recentAvg = (field: (typeof fields)[number]) => {
+      const observed = weightedAverage(recent.map((row) => num(row[field])));
+      return observed * recentRegression + avg(field) * (1 - recentRegression);
+    };
+    const safeRatio = (a: number, b: number) => (b > 0 ? a / b : 1);
+    const attackTrendRaw =
+      safeRatio(recentAvg("xg"), avg("xg")) * 0.55 +
+      safeRatio(recentAvg("shots_on_target"), avg("shots_on_target")) * 0.25 +
+      safeRatio(recentAvg("deep_completions"), avg("deep_completions")) * 0.20;
+    const defenceTrendRaw =
+      safeRatio(avg("xga"), recentAvg("xga")) * 0.60 +
+      safeRatio(avg("sot_conceded"), recentAvg("sot_conceded")) * 0.40;
+
     output.set(key, {
       team: rows[rows.length - 1]?.team ?? key,
       matches: n,
       attackIndex: clamp(attack, 0.78, 1.28),
       defenceIndex: clamp(defence, 0.78, 1.28),
+      attackTrend: clamp(attackTrendRaw - 1, -0.25, 0.25),
+      defenceTrend: clamp(defenceTrendRaw - 1, -0.25, 0.25),
+      metrics: {
+        xg: avg("xg"),
+        xga: avg("xga"),
+        shots: avg("shots"),
+        shotsOnTarget: avg("shots_on_target"),
+        shotsConceded: avg("shots_conceded"),
+        sotConceded: avg("sot_conceded"),
+        setPieceXg: avg("set_piece_xg"),
+        setPieceXga: avg("set_piece_xga"),
+        ppda: avg("ppda"),
+        deepCompletions: avg("deep_completions"),
+      },
     });
   }
   return output;
@@ -398,13 +481,21 @@ function availability(player: FplPlayer) {
   return player.chance_of_playing_next_round ?? 100;
 }
 
+function shrunkPer90(
+  total: string | number | null | undefined,
+  minutes: number,
+  cap: number,
+) {
+  if (minutes <= 0) return 0;
+  const raw = (num(total) * 90) / minutes;
+  // Early-season per-90 rates are volatile. Require roughly four full matches
+  // before trusting the observed rate completely.
+  const reliability = clamp(minutes / 360, 0, 1);
+  return clamp(raw, 0, cap) * reliability;
+}
+
 function xgiPer90(player: FplPlayer) {
-  if (player.minutes <= 0) return 0;
-  const raw = (num(player.expected_goal_involvements) * 90) / player.minutes;
-  // Per-90 rates are unstable in tiny samples. Shrink toward zero until
-  // roughly four full matches of minutes and cap extreme early-season rates.
-  const reliability = clamp(player.minutes / 360, 0, 1);
-  return clamp(raw, 0, 1.2) * reliability;
+  return shrunkPer90(player.expected_goal_involvements, player.minutes, 1.2);
 }
 
 function rankPlayers(
@@ -434,6 +525,21 @@ function rankPlayers(
       const form = Math.max(0, num(player.form));
       const ppg = Math.max(0, num(player.points_per_game));
       const xgi90 = Math.max(0, xgiPer90(player));
+      const xg90 = Math.max(
+        0,
+        shrunkPer90(player.expected_goals, player.minutes, 1.0),
+      );
+      const xa90 = Math.max(
+        0,
+        shrunkPer90(player.expected_assists, player.minutes, 1.0),
+      );
+      const xgc90 = Math.max(
+        0,
+        shrunkPer90(player.expected_goals_conceded, player.minutes, 4.0),
+      );
+      const starts = Math.max(0, Number(player.starts || 0));
+      const startReliability =
+        starts >= 3 ? 1 : starts === 2 ? 0.90 : starts === 1 ? 0.76 : 0.58;
 
       const matchupFactors = teamFixtures.map((fixture) => {
         const isHome = fixture.team_h === player.team;
@@ -458,15 +564,19 @@ function rankPlayers(
           0.82,
           1.20,
         );
-        return position === "GKP" || position === "DEF"
-          ? defenceMatchup
-          : attackMatchup;
+        if (position === "GKP") return defenceMatchup;
+        if (position === "DEF") {
+          // Defender value is mostly clean-sheet environment, but attacking
+          // full-backs/wing-backs still deserve some attacking matchup credit.
+          return defenceMatchup * 0.72 + attackMatchup * 0.28;
+        }
+        return attackMatchup;
       });
 
       const processFactor = matchupFactors.length
         ? matchupFactors.reduce((sum, value) => sum + value, 0) /
           matchupFactors.length
-        : 0.72;
+        : 0;
       const processBoost = processFactor - 1;
 
       const difficultyValues = teamFixtures.map((fixture) =>
@@ -478,6 +588,19 @@ function rankPlayers(
         ? difficultyValues.reduce((sum, value) => sum + value, 0) /
           difficultyValues.length
         : 5;
+      const fixtureFactors = difficultyValues.map((value) => {
+        const defensive = position === "GKP" || position === "DEF";
+        const step = defensive ? 0.10 : 0.06;
+        return clamp(
+          1 + (3 - value) * step,
+          defensive ? 0.76 : 0.86,
+          defensive ? 1.18 : 1.12,
+        );
+      });
+      const fixtureFactor = fixtureFactors.length
+        ? fixtureFactors.reduce((sum, value) => sum + value, 0) /
+          fixtureFactors.length
+        : 0;
 
       const opponent = teamFixtures
         .map((fixture) => {
@@ -489,9 +612,20 @@ function rankPlayers(
         })
         .join(" + ");
 
+      // FPL ep_next is useful as a public prior but already contains some
+      // fixture information, so it is deliberately not allowed to dominate.
       const officialBase = useExpectedNext
-        ? ep * 0.68 + form * 0.16 + ppg * 0.10 + xgi90 * 0.60
-        : form * 0.34 + ppg * 0.46 + xgi90 * 0.85;
+        ? ep * 0.48 +
+          form * 0.16 +
+          ppg * 0.16 +
+          xgi90 * 0.92 +
+          xg90 * 0.28 +
+          xa90 * 0.28
+        : form * 0.30 +
+          ppg * 0.36 +
+          xgi90 * 1.05 +
+          xg90 * 0.24 +
+          xa90 * 0.24;
 
       const fixtureMultiplier =
         teamFixtures.length === 0
@@ -500,11 +634,26 @@ function rankPlayers(
             ? 1
             : 1 + 0.72 * (teamFixtures.length - 1);
 
+      const teamTrend =
+        position === "GKP"
+          ? (teamProcess?.defenceTrend ?? 0)
+          : position === "DEF"
+            ? (teamProcess?.defenceTrend ?? 0) * 0.65 +
+              (teamProcess?.attackTrend ?? 0) * 0.35
+            : (teamProcess?.attackTrend ?? 0);
+      const trendFactor = 1 + clamp(teamTrend * 0.35, -0.08, 0.08);
+      const processMultiplier = 1 + (processFactor - 1) * 0.50;
+      const availabilityMultiplier = clamp(available / 100, 0, 1);
+      const startMultiplier = 0.85 + startReliability * 0.15;
+
       const score =
         officialBase *
-        (1 + processBoost * 0.32) *
+        processMultiplier *
+        fixtureFactor *
+        trendFactor *
         fixtureMultiplier *
-        clamp(available / 100, 0, 1);
+        availabilityMultiplier *
+        startMultiplier;
 
       return {
         id: player.id,
@@ -518,15 +667,44 @@ function rankPlayers(
         fixtureDifficulty: difficulty,
         availability: available,
         xgiPer90: xgi90,
+        xgPer90: xg90,
+        xaPer90: xa90,
+        xgcPer90: xgc90,
+        minutes: player.minutes,
+        starts,
+        news: player.news ?? "",
+        newsAdded: player.news_added ?? null,
+        setPieceRole:
+          player.penalties_order && player.penalties_order <= 2
+            ? "Penalties"
+            : player.direct_freekicks_order &&
+                player.direct_freekicks_order <= 2
+              ? "Direct free-kicks"
+              : player.corners_and_indirect_freekicks_order &&
+                  player.corners_and_indirect_freekicks_order <= 2
+                ? "Corners / indirect free-kicks"
+                : null,
         selectedBy: num(player.selected_by_percent),
         transfersNet:
           player.transfers_in_event - player.transfers_out_event,
         valueScore: price > 0 ? score / price : 0,
         processBoost,
+        processFactor,
+        fixtureFactor,
+        trendFactor,
+        startReliability,
         teamAttackIndex: teamProcess?.attackIndex ?? 1,
         teamDefenceIndex: teamProcess?.defenceIndex ?? 1,
         opponent: opponent || null,
         fixtureCount: teamFixtures.length,
+        scoreBreakdown: {
+          base: officialBase,
+          processMultiplier,
+          fixtureMultiplier: fixtureFactor * fixtureMultiplier,
+          teamTrendMultiplier: trendFactor,
+          availabilityMultiplier,
+          startMultiplier,
+        },
       } satisfies RankedPlayer;
     })
     .filter((player) => includeUnavailable || player.availability > 0)
@@ -686,10 +864,62 @@ function buildFuturePlan(
   return { futurePlan, chipRadar };
 }
 
+function weightedHorizonGain(
+  outId: number,
+  inId: number,
+  horizonRankings: RankedPlayer[][],
+) {
+  const weights = [0.50, 0.25, 0.15, 0.10];
+  let total = 0;
+  let used = 0;
+  horizonRankings.slice(0, weights.length).forEach((ranked, index) => {
+    const byId = new Map(ranked.map((player) => [player.id, player]));
+    const out = byId.get(outId);
+    const incoming = byId.get(inId);
+    if (!out || !incoming) return;
+    total += (incoming.assistantScore - out.assistantScore) * weights[index];
+    used += weights[index];
+  });
+  return used > 0 ? total / used : 0;
+}
+
+function minimumTransferGain(
+  out: RankedPlayer,
+  incoming: RankedPlayer,
+  nextWeekGain: number | null,
+) {
+  // A free transfer is an asset. Small one-week edges should be banked.
+  let threshold = Math.max(0.85, out.assistantScore * 0.16);
+
+  // Spending a transfer to move into a clearly worse immediate fixture needs
+  // a larger football edge, especially for clean-sheet-dependent positions.
+  const difficultyGap = incoming.fixtureDifficulty - out.fixtureDifficulty;
+  if (difficultyGap > 0) {
+    threshold += difficultyGap * 0.45;
+  }
+  if (
+    (incoming.position === "DEF" || incoming.position === "GKP") &&
+    incoming.fixtureDifficulty >= 5
+  ) {
+    threshold += 0.35;
+  }
+
+  // If the same move becomes materially better next week, waiting has option
+  // value and the current move must clear a higher bar.
+  const currentGain = incoming.assistantScore - out.assistantScore;
+  if (nextWeekGain != null && nextWeekGain > currentGain + 0.55) {
+    threshold += 0.55;
+  }
+
+  if (incoming.startReliability < 0.9) threshold += 0.25;
+  return threshold;
+}
+
 async function analyseTeam(
   entryId: number,
   current: FplEvent | null,
   ranked: RankedPlayer[],
+  horizonRankings: RankedPlayer[][] = [ranked],
 ): Promise<TeamAnalysis> {
   const entry = await fplFetch<Entry>(`entry/${entryId}/`, 300);
   const eventId = current?.id ?? 1;
@@ -716,28 +946,94 @@ async function analyseTeam(
     teamCounts.set(player.team, (teamCounts.get(player.team) ?? 0) + 1);
   }
   const bank = entry.last_deadline_bank / 10;
+  const nextRanking = horizonRankings[1] ?? null;
   const weakLinks = [...squad]
     .sort((a, b) => a.assistantScore - b.assistantScore)
-    .slice(0, 4)
+    .slice(0, 5)
     .map((player) => {
       const budget = player.price + bank;
-      const replacement =
-        ranked.find((candidate) => {
+      const candidates = ranked
+        .filter((candidate) => {
           if (candidate.position !== player.position) return false;
           if (squadIds.has(candidate.id)) return false;
           if (candidate.price > budget) return false;
-          if (candidate.assistantScore <= player.assistantScore * 1.08) return false;
+          if (candidate.availability < 75 || candidate.fixtureCount <= 0) {
+            return false;
+          }
           const afterRemoval =
             (teamCounts.get(candidate.team) ?? 0) -
             (candidate.team === player.team ? 1 : 0);
           return afterRemoval < 3;
-        }) ?? null;
+        })
+        .map((candidate) => {
+          const gain = candidate.assistantScore - player.assistantScore;
+          const nextById = nextRanking
+            ? new Map(nextRanking.map((item) => [item.id, item]))
+            : null;
+          const nextOut = nextById?.get(player.id) ?? null;
+          const nextIn = nextById?.get(candidate.id) ?? null;
+          const nextWeekGain =
+            nextOut && nextIn
+              ? nextIn.assistantScore - nextOut.assistantScore
+              : null;
+          const horizonGain = weightedHorizonGain(
+            player.id,
+            candidate.id,
+            horizonRankings,
+          );
+          const minimumGain = minimumTransferGain(
+            player,
+            candidate,
+            nextWeekGain,
+          );
+          const timing =
+            gain >= minimumGain && horizonGain > 0.35
+              ? ("NOW" as const)
+              : horizonGain > 0.75 &&
+                  nextWeekGain != null &&
+                  nextWeekGain > gain + 0.35
+                ? ("WAIT" as const)
+                : ("HOLD" as const);
+          return {
+            candidate,
+            gain,
+            horizonGain,
+            minimumGain,
+            nextWeekGain,
+            timing,
+          };
+        })
+        .sort((a, b) => {
+          const timingRank = { NOW: 2, WAIT: 1, HOLD: 0 } as const;
+          const timingDelta = timingRank[b.timing] - timingRank[a.timing];
+          if (timingDelta !== 0) return timingDelta;
+          return b.horizonGain - a.horizonGain || b.gain - a.gain;
+        });
 
-      const reason = replacement
-        ? `${replacement.name} has a ${((replacement.assistantScore / Math.max(player.assistantScore, 0.01) - 1) * 100).toFixed(0)}% higher assistant score and fits the £${budget.toFixed(1)}m budget.`
-        : "No clear same-position upgrade clears the current model threshold.";
+      const bestNow = candidates.find((item) => item.timing === "NOW") ?? null;
+      const bestWait = candidates.find((item) => item.timing === "WAIT") ?? null;
+      const selected = bestNow ?? bestWait;
+      const replacement = bestNow?.candidate ?? null;
+      const gain = selected?.gain ?? 0;
+      const minimumGain = selected?.minimumGain ?? Math.max(0.85, player.assistantScore * 0.16);
+      const horizonGain = selected?.horizonGain ?? 0;
+      const timing = selected?.timing ?? ("HOLD" as const);
 
-      return { player, replacement, reason };
+      const reason = bestNow
+        ? `${bestNow.candidate.name} clears the move-now threshold: +${bestNow.gain.toFixed(1)} this Gameweek vs +${bestNow.minimumGain.toFixed(1)} required, with a +${bestNow.horizonGain.toFixed(1)} weighted four-Gameweek edge.`
+        : bestWait
+          ? `${bestWait.candidate.name} looks stronger over the horizon (+${bestWait.horizonGain.toFixed(1)}), but the immediate edge does not justify spending the transfer yet. Watch next Gameweek.`
+          : "No same-position option clears Footy's transfer-value and timing thresholds.";
+
+      return {
+        player,
+        replacement,
+        reason,
+        gain,
+        minimumGain,
+        horizonGain,
+        timing,
+      };
     });
 
   return {
@@ -816,7 +1112,8 @@ function buildManagerFuturePlan(
               (candidate.team === out.team ? 1 : 0);
             if (afterRemoval >= 3) return false;
 
-            return candidate.assistantScore > out.assistantScore;
+            const gain = candidate.assistantScore - out.assistantScore;
+            return gain >= minimumTransferGain(out, candidate, null);
           }) ?? null;
 
         return incoming
@@ -963,6 +1260,7 @@ export type LeagueManagerEdgeAnalysis = {
   };
   manager: TeamAnalysis;
   rival: TeamAnalysis | null;
+  rivals: TeamAnalysis[];
   overlap: {
     count: number;
     common: RankedPlayer[];
@@ -973,6 +1271,11 @@ export type LeagueManagerEdgeAnalysis = {
   transferOptions: SquadSuggestion[];
   playerTrends: Array<RankedPlayer & { trendScore: number }>;
   teamTrends: TeamProcess[];
+  teamProcesses: TeamProcess[];
+  dataCoverage: {
+    measured: string[];
+    notMeasured: string[];
+  };
   futurePlan: FutureGameweekPlan[];
   managerFuturePlan: ManagerFutureGameweek[];
   chipRadar: ChipSignal[];
@@ -980,7 +1283,7 @@ export type LeagueManagerEdgeAnalysis = {
 
 export async function getLeagueManagerEdgeAnalysis(
   entryId: number,
-  rivalEntryId?: number | null,
+  rivalEntryId?: number | number[] | null,
 ): Promise<LeagueManagerEdgeAnalysis> {
   if (!Number.isInteger(entryId) || entryId <= 0) {
     throw new Error("A valid FPL entry ID is required.");
@@ -1039,13 +1342,38 @@ export async function getLeagueManagerEdgeAnalysis(
     process,
     next,
   );
+  const upcomingEventIds = bootstrap.events
+    .filter(
+      (event) =>
+        next && event.id >= next.id && !event.finished,
+    )
+    .sort((a, b) => a.id - b.id)
+    .slice(0, 4)
+    .map((event) => event.id);
+  const horizonRankings = upcomingEventIds.length
+    ? upcomingEventIds.map((eventId) =>
+        rankPlayers(bootstrap!, fixtures!, eventId, process, false),
+      )
+    : [ranked];
 
-  const [manager, rival] = await Promise.all([
-    analyseTeam(entryId, current, ranked),
-    rivalEntryId && Number.isInteger(rivalEntryId) && rivalEntryId > 0
-      ? analyseTeam(rivalEntryId, current, ranked)
-      : Promise.resolve(null),
+  const rivalIdsInput = Array.isArray(rivalEntryId)
+    ? rivalEntryId
+    : rivalEntryId
+      ? [rivalEntryId]
+      : [];
+  const uniqueRivalIds = [...new Set(
+    rivalIdsInput.filter(
+      (id): id is number => Number.isInteger(id) && id > 0 && id !== entryId,
+    ),
+  )];
+
+  const [manager, ...rivals] = await Promise.all([
+    analyseTeam(entryId, current, ranked, horizonRankings),
+    ...uniqueRivalIds.map((id) =>
+      analyseTeam(id, current, ranked, horizonRankings),
+    ),
   ]);
+  const rival = rivals[0] ?? null;
 
   const managerIds = new Set(manager.squad.map((player) => player.id));
   const rivalIds = new Set((rival?.squad ?? []).map((player) => player.id));
@@ -1096,11 +1424,23 @@ export async function getLeagueManagerEdgeAnalysis(
         Math.sign(player.transfersNet) *
         Math.log1p(Math.abs(player.transfersNet)) /
         10;
+      const teamProcess = process.get(canonicalTeam(
+        bootstrap!.teams.find((team) => team.short_name === player.team)?.name ??
+          player.team,
+      ));
+      const roleTrend =
+        player.position === "GKP"
+          ? (teamProcess?.defenceTrend ?? 0)
+          : player.position === "DEF"
+            ? (teamProcess?.defenceTrend ?? 0) * 0.65 +
+              (teamProcess?.attackTrend ?? 0) * 0.35
+            : (teamProcess?.attackTrend ?? 0);
       const trendScore =
-        player.form * 0.5 +
-        player.xgiPer90 * 2 +
-        player.processBoost * 4 +
-        transferMomentum * 0.6;
+        player.form * 0.38 +
+        player.xgiPer90 * 2.2 +
+        player.processBoost * 3 +
+        roleTrend * 4 +
+        transferMomentum * 0.45;
       return { ...player, trendScore };
     })
     .filter((player) => player.availability >= 75 && player.fixtureCount > 0)
@@ -1126,6 +1466,7 @@ export async function getLeagueManagerEdgeAnalysis(
     },
     manager,
     rival,
+    rivals,
     overlap: {
       count: common.length,
       common,
@@ -1136,6 +1477,25 @@ export async function getLeagueManagerEdgeAnalysis(
     transferOptions,
     playerTrends,
     teamTrends,
+    teamProcesses: [...process.values()],
+    dataCoverage: {
+      measured: [
+        "Official FPL expected points/form/points per game",
+        "Player xG/xA/xGI per 90 with early-sample shrinkage",
+        "Starts, minutes, availability and official player news",
+        "Fixture difficulty and opponent-adjusted team process",
+        "Team xG/xGA, shots/SOT, shots conceded",
+        "Set-piece xG/xGA, PPDA and deep completions",
+        "Recent attack/defence process trend with regression",
+        "Mini-league ownership, points gaps, chips, hits and estimated free transfers",
+      ],
+      notMeasured: [
+        "Player chemistry",
+        "Confirmed tactical role changes without reliable public data",
+        "Field tilt / defensive line height when not present in the data feed",
+        "Unconfirmed line-ups before official team news",
+      ],
+    },
     futurePlan,
     managerFuturePlan,
     chipRadar,

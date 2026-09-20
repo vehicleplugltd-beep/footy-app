@@ -44,18 +44,41 @@ from .results_ledger import refresh_results_ledger
 
 def command_sources() -> None:
     payload = {
-        "production_candidates": [
-            "soccerdata / Understat",
+        "active_production": [
+            {
+                "source": "Official FPL",
+                "use": "player availability, expected points, xG/xA/xGI, starts, minutes, set-piece roles",
+            },
+            {
+                "source": "Understat via soccerdata",
+                "use": "team xG/npxG, xGA/npxGA, PPDA, deep completions and shot aggregates",
+            },
+            {
+                "source": "Football-Data.co.uk",
+                "use": "historical results and bookmaker prices for calibration/backtesting",
+            },
+            {
+                "source": "Club Elo",
+                "use": "mild opponent/schedule-strength adjustment",
+            },
+        ],
+        "available_adapters_not_yet_active_in_consensus": [
             "soccerdata / Sofascore",
             "soccerdata / FBref",
-            "soccerdata / Football-Data.co.uk MatchHistory",
-            "Club Elo",
             "OpenFootball fallback",
         ],
-        "research": [
+        "research_or_partial_coverage": [
             "StatsBomb Open Data",
             "socceraction xT/VAEP",
         ],
+        "licensed_only": [
+            "Opta / Stats Perform — only if a legitimate licensed feed is configured",
+        ],
+        "synthesis": {
+            "rule": "Provider rows remain separate in storage; the modelling view creates one canonical match/team row with provenance, confidence and conflict flags.",
+            "modelled_metrics": "Do not blindly average xG-family metrics with different provider definitions; choose a preferred compatible source and use the others as cross-checks.",
+            "event_metrics": "Use robust consensus for definition-compatible counts such as shots and shots on target.",
+        },
     }
     print(json.dumps(payload, indent=2))
 

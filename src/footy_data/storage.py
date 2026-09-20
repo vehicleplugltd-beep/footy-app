@@ -8,6 +8,8 @@ from typing import Iterable, Mapping, Any
 import pandas as pd
 import requests
 
+from .consensus import synthesize_match_team_metrics
+
 
 MATCH_FIELDS = {
     "match_id", "league", "season", "kickoff_at",
@@ -311,12 +313,17 @@ class SupabaseRESTReader:
             (
                 "match_id,team,opponent,home_away,goals,goals_conceded,"
                 "xg,npxg,xga,npxga,shots,shots_on_target,"
-                "shots_conceded,sot_conceded,set_piece_xg,set_piece_xga,"
-                "ppda,deep_completions,source,retrieved_at"
+                "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
+                "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
+                "possession,ppda,field_tilt,deep_completions,source,retrieved_at"
             ),
         ))
         if matches.empty or metrics.empty:
             return pd.DataFrame()
+
+        # The storage table intentionally keeps provider-specific observations.
+        # The model must consume exactly one canonical row per team/match.
+        metrics = synthesize_match_team_metrics(metrics)
 
         matches = matches.rename(columns={"kickoff_at": "match_date"})
         frame = metrics.merge(

@@ -66,3 +66,48 @@ Evaluate out-of-sample by season/time split. Track:
 
 A model can show positive historical ROI by variance alone. Probability
 calibration and CLV are important checks alongside realized ROI.
+
+
+## Multi-source canonicalisation
+
+Footy stores provider observations separately using the unique key
+`(match_id, team, source)`. The modelling layer must never count those rows
+as separate matches.
+
+Before calibration or live process modelling, provider rows are collapsed into
+one canonical match/team observation:
+
+- model-derived metrics such as xG, npxG, xA and field tilt are **not blindly
+  averaged** across providers because definitions/models differ;
+- the highest-priority compatible observation is selected and other providers
+  are used as a cross-check;
+- definition-compatible event/count metrics such as shots and shots on target
+  use a robust source-weighted consensus;
+- provider disagreement lowers source confidence and is retained as a conflict
+  flag rather than hidden;
+- missing fields remain missing.
+
+Current production inputs are Official FPL, Understat via soccerdata,
+Football-Data.co.uk and Club Elo. SofaScore and FBref adapters exist but are
+not considered active production evidence until their ingestion coverage and
+normalizers have passed reconciliation/quality checks. StatsBomb Open is used
+for research/calibration where competition coverage exists.
+
+Opta / Stats Perform data is **licensed-only**. Footy may use it when a
+legitimate feed or licensed downstream dataset is configured; it must never
+label scraped or inferred values as Opta.
+
+### Source provenance shown to the model
+
+Each canonical row carries:
+
+- contributing sources,
+- source count,
+- per-metric selected source,
+- aggregate source confidence,
+- conflict flags,
+- latest retrieval timestamp.
+
+Source confidence is an uncertainty input, not an excuse to manufacture a
+number. When sources disagree materially, the downstream model should increase
+its uncertainty margin or decline to make a strong recommendation.
