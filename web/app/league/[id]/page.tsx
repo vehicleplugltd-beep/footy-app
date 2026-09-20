@@ -29,7 +29,6 @@ export default async function LeaguePage({
             <Link href="/squad-lab">Player DB</Link>
           )}
           <Link href="/results">Receipts</Link>
-          <Link href="/pro">Player Pass</Link>
         </div>
       </nav>
 
