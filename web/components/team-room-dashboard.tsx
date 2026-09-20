@@ -262,6 +262,7 @@ export function TeamRoomDashboard({
     .sort((a, b) => a.future - b.future)
     .slice(0, 3);
 
+  const intelligenceLoading = !error && (!scout || !manager);
   const transfer =
     manager?.league_strategy?.transfer_moves?.[0] ?? null;
   const captain =
@@ -271,9 +272,11 @@ export function TeamRoomDashboard({
     transfer && scout
       ? scout.players.find((profile) => profile.player.id === transfer.in.id) ?? null
       : null;
-  const transferEvidence = transfer
-    ? transferInProfile?.decisionConfidence ?? "PENDING"
-    : "THRESHOLD HOLD";
+  const transferEvidence = intelligenceLoading
+    ? "CHECKING"
+    : transfer
+      ? transferInProfile?.decisionConfidence ?? "PENDING"
+      : "THRESHOLD HOLD";
   const transferWhy =
     transfer?.rationale ??
     "No replacement currently clears Footy’s value, minutes and timing threshold.";
@@ -296,13 +299,16 @@ export function TeamRoomDashboard({
       : standings.slice(0, 8);
 
   const resourceRows = manager?.resource_map ?? [];
-  const squadQuip =
-    squadFuture != null && squadFuture >= 65
+  const squadQuip = intelligenceLoading
+    ? "Checking your squad against the live market and your mini-league."
+    : squadFuture != null && squadFuture >= 65
       ? footyQuip("strongSquad")
       : footyQuip("weakSquad");
-  const actionQuip = transfer
-    ? footyQuip("move", { player: transfer.in.name })
-    : footyQuip("hold");
+  const actionQuip = intelligenceLoading
+    ? "Comparing squad quality, player process and league pressure."
+    : transfer
+      ? footyQuip("move", { player: transfer.in.name })
+      : footyQuip("hold");
 
   return (
     <div className="team-room-dashboard">
@@ -339,11 +345,13 @@ export function TeamRoomDashboard({
             <div>
               <span>FOOTY SUGGESTS</span>
               <h2>
-                {transfer
-                  ? transfer.out.name +
-                    " → " +
-                    transfer.in.name
-                  : "Hold the transfer"}
+                {intelligenceLoading
+                  ? "Building your plan…"
+                  : transfer
+                    ? transfer.out.name +
+                      " → " +
+                      transfer.in.name
+                    : "Hold the transfer"}
               </h2>
             </div>
           </div>
@@ -353,33 +361,41 @@ export function TeamRoomDashboard({
             <div>
               <span>TRANSFER</span>
               <strong>
-                {transfer
-                  ? transfer.out.name +
-                    " → " +
-                    transfer.in.name
-                  : "HOLD"}
+                {intelligenceLoading
+                  ? "CHECKING"
+                  : transfer
+                    ? transfer.out.name +
+                      " → " +
+                      transfer.in.name
+                    : "HOLD"}
               </strong>
               <small>
-                {transfer
-                  ? "+" +
-                    transfer.raw_gain.toFixed(1) +
-                    " now · min +" +
-                    (transfer.minimum_gain ?? 0).toFixed(1) +
-                    " · +" +
-                    (transfer.horizon_gain ?? 0).toFixed(1) +
-                    " horizon"
-                  : "No replacement clears the value and timing threshold."}
+                {intelligenceLoading
+                  ? "Comparing replacements against value, minutes and timing thresholds."
+                  : transfer
+                    ? "+" +
+                      transfer.raw_gain.toFixed(1) +
+                      " now · min +" +
+                      (transfer.minimum_gain ?? 0).toFixed(1) +
+                      " · +" +
+                      (transfer.horizon_gain ?? 0).toFixed(1) +
+                      " horizon"
+                    : "No replacement clears the value and timing threshold."}
               </small>
             </div>
 
             <div>
               <span>CAPTAIN</span>
               <strong>
-                {captain?.player.name ?? "No change"}
+                {intelligenceLoading
+                  ? "CHECKING"
+                  : captain?.player.name ?? "No change"}
               </strong>
               <small>
-                {captain?.rationale ??
-                  "Expected output remains the priority."}
+                {intelligenceLoading
+                  ? "Comparing captain output, ownership and league pressure."
+                  : captain?.rationale ??
+                    "Expected output remains the priority."}
               </small>
               {captain?.player.name ? (
                 <em className="team-room-inline-quip">
@@ -391,35 +407,46 @@ export function TeamRoomDashboard({
             <div>
               <span>RESOURCE</span>
               <strong>
-                {manager?.resource_advice?.status ?? "—"}
+                {intelligenceLoading
+                  ? "CHECKING"
+                  : manager?.resource_advice?.status ?? "—"}
               </strong>
               <small>
-                {manager?.resource_advice?.recommendation ??
-                  "No resource warning."}
+                {intelligenceLoading
+                  ? "Reading free-transfer, chip and rival flexibility."
+                  : manager?.resource_advice?.recommendation ??
+                    "No resource warning."}
               </small>
             </div>
           </div>
 
-          <div className="team-room-decision-proof">
-            <div>
-              <span>WHY</span>
-              <strong>{transferWhy}</strong>
+          {intelligenceLoading ? (
+            <div className="team-room-model-loading" role="status">
+              <span>MODEL CHECK</span>
+              <strong>Building the decision from live player, process and league evidence…</strong>
             </div>
-            <div>
-              <span>EVIDENCE</span>
-              <strong className={
-                transferInProfile
-                  ? "confidence-" + transferInProfile.decisionConfidence.toLowerCase()
-                  : ""
-              }>
-                {transferEvidence}
-              </strong>
+          ) : (
+            <div className="team-room-decision-proof">
+              <div>
+                <span>WHY</span>
+                <strong>{transferWhy}</strong>
+              </div>
+              <div>
+                <span>EVIDENCE</span>
+                <strong className={
+                  transferInProfile
+                    ? "confidence-" + transferInProfile.decisionConfidence.toLowerCase()
+                    : ""
+                }>
+                  {transferEvidence}
+                </strong>
+              </div>
+              <div>
+                <span>FAILURE MODE</span>
+                <strong>{transferFailure}</strong>
+              </div>
             </div>
-            <div>
-              <span>FAILURE MODE</span>
-              <strong>{transferFailure}</strong>
-            </div>
-          </div>
+          )}
 
           {weakPlayers.length ? (
             <div className="team-room-watch">
@@ -532,13 +559,17 @@ export function TeamRoomDashboard({
         </div>
         <div>
           <span>NEXT ACTION</span>
-          <strong>{transfer ? "MOVE" : "HOLD"}</strong>
+          <strong>
+            {intelligenceLoading ? "CHECKING" : transfer ? "MOVE" : "HOLD"}
+          </strong>
           <small>
-            {transfer
-              ? transfer.out.name +
-                " → " +
-                transfer.in.name
-              : "No move clears threshold"}
+            {intelligenceLoading
+              ? "Building recommendation"
+              : transfer
+                ? transfer.out.name +
+                  " → " +
+                  transfer.in.name
+                : "No move clears threshold"}
           </small>
         </div>
       </section>

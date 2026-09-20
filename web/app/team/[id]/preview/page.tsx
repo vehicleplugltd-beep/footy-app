@@ -41,7 +41,7 @@ export default async function PreviewPage({
   }
 
   return (
-    <main className="league-edge-app preview-page">
+    <main className="league-edge-app preview-page minimal-footy">
       <nav className="nav shell hq-nav">
         <Link
           className="brand brand-link"
