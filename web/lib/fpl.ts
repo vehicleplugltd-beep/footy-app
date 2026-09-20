@@ -150,6 +150,7 @@ export type RankedPlayer = {
   id: number;
   name: string;
   team: string;
+  teamName: string;
   position: string;
   price: number;
   form: number;
@@ -177,6 +178,7 @@ export type RankedPlayer = {
   teamAttackIndex: number;
   teamDefenceIndex: number;
   opponent: string | null;
+  opponentName: string | null;
   fixtureCount: number;
   scoreBreakdown: {
     base: number;
@@ -845,6 +847,15 @@ function rankPlayers(
           return teams.get(opponentId)?.short_name ?? "—";
         })
         .join(" + ");
+      const opponentName = teamFixtures
+        .map((fixture) => {
+          const opponentId =
+            fixture.team_h === player.team
+              ? fixture.team_a
+              : fixture.team_h;
+          return teams.get(opponentId)?.name ?? "—";
+        })
+        .join(" + ");
 
       // FPL ep_next is useful as a public prior but already contains some
       // fixture information, so it is deliberately not allowed to dominate.
@@ -895,6 +906,7 @@ function rankPlayers(
         id: player.id,
         name: player.web_name,
         team: team?.short_name ?? "—",
+        teamName: team?.name ?? team?.short_name ?? "—",
         position,
         price,
         form,
@@ -932,6 +944,7 @@ function rankPlayers(
         teamAttackIndex: teamProcess?.attackIndex ?? 1,
         teamDefenceIndex: teamProcess?.defenceIndex ?? 1,
         opponent: opponent || null,
+        opponentName: opponentName || null,
         fixtureCount: teamFixtures.length,
         scoreBreakdown: {
           base: officialBase,
