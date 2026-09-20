@@ -73,8 +73,9 @@ export default async function TeamPage({
           <span className="brand-mark">F</span><span>Footy</span>
         </Link>
         <div className="nav-links">
+          <a href="#today">Today</a>
           <a href="#squad">Squad</a>
-          <a href="#leagues">Mini-Leagues</a>
+          <a href="#leagues">Mini-League</a>
           <a href="#build-test">Build &amp; Test</a>
           <Link href="/results">Receipts</Link>
         </div>
@@ -109,8 +110,8 @@ export default async function TeamPage({
         <div className="team-pitch-panel">
           <div className="team-pitch-panel-head">
             <div>
-              <span className="eyebrow">Your squad · GW{team.currentEvent}</span>
-              <h2>Your team, live.</h2>
+              <span className="eyebrow">2 · Your squad · GW{team.currentEvent}</span>
+              <h2>See the team behind the decision.</h2>
             </div>
             <div className="team-pitch-summary">
               <span>£{team.squadValue.toFixed(1)}m value</span>
@@ -144,8 +145,8 @@ export default async function TeamPage({
           </div>
 
           <div className="team-league-picker-head">
-            <span className="eyebrow">Your mini-leagues</span>
-            <h2>Pick the race that matters.</h2>
+            <span className="eyebrow">3 · Mini-league</span>
+            <h2>{selectedLeague ? "Switch the battle." : "Pick the race that matters."}</h2>
             <p>
               {team.miniLeagues.length
                 ? `Footy found ${team.miniLeagues.length} invitational classic league${team.miniLeagues.length === 1 ? "" : "s"}.`
@@ -208,7 +209,7 @@ export default async function TeamPage({
 
       <section className="shell integrated-build-test" id="build-test">
         <div className="workspace-section-intro">
-          <span className="eyebrow">Build &amp; Test</span>
+          <span className="eyebrow">4 · Build &amp; Test</span>
           <h2>
             {leagueId
               ? "Test moves against this mini-league."
@@ -237,7 +238,7 @@ export default async function TeamPage({
         <p>
           Footy uses public FPL data only. No FPL password or account connection is required.
         </p>
-        <p>SQUAD → LEAGUE → BUILD → DECIDE → RECEIPTS</p>
+        <p>CHOOSE → DECIDE → UNDERSTAND → TEST → RECEIPTS</p>
       </footer>
     </main>
   );
