@@ -183,7 +183,7 @@ export default function Home() {
               <li>Mini-league command centre</li>
               <li>League-specific transfers + captaincy</li>
               <li>Rival Arsenal: chips, hits and free transfers</li>
-              <li>Player Database + Squad Lab</li>
+              <li>Player Database + Build & Test</li>
               <li>Freshness, trends and Receipts</li>
             </ul>
             <TeamConnectForm compact />
