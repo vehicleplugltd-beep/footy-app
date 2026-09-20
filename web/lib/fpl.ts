@@ -401,6 +401,7 @@ function rankPlayers(
   eventId: number | null,
   process: Map<string, TeamProcess>,
   useExpectedNext = true,
+  includeUnavailable = false,
 ): RankedPlayer[] {
   const teams = new Map(bootstrap.teams.map((team) => [team.id, team]));
   const positions = new Map(
@@ -516,7 +517,7 @@ function rankPlayers(
         fixtureCount: teamFixtures.length,
       } satisfies RankedPlayer;
     })
-    .filter((player) => player.availability > 0)
+    .filter((player) => includeUnavailable || player.availability > 0)
     .sort((a, b) => b.assistantScore - a.assistantScore);
 }
 
@@ -1013,5 +1014,68 @@ export async function getLeagueManagerEdgeAnalysis(
     transferOptions,
     playerTrends,
     teamTrends,
+  };
+}
+
+
+export type PlayerDatabasePayload = {
+  currentEvent: FplEvent | null;
+  nextEvent: FplEvent | null;
+  dataRetrievedAt: string;
+  freshness: "LIVE_FPL" | "CACHED_FALLBACK";
+  processTeams: number;
+  players: RankedPlayer[];
+};
+
+export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
+  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
+    footyProcesses(),
+  ]);
+
+  let bootstrap: Bootstrap | null = null;
+  let fixtures: Fixture[] | null = null;
+  let freshness: "LIVE_FPL" | "CACHED_FALLBACK" = "LIVE_FPL";
+  let dataRetrievedAt = new Date().toISOString();
+
+  try {
+    const direct = await Promise.all([
+      fplFetch<Bootstrap>("bootstrap-static/", 0),
+      fplFetch<Fixture[]>("fixtures/", 0),
+    ]);
+    bootstrap = direct[0];
+    fixtures = direct[1];
+  } catch {
+    bootstrap = bootstrapSnapshot?.payload ?? null;
+    fixtures = fixturesSnapshot?.payload ?? null;
+    freshness = "CACHED_FALLBACK";
+    dataRetrievedAt =
+      bootstrapSnapshot?.retrieved_at ??
+      fixturesSnapshot?.retrieved_at ??
+      dataRetrievedAt;
+  }
+
+  if (!bootstrap || !fixtures) {
+    throw new Error("Player database is temporarily unavailable.");
+  }
+
+  const { current, next } = currentAndNext(bootstrap.events);
+  const players = rankPlayers(
+    bootstrap,
+    fixtures,
+    next?.id ?? current?.id ?? null,
+    process,
+    true,
+    true,
+  );
+
+  return {
+    currentEvent: current,
+    nextEvent: next,
+    dataRetrievedAt,
+    freshness,
+    processTeams: process.size,
+    players,
   };
 }
