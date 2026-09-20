@@ -281,6 +281,85 @@ class SupabaseRESTReader:
             start += self.page_size
         return rows
 
+    def _get_all_filtered(
+        self,
+        table: str,
+        select: str = "*",
+        filters: Mapping[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        start = 0
+        while True:
+            end = start + self.page_size - 1
+            params = {"select": select}
+            if filters:
+                params.update(filters)
+            response = requests.get(
+                f"{self.url}/rest/v1/{table}",
+                params=params,
+                headers={
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {self.key}",
+                    "Range": f"{start}-{end}",
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            batch = response.json()
+            rows.extend(batch)
+            if len(batch) < self.page_size:
+                break
+            start += self.page_size
+        return rows
+
+    def season_matches(
+        self,
+        league: str,
+        season: str,
+    ) -> pd.DataFrame:
+        rows = self._get_all_filtered(
+            "footy_matches",
+            "match_id,league,season,kickoff_at,home_team,away_team",
+            {
+                "league": f"eq.{league}",
+                "season": f"eq.{season}",
+            },
+        )
+        frame = pd.DataFrame(rows)
+        if frame.empty:
+            return frame
+        frame["match_date"] = pd.to_datetime(
+            frame["kickoff_at"], errors="coerce", utc=True
+        )
+        return frame
+
+    def match_team_metrics_for_ids(
+        self,
+        match_ids: Iterable[str],
+        source: str | None = None,
+    ) -> pd.DataFrame:
+        ids = [str(value) for value in match_ids if str(value)]
+        if not ids:
+            return pd.DataFrame()
+        quoted = ",".join(f'"{value}"' for value in ids)
+        filters = {"match_id": f"in.({quoted})"}
+        if source is not None:
+            filters["source"] = f"eq.{source}"
+        rows = self._get_all_filtered(
+            "footy_match_team_metrics",
+            (
+                "match_id,team,opponent,home_away,goals,goals_conceded,"
+                "xg,npxg,xga,npxga,shots,shots_on_target,"
+                "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
+                "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
+                "possession,ppda,field_tilt,deep_completions,crosses,"
+                "shots_inside_box,xgot,source,retrieved_at,verified,"
+                "verification_status,verified_at"
+            ),
+            filters,
+        )
+        return pd.DataFrame(rows)
+
     def model_market_validation(
         self,
         model_version: str | None = None,

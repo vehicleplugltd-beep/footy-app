@@ -168,39 +168,51 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
         raise RuntimeError("FPL-Core-Insights returned no finished Premier League rows.")
 
     reader = SupabaseRESTReader()
-    history = reader.historical_match_team_metrics(include_unverified=True)
-    if history.empty:
-        raise RuntimeError("No Footy reference history available for reconciliation.")
+    matches_scope = reader.season_matches(args.league, args.season)
+    if matches_scope.empty:
+        raise RuntimeError("No Footy season match spine available for reconciliation.")
 
-    scope = history[
-        (history["league"].astype(str) == str(args.league))
-        & (history["season"].astype(str) == str(args.season))
-        & (history["source"].astype(str) == "understat")
-    ].copy()
-    if scope.empty:
-        raise RuntimeError("No verified Understat reference rows in requested scope.")
+    side_rows: list[dict] = []
+    for _, row in matches_scope.iterrows():
+        side_rows.extend([
+            {
+                "match_id": row["match_id"],
+                "match_date": row["match_date"],
+                "team": row["home_team"],
+                "opponent": row["away_team"],
+                "home_away": "H",
+            },
+            {
+                "match_id": row["match_id"],
+                "match_date": row["match_date"],
+                "team": row["away_team"],
+                "opponent": row["home_team"],
+                "home_away": "A",
+            },
+        ])
+    side_scope = pd.DataFrame(side_rows)
 
-    reconciled, match_rate = reconcile_fpl_core_to_footy(normalized, scope)
+    reconciled, match_rate = reconcile_fpl_core_to_footy(
+        normalized,
+        side_scope,
+    )
     if match_rate < args.min_match_rate:
         raise RuntimeError(
             f"FPL-Core reconciliation {match_rate:.1%} below "
             f"{args.min_match_rate:.1%}"
         )
 
-    reference = scope[
-        [
-            "match_id",
-            "team",
-            "opponent",
-            "home_away",
-            "goals",
-            "goals_conceded",
-            "shots",
-            "shots_on_target",
-            "xg",
-            "npxg",
-        ]
+    reference = reader.match_team_metrics_for_ids(
+        reconciled["match_id"].dropna().astype(str).unique().tolist(),
+        source="understat",
+    )
+    if reference.empty:
+        raise RuntimeError("No Understat reference rows for reconciled matches.")
+    reference = reference[
+        reference["verified"].fillna(False).astype(bool)
     ].copy()
+    if reference.empty:
+        raise RuntimeError("No verified Understat reference rows for reconciled matches.")
     report = verify_provider_rows(
         reconciled,
         reference,
