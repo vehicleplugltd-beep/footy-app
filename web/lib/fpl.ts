@@ -1371,12 +1371,29 @@ function buildFuturePlan(
     };
   }
 
-  const upcomingEvents = bootstrap.events
+  const allFutureEvents = bootstrap.events
     .filter((event) => event.id >= nextEvent.id && !event.finished)
-    .sort((a, b) => a.id - b.id)
-    .slice(0, 8);
+    .sort((a, b) => a.id - b.id);
+  const upcomingEvents = allFutureEvents.slice(0, 8);
 
   const teamById = new Map(bootstrap.teams.map((team) => [team.id, team]));
+
+  const calendarStructure = allFutureEvents.map((event) => {
+    const counts = new Map<number, number>();
+    for (const fixture of fixtures.filter((item) => item.event === event.id)) {
+      counts.set(fixture.team_h, (counts.get(fixture.team_h) ?? 0) + 1);
+      counts.set(fixture.team_a, (counts.get(fixture.team_a) ?? 0) + 1);
+    }
+    return {
+      event,
+      doubleTeams: bootstrap.teams
+        .filter((team) => (counts.get(team.id) ?? 0) > 1)
+        .map((team) => team.short_name),
+      blankTeams: bootstrap.teams
+        .filter((team) => (counts.get(team.id) ?? 0) === 0)
+        .map((team) => team.short_name),
+    };
+  });
 
   const futurePlan = upcomingEvents.map((event) => {
     const ranked = rankPlayers(
@@ -1414,23 +1431,50 @@ function buildFuturePlan(
     } satisfies FutureGameweekPlan;
   });
 
-  const tripleCandidate = [...futurePlan]
+  const strongestDouble = [...calendarStructure].sort(
+    (a, b) =>
+      b.doubleTeams.length - a.doubleTeams.length ||
+      a.event.id - b.event.id,
+  )[0];
+  const doubleCaptain =
+    strongestDouble?.doubleTeams.length
+      ? rankPlayers(
+          bootstrap,
+          fixtures,
+          strongestDouble.event.id,
+          process,
+          false,
+        ).find(
+          (player) =>
+            player.availability >= 75 &&
+            player.fixtureCount > 1,
+        ) ?? null
+      : null;
+  const nearTermTriple = [...futurePlan]
     .filter((plan) => plan.captain)
     .sort(
       (a, b) =>
         (b.captain?.assistantScore ?? 0) -
         (a.captain?.assistantScore ?? 0),
     )[0];
+  const tripleCandidate = doubleCaptain
+    ? {
+        name: strongestDouble.event.name,
+        captain: doubleCaptain,
+      }
+    : nearTermTriple;
 
-  const freeHitCandidate = [...futurePlan]
-    .sort(
-      (a, b) =>
-        b.blankTeams.length + b.doubleTeams.length * 1.5 -
-        (a.blankTeams.length + a.doubleTeams.length * 1.5),
-    )[0];
+  const freeHitCandidate = [...calendarStructure].sort(
+    (a, b) =>
+      b.blankTeams.length + b.doubleTeams.length * 1.5 -
+      (a.blankTeams.length + a.doubleTeams.length * 1.5),
+  )[0];
 
-  const benchBoostCandidate = [...futurePlan]
-    .sort((a, b) => b.doubleTeams.length - a.doubleTeams.length)[0];
+  const benchBoostCandidate = [...calendarStructure].sort(
+    (a, b) =>
+      b.doubleTeams.length - a.doubleTeams.length ||
+      a.event.id - b.event.id,
+  )[0];
 
   const teamRunScores = bootstrap.teams.map((team) => {
     const eventScores = upcomingEvents.map((event) => {
@@ -1471,7 +1515,7 @@ function buildFuturePlan(
             : "HOLD",
       eventName: tripleCandidate?.name ?? null,
       reason: tripleCandidate?.captain
-        ? `${tripleCandidate.captain.name} leads the five-Gameweek captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}.`
+        ? `${tripleCandidate.captain.name} leads the relevant captain model with ${tripleCandidate.captain.fixtureCount} fixture(s) in ${tripleCandidate.name}; scheduled doubles are scanned across the full remaining calendar.`
         : "No standout captain window yet.",
     },
     {
@@ -1482,9 +1526,9 @@ function buildFuturePlan(
           : (benchBoostCandidate?.doubleTeams.length ?? 0) >= 2
             ? "WATCH"
             : "HOLD",
-      eventName: benchBoostCandidate?.name ?? null,
+      eventName: benchBoostCandidate?.event.name ?? null,
       reason: benchBoostCandidate
-        ? `${benchBoostCandidate.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s). Bench Boost becomes more attractive as doubles accumulate.`
+        ? `${benchBoostCandidate.event.name} currently has ${benchBoostCandidate.doubleTeams.length} double-fixture team(s) on the remaining scheduled calendar. Bench Boost becomes more attractive when the manager can also carry 15 dependable starters into that window.`
         : "No obvious Bench Boost window yet.",
     },
     {
@@ -1495,10 +1539,10 @@ function buildFuturePlan(
           : (freeHitCandidate?.blankTeams.length ?? 0) >= 3
             ? "WATCH"
             : "HOLD",
-      eventName: freeHitCandidate?.name ?? null,
+      eventName: freeHitCandidate?.event.name ?? null,
       reason: freeHitCandidate
-        ? `${freeHitCandidate.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) on the current schedule.`
-        : "No major blank/double disruption in the next five Gameweeks.",
+        ? `${freeHitCandidate.event.name} has ${freeHitCandidate.blankTeams.length} blank team(s) and ${freeHitCandidate.doubleTeams.length} double team(s) on the remaining scheduled calendar.`
+        : "No major blank/double disruption is currently scheduled.",
     },
     {
       chip: "WILDCARD",

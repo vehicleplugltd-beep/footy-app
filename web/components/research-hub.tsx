@@ -107,6 +107,10 @@ function FixtureCard({
         <div><span>Draw</span><strong>{pct(prediction.drawProbability)}%</strong></div>
         <div><span>Away</span><strong>{pct(prediction.awayWinProbability)}%</strong></div>
       </div>
+      <div className="fixture-clean-sheets" aria-label="Model clean sheet probabilities">
+        <span>{prediction.homeShort} xCS <b>{pct(prediction.homeCleanSheetProbability)}%</b></span>
+        <span>{prediction.awayShort} xCS <b>{pct(prediction.awayCleanSheetProbability)}%</b></span>
+      </div>
 
       <p>{prediction.reason}</p>
 
