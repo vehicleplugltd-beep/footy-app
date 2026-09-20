@@ -156,6 +156,18 @@ export type TeamAnalysis = {
   squad: RankedPlayer[];
 };
 
+export type ManagerFutureGameweek = {
+  eventId: number;
+  name: string;
+  deadline: string;
+  captain: RankedPlayer | null;
+  transfer: {
+    out: RankedPlayer;
+    in: RankedPlayer;
+    gain: number;
+  } | null;
+};
+
 export type FplHub = {
   currentEvent: FplEvent | null;
   nextEvent: FplEvent | null;
@@ -743,6 +755,99 @@ async function analyseTeam(
   };
 }
 
+function buildManagerFuturePlan(
+  bootstrap: Bootstrap,
+  fixtures: Fixture[],
+  process: Map<string, TeamProcess>,
+  manager: TeamAnalysis,
+  nextEvent: FplEvent | null,
+): ManagerFutureGameweek[] {
+  if (!nextEvent) return [];
+
+  const upcomingEvents = bootstrap.events
+    .filter((event) => event.id >= nextEvent.id && !event.finished)
+    .sort((a, b) => a.id - b.id)
+    .slice(0, 4);
+
+  const squadIds = new Set(manager.squad.map((player) => player.id));
+  const currentTeamCounts = new Map<string, number>();
+  for (const player of manager.squad) {
+    currentTeamCounts.set(
+      player.team,
+      (currentTeamCounts.get(player.team) ?? 0) + 1,
+    );
+  }
+
+  return upcomingEvents.map((event) => {
+    const ranked = rankPlayers(
+      bootstrap,
+      fixtures,
+      event.id,
+      process,
+      false,
+    );
+    const rankedById = new Map(ranked.map((player) => [player.id, player]));
+    const squad = manager.squad
+      .map((player) => rankedById.get(player.id))
+      .filter((player): player is RankedPlayer => Boolean(player));
+
+    const captain =
+      [...squad]
+        .filter(
+          (player) =>
+            player.availability >= 75 && player.fixtureCount > 0,
+        )
+        .sort((a, b) => b.assistantScore - a.assistantScore)[0] ?? null;
+
+    const transferCandidates = squad
+      .map((out) => {
+        const budget = out.price + manager.bank;
+        const incoming =
+          ranked.find((candidate) => {
+            if (candidate.position !== out.position) return false;
+            if (squadIds.has(candidate.id)) return false;
+            if (candidate.availability < 75 || candidate.fixtureCount <= 0) {
+              return false;
+            }
+            if (candidate.price > budget) return false;
+
+            const afterRemoval =
+              (currentTeamCounts.get(candidate.team) ?? 0) -
+              (candidate.team === out.team ? 1 : 0);
+            if (afterRemoval >= 3) return false;
+
+            return candidate.assistantScore > out.assistantScore;
+          }) ?? null;
+
+        return incoming
+          ? {
+              out,
+              in: incoming,
+              gain: incoming.assistantScore - out.assistantScore,
+            }
+          : null;
+      })
+      .filter(
+        (
+          move,
+        ): move is {
+          out: RankedPlayer;
+          in: RankedPlayer;
+          gain: number;
+        } => Boolean(move),
+      )
+      .sort((a, b) => b.gain - a.gain);
+
+    return {
+      eventId: event.id,
+      name: event.name,
+      deadline: event.deadline_time,
+      captain,
+      transfer: transferCandidates[0] ?? null,
+    };
+  });
+}
+
 export async function getFplHub(teamId?: number): Promise<FplHub> {
   const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
     cachedFpl<Bootstrap>("bootstrap-static"),
@@ -841,6 +946,7 @@ export async function getFplHub(teamId?: number): Promise<FplHub> {
     baseError,
     dataRetrievedAt,
     futurePlan,
+    managerFuturePlan,
     chipRadar,
   };
 }
@@ -869,6 +975,7 @@ export type LeagueManagerEdgeAnalysis = {
   playerTrends: Array<RankedPlayer & { trendScore: number }>;
   teamTrends: TeamProcess[];
   futurePlan: FutureGameweekPlan[];
+  managerFuturePlan: ManagerFutureGameweek[];
   chipRadar: ChipSignal[];
 };
 
@@ -975,6 +1082,14 @@ export async function getLeagueManagerEdgeAnalysis(
         (a.replacement?.assistantScore ?? 0),
     )
     .slice(0, 3);
+
+  const managerFuturePlan = buildManagerFuturePlan(
+    bootstrap,
+    fixtures,
+    process,
+    manager,
+    next,
+  );
 
   const playerTrends = [...ranked]
     .map((player) => {
