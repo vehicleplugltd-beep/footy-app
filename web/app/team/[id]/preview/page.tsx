@@ -26,7 +26,7 @@ export default async function PreviewPage({
   const team = await getFplTeamDiscovery(teamId);
   const leagues = team.miniLeagues.length
     ? team.miniLeagues
-    : team.otherClassicLeagues.slice(0, 12);
+    : team.otherClassicLeagues;
 
   if (!leagueId) {
     redirect("/?team=" + team.id);
@@ -56,6 +56,7 @@ export default async function PreviewPage({
           <span>Footy</span>
         </Link>
         <div className="hq-nav-right">
+          <Link href="/research">Research</Link>
           <Link
             href={
               "/team/" +
@@ -96,7 +97,8 @@ export default async function PreviewPage({
             <h2>Build and compare</h2>
           </div>
           <small>
-            Current squad loaded · £{team.bank.toFixed(1)}m bank
+            Current squad loaded · £{team.bank.toFixed(1)}m bank ·{" "}
+            <Link href="/research#players">full player research →</Link>
           </small>
         </div>
         <BuildTestWorkspace

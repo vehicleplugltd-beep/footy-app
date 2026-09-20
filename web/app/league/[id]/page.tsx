@@ -20,6 +20,7 @@ export default async function LeaguePage({
       <nav className="nav shell">
         <Link className="brand brand-link" href="/"><span className="brand-mark">F</span><span>Footy</span></Link>
         <div className="nav-links">
+          <Link href="/research">Research</Link>
           {teamId ? <Link href={`/team/${teamId}`}>My team</Link> : null}
           {teamId ? (
             <Link href={`/team/${teamId}?league=${id}#build-test`}>
