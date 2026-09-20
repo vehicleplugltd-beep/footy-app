@@ -1076,7 +1076,10 @@ export function TeamRoomDashboard({
             </small>
           </div>
 
-          <div className="counterplay-posture-shell">
+          <div
+            className="counterplay-posture-shell"
+            aria-busy={counterPostureLoading}
+          >
             <div className="counterplay-posture-copy">
               <span>YOUR POSTURE</span>
               <strong>Choose how Footy should optimise this league position.</strong>
