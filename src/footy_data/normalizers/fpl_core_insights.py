@@ -216,10 +216,6 @@ def normalise_fpl_core_player_match_stats(
         int(float(row["code"])): _canonical_team(row["name"])
         for _, row in teams.dropna(subset=["code", "name"]).iterrows()
     }
-    team_by_id = {
-        int(float(row["id"])): _canonical_team(row["name"])
-        for _, row in teams.dropna(subset=["id", "name"]).iterrows()
-    }
     player_by_id = {
         int(float(row["player_id"])): row
         for _, row in players.dropna(subset=["player_id"]).iterrows()
@@ -281,16 +277,18 @@ def normalise_fpl_core_player_match_stats(
         if pd.isna(team_code):
             continue
         team = team_by_code.get(int(float(team_code)))
-        home_id = _number(match.get("home_team"))
-        away_id = _number(match.get("away_team"))
+        # FPL-Core match rows use the persistent club code, not the
+        # season-scoped FPL team id. Keep the same identity key as players.csv.
+        home_code = _number(match.get("home_team"))
+        away_code = _number(match.get("away_team"))
         home = (
-            team_by_id.get(int(float(home_id)))
-            if not pd.isna(home_id)
+            team_by_code.get(int(float(home_code)))
+            if not pd.isna(home_code)
             else None
         )
         away = (
-            team_by_id.get(int(float(away_id)))
-            if not pd.isna(away_id)
+            team_by_code.get(int(float(away_code)))
+            if not pd.isna(away_code)
             else None
         )
         if team == home:

@@ -100,8 +100,9 @@ def test_player_match_enrichment_promotes_only_supported_team_metrics():
         {
             "gameweek": 5,
             "kickoff_time": "2026-09-19T14:00:00Z",
-            "home_team": 5,
-            "away_team": 1,
+            # matches.csv uses persistent team codes, not FPL team ids.
+            "home_team": 36,
+            "away_team": 3,
             "match_id": "provider-1",
             "tournament": "prem",
         }
