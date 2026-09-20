@@ -172,6 +172,32 @@ export type TeamProcess = {
   };
 };
 
+export type FplVolatilityCalibration = {
+  version: string;
+  season: string;
+  source: string;
+  source_url?: string;
+  generated_at: string;
+  sample_count: number;
+  row_count: number;
+  methodology?: Record<string, string>;
+  profiles: Record<string, {
+    sample_size: number;
+    residual_mean?: number;
+    residual_sd: number;
+    standardized_quantiles: Record<string, number>;
+    zero_minute_rate?: number;
+    cameo_rate?: number;
+    starter_60_rate?: number;
+  }>;
+  modifiers: {
+    xgi?: Record<string, { sample_size: number; multiplier: number }>;
+    minute_stability?: Record<string, { sample_size: number; multiplier: number }>;
+    bonus?: Record<string, { sample_size: number; multiplier: number }>;
+    clean_sheet?: Record<string, { sample_size: number; multiplier: number }>;
+  };
+};
+
 export type RankedPlayer = {
   id: number;
   name: string;
@@ -1182,8 +1208,16 @@ function rankPlayers(
         shrunkPer90(player.expected_goals_conceded, player.minutes, 4.0),
       );
       const starts = Math.max(0, Number(player.starts || 0));
+      const completedEvents = bootstrap.events.filter(
+        (event) => event.finished && (eventId == null || event.id < eventId),
+      ).length;
+      // Beta-smoothed start rate. The old 3-start threshold made a player
+      // appear perfectly reliable far too early in the season and could not
+      // distinguish a regular substitute from a nailed starter.
       const startReliability =
-        starts >= 3 ? 1 : starts === 2 ? 0.90 : starts === 1 ? 0.76 : 0.58;
+        completedEvents > 0
+          ? clamp((starts + 1) / (completedEvents + 2), 0.08, 0.98)
+          : 0.5;
 
       const matchupFactors = teamFixtures.map((fixture) => {
         const isHome = fixture.team_h === player.team;
@@ -2192,11 +2226,13 @@ function buildManagerFuturePlan(
 }
 
 export async function getFplHub(teamId?: number): Promise<FplHub> {
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
-    cachedFpl<Bootstrap>("bootstrap-static"),
-    cachedFpl<Fixture[]>("fixtures"),
-    footyProcesses(),
-  ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process, volatilitySnapshot] =
+    await Promise.all([
+      cachedFpl<Bootstrap>("bootstrap-static"),
+      cachedFpl<Fixture[]>("fixtures"),
+      footyProcesses(),
+      cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
+    ]);
 
   let bootstrap = bootstrapSnapshot?.payload ?? null;
   let fixtures = fixturesSnapshot?.payload ?? null;
@@ -2335,6 +2371,7 @@ export type LeagueManagerEdgeAnalysis = {
     }>;
   }>;
   counterPlayTransferPool: RankedPlayer[];
+  volatilityCalibration: FplVolatilityCalibration | null;
   chipRadar: ChipSignal[];
 };
 
@@ -2622,6 +2659,9 @@ export async function getLeagueManagerEdgeAnalysis(
         "Official field ownership plus actual connected mini-league squad/captain overlap",
         "Mini-league points gaps, chips, hits and estimated free transfers",
         "Portfolio structure: bank buffer, actual bench cover, price-band routes and 6GW/8GW best-XI model scores",
+        volatilitySnapshot?.payload
+          ? `Empirical FPL scoring volatility/tails calibrated from ${volatilitySnapshot.payload.sample_count.toLocaleString()} leakage-controlled prior-season player-Gameweek samples`
+          : "CounterPlay volatility calibration snapshot pending; heuristic fallback remains active",
       ],
       notMeasured: [
         "True global effective ownership (EO); official ownership is not relabelled as EO",
@@ -2637,6 +2677,7 @@ export async function getLeagueManagerEdgeAnalysis(
     managerFuturePlan,
     counterPlayHorizon,
     counterPlayTransferPool,
+    volatilityCalibration: volatilitySnapshot?.payload ?? null,
     chipRadar,
   };
 }
