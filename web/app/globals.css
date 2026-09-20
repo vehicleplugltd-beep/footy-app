@@ -6278,3 +6278,273 @@ body {
     flex: 1 1 140px;
   }
 }
+
+
+/* Minimal Footy homepage */
+.minimal-home {
+  --text: #111318;
+  --muted: #6f7784;
+  --accent: #10b981;
+  background: #f5f6f8;
+  color: #111318;
+  min-height: 100vh;
+}
+
+.minimal-home .shell {
+  max-width: 1120px;
+}
+
+.minimal-home > .nav.minimal-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-height: 58px;
+  border: 0;
+  border-bottom: 1px solid #e6e8ed;
+  border-radius: 0;
+  background: rgba(255,255,255,.96);
+  box-shadow: none;
+}
+
+.minimal-home .brand {
+  color: #111318;
+}
+
+.minimal-home .brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #111318;
+  color: #fff;
+  box-shadow: none;
+}
+
+.minimal-home .nav-links a {
+  color: #606875;
+  background: transparent;
+  font-size: 10px;
+}
+
+.minimal-home-hero {
+  display: grid;
+  grid-template-columns: minmax(0,1.2fr) minmax(300px,.8fr);
+  gap: 64px;
+  align-items: center;
+  min-height: 560px;
+  padding-top: 70px;
+  padding-bottom: 70px;
+}
+
+.minimal-home-copy > span,
+.minimal-home-example > span,
+.minimal-home-trust span {
+  display: block;
+  color: #0b8b61;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.minimal-home-copy h1 {
+  max-width: 720px;
+  margin: 10px 0 14px;
+  color: #111318;
+  font-size: clamp(46px,7vw,78px);
+  line-height: .96;
+  letter-spacing: -.06em;
+}
+
+.minimal-home-copy > p {
+  max-width: 620px;
+  margin: 0 0 22px;
+  color: #69717d;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.minimal-home .league-connect {
+  max-width: 650px;
+}
+
+.minimal-home .league-connect label > span {
+  color: #59616d;
+}
+
+.minimal-home .league-connect label > div {
+  border: 1px solid #dde1e7;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.minimal-home .league-connect input {
+  color: #111318;
+  background: transparent;
+}
+
+.minimal-home .league-connect button {
+  border-radius: 8px;
+  background: #111318;
+  color: #fff;
+  box-shadow: none;
+}
+
+.minimal-home-copy > small {
+  display: block;
+  margin-top: 9px;
+  color: #969ca6;
+  font-size: 8px;
+}
+
+.minimal-home-example {
+  border: 1px solid #e2e5ea;
+  border-radius: 16px;
+  padding: 22px;
+  background: #fff;
+}
+
+.minimal-home-example > small {
+  display: block;
+  margin-top: 4px;
+  color: #888f9b;
+  font-size: 8px;
+}
+
+.minimal-home-example h2 {
+  margin: 22px 0;
+  color: #111318;
+  font-size: 24px;
+  line-height: 1.18;
+  letter-spacing: -.035em;
+}
+
+.minimal-home-example > div {
+  display: grid;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid #eceef2;
+}
+
+.minimal-home-example p {
+  margin: 0;
+  color: #69717d;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.minimal-home-example b {
+  color: #111318;
+}
+
+.minimal-home-flow {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 1px;
+  overflow: hidden;
+  margin-bottom: 70px;
+  border: 1px solid #e2e5ea;
+  border-radius: 14px;
+  background: #e2e5ea;
+}
+
+.minimal-home-flow article {
+  min-height: 150px;
+  padding: 22px;
+  background: #fff;
+}
+
+.minimal-home-flow span,
+.minimal-home-flow strong,
+.minimal-home-flow p {
+  display: block;
+}
+
+.minimal-home-flow span {
+  color: #0b8b61;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.minimal-home-flow strong {
+  margin: 16px 0 6px;
+  color: #111318;
+  font-size: 15px;
+}
+
+.minimal-home-flow p {
+  margin: 0;
+  color: #747b87;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.minimal-home-trust {
+  display: grid;
+  grid-template-columns: .9fr 1.1fr;
+  gap: 60px;
+  align-items: start;
+  padding-top: 54px;
+  padding-bottom: 60px;
+  border-top: 1px solid #e2e5ea;
+}
+
+.minimal-home-trust h2 {
+  max-width: 440px;
+  margin: 7px 0 0;
+  color: #111318;
+  font-size: 32px;
+  line-height: 1.08;
+  letter-spacing: -.04em;
+}
+
+.minimal-home-trust > div:last-child {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid #e2e5ea;
+}
+
+.minimal-home-trust p {
+  margin: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid #e2e5ea;
+  color: #555e69;
+  font-size: 10px;
+}
+
+@media (max-width: 850px) {
+  .minimal-home-hero,
+  .minimal-home-trust {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .minimal-home-hero {
+    min-height: auto;
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+
+  .minimal-home-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .minimal-home-copy h1 {
+    font-size: 46px;
+  }
+
+  .minimal-home .league-connect label > div {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 5px;
+  }
+
+  .minimal-home .league-connect button {
+    width: 100%;
+  }
+
+  .minimal-home-example {
+    padding: 16px;
+  }
+}
