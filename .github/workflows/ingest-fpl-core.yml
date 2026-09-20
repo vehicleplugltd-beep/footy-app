@@ -73,5 +73,24 @@ jobs:
           PY
 
       - name: Verify then ingest enrichment
+        shell: bash
         run: |
-          footy-data fpl-core-ingest             --gameweek "${{ steps.gw.outputs.gameweek }}"             --league "ENG-Premier League"             --season "2627"             --min-match-rate 0.92
+          CURRENT_GW="${{ steps.gw.outputs.gameweek }}"
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "Backfilling verified enrichment through GW${CURRENT_GW}"
+            for GW in $(seq 1 "$CURRENT_GW"); do
+              echo "=== Verify GW${GW} ==="
+              footy-data fpl-core-ingest \
+                --gameweek "$GW" \
+                --league "ENG-Premier League" \
+                --season "2627" \
+                --min-match-rate 0.92
+            done
+          else
+            footy-data fpl-core-ingest \
+              --gameweek "$CURRENT_GW" \
+              --league "ENG-Premier League" \
+              --season "2627" \
+              --min-match-rate 0.92
+          fi
