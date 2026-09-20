@@ -1287,6 +1287,7 @@ export async function getRivalResourceHistory(
     freeTransferEstimateEvent: freeTransferEstimate.event,
     freeTransferConfidence: freeTransferEstimate.confidence,
     transferLog: [...(transfers ?? [])]
+      .filter((transfer) => Number(transfer.event) <= currentEvent)
       .sort(
         (a, b) =>
           new Date(b.time).getTime() - new Date(a.time).getTime(),
