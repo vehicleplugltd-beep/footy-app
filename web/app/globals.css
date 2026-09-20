@@ -3347,3 +3347,112 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* League Edge freshness + trends */
+.beta-freshness {
+  border: 1px solid rgba(114,245,158,.26);
+  border-radius: 12px;
+  background: rgba(8,28,17,.72);
+  padding: 11px 12px;
+}
+.beta-freshness span,
+.beta-freshness strong,
+.beta-freshness small {
+  display: block;
+}
+.beta-freshness span {
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
+.beta-freshness strong {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.beta-freshness small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+.beta-trends {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.beta-trends > div {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(2,12,7,.35);
+  padding: 12px;
+}
+.beta-trends span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 5px;
+}
+.beta-trends small {
+  display: block;
+  color: #d2e1d7;
+  font-size: 9px;
+  line-height: 1.45;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.beta-trends b {
+  color: var(--text);
+}
+@media (max-width: 700px) {
+  .beta-trends {
+    grid-template-columns: 1fr;
+  }
+}
+
+.receipts-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  padding: 10px 0 24px;
+}
+.receipts-scoreboard article {
+  border: 1px solid var(--line-soft);
+  border-radius: 15px;
+  background: rgba(7,20,13,.66);
+  padding: 17px;
+}
+.receipts-scoreboard span,
+.receipts-scoreboard small,
+.receipts-scoreboard strong {
+  display: block;
+}
+.receipts-scoreboard span {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.receipts-scoreboard strong {
+  color: var(--accent);
+  font-size: 30px;
+  margin: 6px 0 3px;
+}
+.receipts-scoreboard small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+@media (max-width: 900px) {
+  .receipts-scoreboard {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .receipts-scoreboard {
+    grid-template-columns: 1fr;
+  }
+}

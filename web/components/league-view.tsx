@@ -54,6 +54,11 @@ type ManagerEdgePayload = {
   rival_standing: Standing | null;
   analysis: {
     nextEvent: { id: number; name: string; deadline_time: string } | null;
+    dataRetrievedAt: string;
+    freshness: {
+      source: "LIVE_FPL" | "CACHED_FALLBACK";
+      nearDeadline: boolean;
+    };
     manager: EdgeTeamAnalysis;
     rival: EdgeTeamAnalysis | null;
     overlap: {
@@ -62,6 +67,20 @@ type ManagerEdgePayload = {
       managerOnly: EdgePlayer[];
       rivalOnly: EdgePlayer[];
     };
+    captainOptions: EdgePlayer[];
+    transferOptions: EdgeSuggestion[];
+    playerTrends: Array<EdgePlayer & {
+      trendScore: number;
+      form: number;
+      xgiPer90: number;
+      transfersNet: number;
+    }>;
+    teamTrends: Array<{
+      team: string;
+      matches: number;
+      attackIndex: number;
+      defenceIndex: number;
+    }>;
   };
   generated_at: string;
 };
@@ -358,9 +377,9 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
               <span className="eyebrow">League command centre</span>
               <h2>Pick your manager. See your battle.</h2>
               <p>
-                This layer uses only real standings data: rank, points, weekly
-                movement and the gaps between rivals. Squad-level move ranking
-                stays locked until that data is synced.
+                This starts with real standings data, then the Founding beta can
+                refresh official FPL squad data on demand and compare it with
+                the nearest rival.
               </p>
             </div>
             <label className="manager-picker">
@@ -570,6 +589,28 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
               </>
             ) : (
               <div className="beta-analysis">
+                <div className="beta-freshness">
+                  <span>
+                    {edgePreview.analysis.freshness.source === "LIVE_FPL"
+                      ? "LIVE FPL DATA"
+                      : "FALLBACK CACHE"}
+                  </span>
+                  <strong>
+                    Updated{" "}
+                    {new Date(
+                      edgePreview.analysis.dataRetrievedAt,
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </strong>
+                  <small>
+                    {edgePreview.analysis.freshness.nearDeadline
+                      ? "Deadline mode: freshness prioritised inside 90 minutes."
+                      : "Recommendations refresh from the official feed when generated."}
+                  </small>
+                </div>
+
                 <div className="beta-analysis-top">
                   <div>
                     <span>Next Gameweek captain</span>
@@ -644,6 +685,30 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
                     {!edgePreview.analysis.overlap.managerOnly.length ? (
                       <small>Your squads currently fully overlap.</small>
                     ) : null}
+                  </div>
+                </div>
+
+                <div className="beta-trends">
+                  <div>
+                    <span>Player trend radar</span>
+                    {edgePreview.analysis.playerTrends.slice(0, 4).map((player) => (
+                      <small key={player.id}>
+                        <b>{player.name}</b> · {player.team} · form {player.form.toFixed(1)}
+                        {" · "}
+                        {player.transfersNet >= 0 ? "+" : ""}
+                        {player.transfersNet.toLocaleString()} transfers
+                      </small>
+                    ))}
+                  </div>
+                  <div>
+                    <span>Recent team process</span>
+                    {edgePreview.analysis.teamTrends.slice(0, 4).map((team) => (
+                      <small key={team.team}>
+                        <b>{team.team}</b> · ATT {team.attackIndex.toFixed(2)}
+                        {" · "}DEF {team.defenceIndex.toFixed(2)}
+                        {" · "}{team.matches} match sample
+                      </small>
+                    ))}
                   </div>
                 </div>
 
