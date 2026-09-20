@@ -1132,9 +1132,62 @@ export type RivalResourceHistory = {
   recentTransfers: number;
   recentHitCost: number;
   activity: "AGGRESSIVE" | "ACTIVE" | "PATIENT";
+  estimatedFreeTransfers: number;
+  freeTransferEstimateEvent: number;
+  freeTransferConfidence: "HIGH" | "MEDIUM";
   transferLog: EntryTransfer[];
   gameweeks: EntryHistoryGameweek[];
 };
+
+function estimateFreeTransfers(
+  gameweeks: EntryHistoryGameweek[],
+  chips: EntryChipUse[],
+) {
+  const sorted = [...gameweeks].sort((a, b) => a.event - b.event);
+  if (!sorted.length) {
+    return { freeTransfers: 1, event: 1, confidence: "MEDIUM" as const };
+  }
+
+  // Before a manager's first deadline transfers are unlimited. The following
+  // Gameweek starts with one FT. We then replay completed public history.
+  let available = 1;
+  const firstEvent = sorted[0].event;
+  const chipByEvent = new Map(
+    chips.map((chip) => [chip.event, chip.name]),
+  );
+
+  for (const gw of sorted) {
+    if (gw.event === firstEvent) continue;
+
+    const chip = chipByEvent.get(gw.event);
+    if (chip === "wildcard" || chip === "freehit") {
+      // Current FPL rules preserve the pre-existing FT bank across WC/FH.
+      // The newly granted FT for that chip Gameweek is consumed by the chip,
+      // leaving the next Gameweek with the same available count.
+      available = Math.max(1, Math.min(5, available));
+      continue;
+    }
+
+    const paidTransfers = Math.max(
+      0,
+      Math.floor(Number(gw.event_transfers_cost || 0) / 4),
+    );
+    const freeUsed = Math.max(
+      0,
+      Number(gw.event_transfers || 0) - paidTransfers,
+    );
+    available = Math.min(
+      5,
+      Math.max(0, available - Math.min(available, freeUsed)) + 1,
+    );
+  }
+
+  return {
+    freeTransfers: available,
+    event: (sorted.at(-1)?.event ?? firstEvent) + 1,
+    confidence: "HIGH" as const,
+  };
+}
 
 const CHIP_LABELS: Record<string, string> = {
   wildcard: "Wildcard",
@@ -1201,6 +1254,11 @@ export async function getRivalResourceHistory(
     0,
   );
 
+  const freeTransferEstimate = estimateFreeTransfers(
+    gameweeks,
+    history.chips ?? [],
+  );
+
   const activity =
     recentHitCost >= 8 || recentTransfers >= 7
       ? "AGGRESSIVE"
@@ -1225,6 +1283,9 @@ export async function getRivalResourceHistory(
     recentTransfers,
     recentHitCost,
     activity,
+    estimatedFreeTransfers: freeTransferEstimate.freeTransfers,
+    freeTransferEstimateEvent: freeTransferEstimate.event,
+    freeTransferConfidence: freeTransferEstimate.confidence,
     transferLog: [...(transfers ?? [])]
       .sort(
         (a, b) =>
