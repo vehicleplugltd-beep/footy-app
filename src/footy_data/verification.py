@@ -49,9 +49,17 @@ def _agreement(
     metric: str,
     material_threshold: float,
 ) -> MetricAgreement:
-    left = pd.to_numeric(joined.get(metric + "_provider"), errors="coerce")
-    right = pd.to_numeric(joined.get(metric + "_reference"), errors="coerce")
-    usable = pd.DataFrame({"provider": left, "reference": right}).dropna()
+    provider_col = metric + "_provider"
+    reference_col = metric + "_reference"
+    if provider_col not in joined.columns or reference_col not in joined.columns:
+        return MetricAgreement(metric, 0, None, None, None, None)
+
+    left = pd.to_numeric(joined[provider_col], errors="coerce")
+    right = pd.to_numeric(joined[reference_col], errors="coerce")
+    usable = pd.DataFrame(
+        {"provider": left.to_numpy(), "reference": right.to_numpy()},
+        index=joined.index,
+    ).dropna()
     if usable.empty:
         return MetricAgreement(metric, 0, None, None, None, None)
 
