@@ -11,9 +11,9 @@ function rank(value: number | null) {
 }
 
 function movement(current: number | null, previous: number | null) {
-  if (!current || !previous || current === previous) return "—";
+  if (!current || !previous || current === previous) return "No change";
   const delta = previous - current;
-  return delta > 0 ? `↑ ${delta}` : `↓ ${Math.abs(delta)}`;
+  return delta > 0 ? `Up ${delta}` : `Down ${Math.abs(delta)}`;
 }
 
 export default async function TeamPage({
@@ -42,8 +42,7 @@ export default async function TeamPage({
           </Link>
         </nav>
         <section className="shell team-discovery-error">
-          <span className="eyebrow">Find your FPL team</span>
-          <h1>We couldn&apos;t load this workspace.</h1>
+          <h1>We couldn&apos;t load this team.</h1>
           <p>
             {error instanceof Error
               ? error.message
@@ -58,6 +57,7 @@ export default async function TeamPage({
   const leagues = team.miniLeagues.length
     ? team.miniLeagues
     : team.otherClassicLeagues.slice(0, 12);
+
   if (!leagueId && leagues.length === 1) {
     redirect(`/team/${team.id}?league=${leagues[0].id}#today`);
   }
@@ -68,31 +68,18 @@ export default async function TeamPage({
       : null;
 
   return (
-    <main className="league-edge-app footy-workspace">
-      <nav className="nav shell">
+    <main className="league-edge-app footy-workspace minimal-footy">
+      <nav className="nav shell minimal-nav">
         <Link className="brand brand-link" href="/">
           <span className="brand-mark">F</span><span>Footy</span>
         </Link>
         <div className="nav-links">
           <a href="#today">Today</a>
           <a href="#squad">Squad</a>
-          <a href="#leagues">Mini-League</a>
-          <a href="#build-test">Build &amp; Test</a>
+          <a href="#build-test">Build</a>
           <Link href="/results">Receipts</Link>
         </div>
       </nav>
-
-      <section className="shell team-discovery-hero workspace-hero">
-        <div>
-          <span className="eyebrow">My Footy</span>
-          <h1>{team.teamName}</h1>
-          <p>
-            {team.managerName}
-            {team.region ? ` · ${team.region}` : ""}
-          </p>
-        </div>
-        <Link className="change-team-link" href="/">Change team</Link>
-      </section>
 
       <LeaguePreference
         teamId={team.id}
@@ -100,28 +87,64 @@ export default async function TeamPage({
         validLeagueIds={leagues.map((league) => league.id)}
       />
 
-      <div className="workspace-tabs shell" aria-label="Footy workspace">
-        <a href="#squad"><span>01</span> Squad</a>
-        <a href="#leagues"><span>02</span> Mini-Leagues</a>
-        <a href="#build-test"><span>03</span> Build &amp; Test</a>
-        <Link href="/results"><span>04</span> Receipts</Link>
+      <header className="shell minimal-team-header">
+        <div>
+          <span>MY TEAM</span>
+          <h1>{team.teamName}</h1>
+          <p>{team.managerName}{team.region ? ` · ${team.region}` : ""}</p>
+        </div>
+        <div className="minimal-header-stats">
+          <div><span>Points</span><strong>{team.overallPoints.toLocaleString()}</strong></div>
+          <div><span>Overall</span><strong>{rank(team.overallRank)}</strong></div>
+          <div><span>GW{team.currentEvent}</span><strong>{team.eventPoints ?? "—"}</strong></div>
+        </div>
+        <Link className="change-team-link" href="/">Change</Link>
+      </header>
+
+      {!selectedLeague ? (
+        <section className="shell minimal-league-chooser" id="leagues">
+          <div>
+            <span>CHOOSE YOUR MINI-LEAGUE</span>
+            <h2>Who are you trying to beat?</h2>
+            <p>Footy changes the advice depending on the league battle.</p>
+          </div>
+          <div className="minimal-league-list">
+            {leagues.map((league) => (
+              <Link
+                key={league.id}
+                href={`/team/${team.id}?league=${league.id}#today`}
+              >
+                <div>
+                  <strong>{league.name}</strong>
+                  <small>
+                    {league.entry_rank ? `Rank #${league.entry_rank}` : "Rank —"}
+                    {" · "}{movement(league.entry_rank, league.entry_last_rank)}
+                  </small>
+                </div>
+                <b>→</b>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div id="today">
+        <NextMoveCommand
+          teamId={team.id}
+          leagueId={leagueId}
+          leagueName={selectedLeague?.name ?? null}
+        />
       </div>
 
-      <NextMoveCommand
-        teamId={team.id}
-        leagueId={leagueId}
-        leagueName={selectedLeague?.name ?? null}
-      />
-
-      <section className="shell team-first-dashboard" id="squad">
-        <div className="team-pitch-panel">
-          <div className="team-pitch-panel-head">
+      <section className="shell minimal-squad-layout" id="squad">
+        <div className="team-pitch-panel minimal-panel">
+          <div className="minimal-section-head">
             <div>
-              <span className="eyebrow">2 · Your squad · GW{team.currentEvent}</span>
-              <h2>See the team behind the decision.</h2>
+              <span>YOUR SQUAD</span>
+              <h2>Current team</h2>
             </div>
-            <div className="team-pitch-summary">
-              <span>£{team.squadValue.toFixed(1)}m value</span>
+            <div className="minimal-squad-meta">
+              <span>£{team.squadValue.toFixed(1)}m</span>
               <span>£{team.bank.toFixed(1)}m bank</span>
               {team.activeChip ? <span>{team.activeChip}</span> : null}
             </div>
@@ -130,114 +153,62 @@ export default async function TeamPage({
             <TeamPitch squad={team.squad} />
           ) : (
             <div className="league-state">
-              Footy found the team but the current public squad is temporarily unavailable.
+              The current public squad is temporarily unavailable.
             </div>
           )}
         </div>
 
-        <aside className="team-control-panel" id="leagues">
-          <div className="team-control-kpis">
-            <article>
-              <span>Overall points</span>
-              <strong>{team.overallPoints.toLocaleString()}</strong>
-            </article>
-            <article>
-              <span>Overall rank</span>
-              <strong>{rank(team.overallRank)}</strong>
-            </article>
-            <article>
-              <span>Latest GW</span>
-              <strong>{team.eventPoints ?? "—"} pts</strong>
-            </article>
-          </div>
-
+        <aside className="minimal-context-panel" id="leagues">
+          <span>MINI-LEAGUE</span>
           {selectedLeague ? (
             <>
-              <div className="team-league-picker-head">
-                <span className="eyebrow">3 · Mini-league</span>
-                <h2>Switch the battle.</h2>
-                <p>Your recommendation changes with the league you choose.</p>
+              <h2>{selectedLeague.name}</h2>
+              <div className="minimal-context-rank">
+                <strong>{selectedLeague.entry_rank ? `#${selectedLeague.entry_rank}` : "—"}</strong>
+                <small>{movement(selectedLeague.entry_rank, selectedLeague.entry_last_rank)}</small>
               </div>
-              <div className="team-league-list">
-                {leagues.map((league) => {
-                  const rankParam = league.entry_rank
-                    ? `&rank=${league.entry_rank}`
-                    : "";
-                  return (
-                    <div className="team-league-card-wrap" key={league.id}>
-                      <Link
-                        className="team-league-card"
-                        href={`/team/${team.id}?league=${league.id}#today`}
-                      >
-                        <div>
-                          <span>YOUR RANK</span>
-                          <strong>
-                            {league.entry_rank ? `#${league.entry_rank}` : "—"}
-                          </strong>
-                          <small>
-                            {movement(league.entry_rank, league.entry_last_rank)}
-                          </small>
-                        </div>
-                        <div>
-                          <h3>{league.name}</h3>
-                          <p>
-                            {league.id === selectedLeague.id
-                              ? "Currently selected"
-                              : "Switch Footy to this league"}
-                          </p>
-                        </div>
-                        <b>{league.id === selectedLeague.id ? "✓" : "→"}</b>
-                      </Link>
-                      {league.id === selectedLeague.id ? (
-                        <div className="league-card-actions">
-                          <Link
-                            className="league-build-link"
-                            href={`/team/${team.id}?league=${league.id}#build-test`}
-                          >
-                            Build &amp; test
-                          </Link>
-                          <Link
-                            className="league-build-link"
-                            href={`/league/${league.id}?team=${team.id}${rankParam}`}
-                          >
-                            Full league view
-                          </Link>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+              <p>
+                Footy is optimising today&apos;s advice for this league.
+              </p>
+              <details className="minimal-switcher">
+                <summary>Change mini-league</summary>
+                <div>
+                  {leagues.map((league) => (
+                    <Link
+                      key={league.id}
+                      href={`/team/${team.id}?league=${league.id}#today`}
+                    >
+                      <span>{league.name}</span>
+                      <small>{league.entry_rank ? `#${league.entry_rank}` : "—"}</small>
+                    </Link>
+                  ))}
+                </div>
+              </details>
+              <Link
+                className="text-link"
+                href={`/league/${selectedLeague.id}?team=${team.id}${selectedLeague.entry_rank ? `&rank=${selectedLeague.entry_rank}` : ""}`}
+              >
+                View full league detail →
+              </Link>
             </>
           ) : (
-            <div className="journey-helper-card">
-              <span className="eyebrow">What happens next</span>
-              <strong>Choose a league above.</strong>
-              <p>
-                Footy will identify the rival that matters, rank your transfer
-                and captain options, compare chips/free transfers, and give you
-                one clear recommendation.
-              </p>
-            </div>
+            <>
+              <h2>No league selected</h2>
+              <p>Choose a mini-league above to personalise the advice.</p>
+            </>
           )}
         </aside>
       </section>
 
-      <section className="shell integrated-build-test" id="build-test">
-        <div className="workspace-section-intro">
-          <span className="eyebrow">4 · Build &amp; Test</span>
-          <h2>
-            {leagueId
-              ? "Test moves against this mini-league."
-              : "Explore your next move before the deadline."}
-          </h2>
+      <section className="shell minimal-build-section" id="build-test">
+        <div className="minimal-section-copy">
+          <span>BUILD &amp; TEST</span>
+          <h2>Try the move before you make it.</h2>
           <p>
-            This is part of your Footy workspace: the same real squad, player
-            database, underlying football process and—when a league is selected—
-            rival resources and league-specific recommendations.
+            Explore alternatives only when you need them. Footy keeps the live
+            recommendation and the underlying player data in the same workspace.
           </p>
         </div>
-
         <BuildTestWorkspace
           initialPlayerIds={team.squad.map((player) => player.id)}
           teamId={team.id}
@@ -254,11 +225,9 @@ export default async function TeamPage({
         <Link href="/results"><span>✓</span><b>Receipts</b></Link>
       </nav>
 
-      <footer className="shell footer">
-        <p>
-          Footy uses public FPL data only. No FPL password or account connection is required.
-        </p>
-        <p>CHOOSE → DECIDE → UNDERSTAND → TEST → RECEIPTS</p>
+      <footer className="shell footer minimal-footer">
+        <p>Advice first. Evidence when you want it.</p>
+        <p>DECIDE → UNDERSTAND → TEST</p>
       </footer>
     </main>
   );
