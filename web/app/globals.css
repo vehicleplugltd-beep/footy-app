@@ -8075,3 +8075,286 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* Staff Room briefing */
+.staff-room-section {
+  margin-bottom: 16px;
+}
+
+.staff-room {
+  border: 1px solid #e2e5ea;
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+}
+
+.staff-room-load {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid #dfe3e8;
+  border-radius: 9px;
+  background: #fff;
+  color: #20252c;
+  font-size: 9px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.staff-room-loading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+}
+
+.staff-room-loading strong {
+  color: #444b55;
+  font-size: 9px;
+}
+
+.staff-room-loading span {
+  width: 58px;
+  height: 3px;
+  border-radius: 999px;
+  background: #10b981;
+  animation: nextMovePulse 1.1s ease-in-out infinite alternate;
+}
+
+.staff-room-error {
+  color: #8b3c47;
+  font-size: 9px;
+}
+
+.staff-room-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #eceef2;
+}
+
+.staff-room-head > div:first-child > span {
+  display: block;
+  color: #0b8b61;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .11em;
+}
+
+.staff-room-head h2 {
+  margin: 4px 0 3px;
+  color: #111318;
+  font-size: 19px;
+  letter-spacing: -.03em;
+}
+
+.staff-room-head p {
+  max-width: 650px;
+  margin: 0;
+  color: #747c88;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.staff-room-count {
+  min-width: 70px;
+  text-align: right;
+}
+
+.staff-room-count strong,
+.staff-room-count span {
+  display: block;
+}
+
+.staff-room-count strong {
+  color: #111318;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.staff-room-count span {
+  margin-top: 3px;
+  color: #7f8792;
+  font-size: 7px;
+}
+
+.staff-room-feed {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 1px;
+  margin-top: 13px;
+  overflow: hidden;
+  border: 1px solid #e7e9ed;
+  border-radius: 10px;
+  background: #e7e9ed;
+}
+
+.staff-signal {
+  min-width: 0;
+  padding: 13px;
+  background: #fff;
+}
+
+.staff-signal-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.staff-signal-top > span {
+  color: #7d8591;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.staff-signal-top > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.staff-signal-top b,
+.staff-signal-top em {
+  border-radius: 999px;
+  padding: 3px 5px;
+  font-size: 5.5px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+
+.staff-signal-top b {
+  background: #111318;
+  color: #fff;
+}
+
+.staff-signal-top em {
+  background: #f2f4f7;
+  color: #747c88;
+}
+
+.signal-action .staff-signal-top em {
+  background: #eef9f4;
+  color: #087b56;
+}
+
+.signal-watch .staff-signal-top em {
+  background: #fff8e9;
+  color: #8a641e;
+}
+
+.staff-signal h3 {
+  margin: 9px 0 5px;
+  color: #111318;
+  font-size: 12px;
+  line-height: 1.25;
+  letter-spacing: -.015em;
+}
+
+.staff-signal p {
+  margin: 0;
+  color: #59616d;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.staff-signal small {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eceef2;
+  color: #868d97;
+  font-size: 7px;
+  line-height: 1.5;
+}
+
+.staff-room-quiet {
+  padding: 18px 0 2px;
+}
+
+.staff-room-quiet strong {
+  display: block;
+  color: #111318;
+  font-size: 11px;
+}
+
+.staff-room-quiet p {
+  margin: 4px 0 0;
+  color: #7b838f;
+  font-size: 8px;
+}
+
+@media (max-width: 900px) {
+  .staff-room-feed {
+    grid-template-columns: repeat(2,1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .staff-room-section {
+    width: min(100% - 20px, 1180px);
+    margin-bottom: 10px;
+  }
+
+  .staff-room {
+    border-radius: 11px;
+    padding: 12px;
+  }
+
+  .staff-room-head {
+    align-items: start;
+  }
+
+  .staff-room-head h2 {
+    font-size: 17px;
+  }
+
+  .staff-room-count {
+    min-width: 58px;
+  }
+
+  .staff-room-feed {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+  }
+
+  .staff-signal {
+    flex: 0 0 min(82vw, 310px);
+    border: 1px solid #e5e8ed;
+    border-radius: 10px;
+    scroll-snap-align: start;
+  }
+
+  .staff-signal h3 {
+    font-size: 13px;
+  }
+
+  .staff-signal p {
+    font-size: 8.5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .staff-room-section {
+    width: min(100% - 14px, 1180px);
+  }
+
+  .staff-room-head p {
+    display: none;
+  }
+
+  .staff-signal {
+    flex-basis: 86vw;
+  }
+}

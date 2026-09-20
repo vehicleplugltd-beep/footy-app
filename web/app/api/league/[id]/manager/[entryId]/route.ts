@@ -475,7 +475,7 @@ async function leagueEntries(leagueId: number): Promise<LeagueEntry[]> {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   {
     params,
   }: {
@@ -637,14 +637,19 @@ export async function GET(
       },
     };
 
-    await persistRecommendationSnapshot(
-      leagueId,
-      managerStanding,
-      rivalStanding,
-      leaderStanding,
-      analysis,
-      leagueStrategy,
-    ).catch(() => null);
+    const staffOnly =
+      new URL(request.url).searchParams.get("staff") === "1";
+
+    if (!staffOnly) {
+      await persistRecommendationSnapshot(
+        leagueId,
+        managerStanding,
+        rivalStanding,
+        leaderStanding,
+        analysis,
+        leagueStrategy,
+      ).catch(() => null);
+    }
 
     return NextResponse.json({
       league_id: leagueId,

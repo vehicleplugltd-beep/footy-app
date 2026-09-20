@@ -6,6 +6,7 @@ import { LeaguePreference } from "@/components/league-preference";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { BuildTestWorkspace } from "@/components/build-test-workspace";
 import { ScoutRoom } from "@/components/scout-room";
+import { StaffRoom } from "@/components/staff-room";
 
 function rank(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
@@ -131,15 +132,19 @@ export default async function TeamPage({
         </section>
       ) : null}
 
-      {selectedLeague ? (
-        <div id="today">
+      <div id="today">
+        {selectedLeague ? (
           <NextMoveCommand
             teamId={team.id}
             leagueId={leagueId}
             leagueName={selectedLeague.name}
           />
-        </div>
-      ) : null}
+        ) : null}
+
+        <section className="shell staff-room-section" id="staff-room">
+          <StaffRoom teamId={team.id} leagueId={leagueId} />
+        </section>
+      </div>
 
       <section className="shell minimal-squad-layout" id="squad">
         <div className="team-pitch-panel minimal-panel">
