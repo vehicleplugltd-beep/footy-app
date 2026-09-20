@@ -182,6 +182,104 @@ function buildResourceAdvice(
   };
 }
 
+
+function buildDecisionPath(
+  analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
+  leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
+  managerHistory: Awaited<ReturnType<typeof getRivalResourceHistory>> | null,
+  resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
+) {
+  const transfer = leagueStrategy.transfer_moves[0] ?? null;
+  const captain = leagueStrategy.captain_moves[0]?.player ?? null;
+  const currentFreeTransfers = managerHistory?.estimatedFreeTransfers ?? null;
+  const projectedNextFreeTransfers =
+    currentFreeTransfers == null
+      ? null
+      : Math.min(
+          5,
+          Math.max(0, currentFreeTransfers - (transfer ? 1 : 0)) + 1,
+        );
+
+  const nextWeek = analysis.managerFuturePlan[1] ?? null;
+  const nextTransfer =
+    nextWeek?.transfer &&
+    (!transfer ||
+      (nextWeek.transfer.in.id !== transfer.in.id &&
+        nextWeek.transfer.out.id !== transfer.out.id))
+      ? nextWeek.transfer
+      : null;
+
+  const normalizeChip = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const chipsAvailable = new Set(
+    (managerHistory?.currentHalfRemaining ?? []).map(normalizeChip),
+  );
+  const chipCandidate =
+    analysis.chipRadar.find(
+      (signal) =>
+        signal.status === "STRONG" &&
+        chipsAvailable.has(normalizeChip(signal.chip)),
+    ) ??
+    analysis.chipRadar.find(
+      (signal) =>
+        signal.status === "WATCH" &&
+        chipsAvailable.has(normalizeChip(signal.chip)),
+    ) ??
+    null;
+
+  const laterWeek =
+    chipCandidate?.eventName ??
+    analysis.managerFuturePlan[2]?.name ??
+    analysis.managerFuturePlan[1]?.name ??
+    null;
+
+  return {
+    now: {
+      event_id: analysis.nextEvent?.id ?? null,
+      event_name: analysis.nextEvent?.name ?? "Next Gameweek",
+      transfer: transfer
+        ? {
+            out: transfer.out,
+            in: transfer.in,
+            gain: transfer.raw_gain,
+          }
+        : null,
+      captain,
+      instruction: transfer
+        ? `Make ${transfer.out.name} → ${transfer.in.name} and captain ${captain?.name ?? "your top-ranked option"}.`
+        : `Hold the transfer and captain ${captain?.name ?? "your top-ranked option"}.`,
+    },
+    next: {
+      event_id: nextWeek?.eventId ?? null,
+      event_name: nextWeek?.name ?? "Following Gameweek",
+      transfer_watch: nextTransfer,
+      captain_watch: nextWeek?.captain ?? null,
+      projected_free_transfers: projectedNextFreeTransfers,
+      instruction: nextTransfer
+        ? `Watch ${nextTransfer.out.name} → ${nextTransfer.in.name}; re-run after this deadline before committing.`
+        : "Bank flexibility unless next week produces a stronger fresh edge.",
+    },
+    later: {
+      event_name: laterWeek,
+      chip: chipCandidate,
+      instruction: chipCandidate
+        ? `${chipCandidate.status === "STRONG" ? "Prepare" : "Keep"} ${chipCandidate.chip.toLowerCase()} for ${chipCandidate.eventName ?? "the strongest upcoming window"}; confirm again as fixtures settle.`
+        : "Preserve chips for now; no upcoming window is strong enough to force deployment.",
+    },
+    resources: {
+      estimated_free_transfers_now: currentFreeTransfers,
+      projected_free_transfers_next: projectedNextFreeTransfers,
+      confidence: managerHistory?.freeTransferConfidence ?? null,
+      league_status: resourceAdvice?.status ?? "UNKNOWN",
+      note:
+        resourceAdvice?.recommendation ??
+        "Use resource flexibility only when the underlying football edge justifies it.",
+    },
+    caveat:
+      "Future steps are a watchlist, not locked instructions. Footy re-runs them each deadline with fresh fixtures, availability, prices and rival context.",
+  };
+}
+
 async function persistRecommendationSnapshot(
   leagueId: number,
   manager: LeagueEntry,
@@ -412,6 +510,12 @@ export async function GET(
     const resourceAdvice = managerHistory
       ? buildResourceAdvice(managerHistory, rivalHistory, leagueStrategy.mode)
       : null;
+    const decisionPath = buildDecisionPath(
+      analysis,
+      leagueStrategy,
+      managerHistory,
+      resourceAdvice,
+    );
 
     await persistRecommendationSnapshot(
       leagueId,
@@ -430,6 +534,7 @@ export async function GET(
       league_strategy: leagueStrategy,
       resource_map: resourceMap,
       resource_advice: resourceAdvice,
+      decision_path: decisionPath,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {
