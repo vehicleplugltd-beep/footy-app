@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AdminLauncher } from "@/components/admin-launcher";
-import { hasAdminSession } from "@/lib/admin-auth";
 import { getAdminOverview } from "@/lib/admin-data";
 import { getPlayerDatabase } from "@/lib/fpl";
 
@@ -92,15 +90,13 @@ const features = [
   },
   {
     name: "League-win simulator",
-    status: "LOCKED",
+    status: "RESEARCH",
     description: "No win percentage until remaining-season simulation is calibrated.",
     href: "/results",
   },
 ];
 
 export default async function AdminPage() {
-  if (!(await hasAdminSession())) redirect("/admin/login");
-
   const [overview, playerDb] = await Promise.all([
     getAdminOverview(),
     getPlayerDatabase().catch(() => null),
@@ -189,7 +185,7 @@ export default async function AdminPage() {
             <span className="eyebrow">Feature matrix</span>
             <h2>What works today?</h2>
           </div>
-          <small>LIVE = customer-ready · BETA = inspect/test · LOCKED = deliberately withheld</small>
+          <small>LIVE = available · BETA = active testing · RESEARCH = not shipped yet</small>
         </div>
 
         <div className="admin-feature-grid">
@@ -289,7 +285,7 @@ export default async function AdminPage() {
       </section>
 
       <footer className="shell footer">
-        <p>Private owner workspace. Not linked from the customer navigation.</p>
+        <p>Owner workspace for testing and observing the free product.</p>
         <p>OBSERVE → TEST → PROVE → IMPROVE</p>
       </footer>
     </main>
