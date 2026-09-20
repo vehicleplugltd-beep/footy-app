@@ -1,78 +1,89 @@
+
 import Link from "next/link";
 import { TeamConnectForm } from "@/components/team-connect-form";
+import { FrontOffice } from "@/components/front-office";
+import { getFplTeamDiscovery } from "@/lib/fpl-team";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ team?: string | string[] }>;
+}) {
+  const query = await searchParams;
+  const rawTeam = Array.isArray(query.team) ? query.team[0] : query.team;
+  const teamId = rawTeam ? Number(rawTeam.replace(/\D/g, "")) : undefined;
+
+  let team = null;
+  let teamError: string | null = null;
+
+  if (teamId && Number.isInteger(teamId) && teamId > 0) {
+    try {
+      team = await getFplTeamDiscovery(teamId);
+    } catch (error) {
+      teamError =
+        error instanceof Error
+          ? error.message
+          : "Footy could not load that FPL team.";
+    }
+  }
+
   return (
-    <main className="league-edge-app minimal-home">
-      <nav className="nav shell minimal-nav">
-        <div className="brand">
+    <main className="league-edge-app footy-hq">
+      <nav className="nav shell hq-nav">
+        <Link className="brand brand-link" href="/">
           <span className="brand-mark">F</span>
           <span>Footy</span>
-        </div>
-        <div className="nav-links">
-          <span className="home-nav-note">Assistant manager for FPL</span>
+        </Link>
+        <div className="hq-nav-right">
+          <span>FPL Assistant Manager</span>
+          {team ? (
+            <Link href={"/review?team=" + team.id}>Review</Link>
+          ) : null}
         </div>
       </nav>
 
-      <section className="shell minimal-home-hero">
-        <div className="minimal-home-copy">
-          <span>YOUR FPL ASSISTANT MANAGER</span>
-          <h1>A trusted second opinion for every FPL decision.</h1>
+      <section className="shell hq-connect">
+        <div className="hq-connect-copy">
+          <span>FPL HQ</span>
+          <h1>Start with your team. Then choose the league you want to win.</h1>
           <p>
-            Footy knows your squad, mini-league battle, rivals, fixtures and underlying football data. It gives you one clear plan, explains the evidence, and tells you when the smartest move is to hold.
+            Footy combines your real squad, mini-league position, live player
+            market data and underlying football process into a plan you can
+            inspect and test.
           </p>
+        </div>
+
+        <div className="hq-connect-form">
           <TeamConnectForm />
-          <small>No FPL password. Team ID or public FPL team URL only.</small>
+          {teamError ? (
+            <div className="hq-team-error">{teamError}</div>
+          ) : null}
         </div>
-
-        <aside className="minimal-home-example">
-          <span>TODAY</span>
-          <small>Sunday League Legends</small>
-          <h2>
-            Sell Player A for Player B. Captain Player C. Keep your Free Hit.
-          </h2>
-          <div>
-            <p><b>Why:</b> stronger model edge</p>
-            <p><b>Data:</b> better underlying xGI + fixture</p>
-            <p><b>League:</b> creates separation from your nearest rival</p>
-          </div>
-        </aside>
       </section>
 
-      <section className="shell minimal-home-flow">
-        <article>
-          <span>1</span>
-          <strong>Connect your team</strong>
-          <p>Footy finds the squad and mini-leagues already linked to it.</p>
-        </article>
-        <article>
-          <span>2</span>
-          <strong>Choose the battle</strong>
-          <p>The advice changes depending on the league you want to win.</p>
-        </article>
-        <article>
-          <span>3</span>
-          <strong>Get the assistant’s brief</strong>
-          <p>Transfer, captain and resource advice — including when discipline means doing nothing.</p>
-        </article>
-      </section>
+      <FrontOffice team={team} />
 
-      <section className="shell minimal-home-trust">
+      <section className="shell hq-flow">
         <div>
-          <span>UNDER THE HOOD</span>
-          <h2>Calm advice on the surface. Serious analysis underneath.</h2>
+          <span>HOW FOOTY FLOWS</span>
+          <h2>HQ → Team Room → Preview</h2>
         </div>
         <div>
-          <p>Underlying team process and player xGI</p>
-          <p>Fixtures, availability and expected output</p>
-          <p>Rival ownership, chips, hits and free transfers</p>
-          <p>Gameweek Review keeps old recommendations visible</p>
+          <p>
+            <b>HQ</b> gives you the live player market and loads your team.
+          </p>
+          <p>
+            <b>Team Room</b> combines squad quality with the mini-league battle.
+          </p>
+          <p>
+            <b>Preview</b> lets you follow Footy’s suggestion or build your own.
+          </p>
         </div>
       </section>
 
       <footer className="shell footer minimal-footer">
-        <p>Free while Footy is being tested.</p>
-        <p>CONNECT → BRIEF → SCOUT → REVIEW</p>
+        <p>Live FPL data. Underlying football process. Mini-league context.</p>
+        <p>LOAD TEAM → CHOOSE LEAGUE → DECIDE → PREVIEW</p>
       </footer>
     </main>
   );

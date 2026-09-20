@@ -1,0 +1,289 @@
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { FplTeamDiscovery } from "@/lib/fpl-team";
+import type { ScoutIntelligencePayload, ScoutPlayerProfile } from "@/lib/fpl";
+
+function statusLabel(profile: ScoutPlayerProfile) {
+  if (profile.epa.undervalued) return "UNDERVALUED";
+  if (profile.status === "BUY_NOW") return "BUY NOW";
+  if (profile.status === "FUTURE_TARGET") return "FUTURE";
+  return "WATCH";
+}
+
+function PlayerRow({
+  profile,
+}: {
+  profile: ScoutPlayerProfile;
+}) {
+  return (
+    <article className="hq-player-row">
+      <div className="hq-player-name">
+        <span>{statusLabel(profile)}</span>
+        <strong>{profile.player.name}</strong>
+        <small>
+          {profile.player.team} · {profile.player.position} · £
+          {profile.player.price.toFixed(1)}m
+        </small>
+      </div>
+      <div>
+        <b>{profile.player.totalPoints} pts</b>
+        <small>{profile.player.selectedBy.toFixed(1)}% owned</small>
+      </div>
+      <div>
+        <b>{profile.score6.toFixed(1)}</b>
+        <small>6GW</small>
+      </div>
+      <div>
+        <b>
+          {profile.epa.epa >= 0 ? "+" : ""}
+          {profile.epa.epa.toFixed(2)}
+        </b>
+        <small>EPA</small>
+      </div>
+    </article>
+  );
+}
+
+export function FrontOffice({
+  team,
+}: {
+  team?: FplTeamDiscovery | null;
+}) {
+  const [data, setData] = useState<ScoutIntelligencePayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function load() {
+      try {
+        const response = await fetch("/api/scout", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(body.error || "Scout data unavailable.");
+        }
+        setData(body as ScoutIntelligencePayload);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(
+          err instanceof Error ? err.message : "Scout data unavailable.",
+        );
+      }
+    }
+
+    void load();
+    return () => controller.abort();
+  }, []);
+
+  const essentials = useMemo(() => {
+    if (!data) return [];
+    return [...data.players]
+      .filter(
+        (profile) =>
+          profile.player.availability >= 75 &&
+          profile.player.startReliability >= 0.9,
+      )
+      .sort(
+        (a, b) =>
+          b.score6 - a.score6 ||
+          b.player.assistantScore - a.player.assistantScore,
+      )
+      .slice(0, 6);
+  }, [data]);
+
+  const watchlist = useMemo(() => {
+    if (!data) return [];
+    return data.picks
+      .filter(
+        (profile) =>
+          profile.status === "WATCH" ||
+          profile.status === "FUTURE_TARGET",
+      )
+      .slice(0, 6);
+  }, [data]);
+
+  const transfers = useMemo(() => {
+    if (!data) return [];
+    const ids = new Set<number>();
+    const output: ScoutPlayerProfile[] = [];
+
+    for (const profile of [
+      ...data.undervalued,
+      ...data.picks.filter((item) => item.status === "BUY_NOW"),
+    ]) {
+      if (ids.has(profile.player.id)) continue;
+      ids.add(profile.player.id);
+      output.push(profile);
+      if (output.length === 6) break;
+    }
+    return output;
+  }, [data]);
+
+  return (
+    <div className="hq-intelligence">
+      {team ? (
+        <section className="hq-team-loaded">
+          <div className="hq-team-summary">
+            <div>
+              <span>YOUR TEAM</span>
+              <h2>{team.teamName}</h2>
+              <p>
+                {team.managerName}
+                {team.region ? " · " + team.region : ""}
+              </p>
+            </div>
+            <div className="hq-team-metrics">
+              <div>
+                <span>Points</span>
+                <strong>{team.overallPoints.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span>Overall</span>
+                <strong>
+                  {team.overallRank?.toLocaleString() ?? "—"}
+                </strong>
+              </div>
+              <div>
+                <span>{"GW" + team.currentEvent}</span>
+                <strong>{team.eventPoints ?? "—"}</strong>
+              </div>
+              <div>
+                <span>Value</span>
+                <strong>£{team.squadValue.toFixed(1)}m</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="hq-leagues">
+            <div className="hq-section-title">
+              <div>
+                <span>YOUR MINI-LEAGUES</span>
+                <h3>Choose the league you want Footy to help you win.</h3>
+              </div>
+              <small>
+                {(team.miniLeagues.length
+                  ? team.miniLeagues
+                  : team.otherClassicLeagues
+                ).length}{" "}
+                available
+              </small>
+            </div>
+
+            <div className="hq-league-list">
+              {(team.miniLeagues.length
+                ? team.miniLeagues
+                : team.otherClassicLeagues.slice(0, 8)
+              ).map((league) => {
+                const delta =
+                  league.entry_rank && league.entry_last_rank
+                    ? league.entry_last_rank - league.entry_rank
+                    : 0;
+
+                return (
+                  <a
+                    key={league.id}
+                    href={
+                      "/team/" +
+                      team.id +
+                      "?league=" +
+                      league.id
+                    }
+                  >
+                    <div>
+                      <strong>{league.name}</strong>
+                      <small>
+                        Rank #{league.entry_rank ?? "—"}
+                        {delta > 0
+                          ? " · ↑" + delta
+                          : delta < 0
+                            ? " · ↓" + Math.abs(delta)
+                            : ""}
+                      </small>
+                    </div>
+                    <b>Enter Team Room →</b>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="hq-market">
+        <div className="hq-section-title">
+          <div>
+            <span>LIVE FPL MARKET</span>
+            <h3>Players Footy thinks matter right now — and next.</h3>
+          </div>
+          <small>
+            {data
+              ? data.horizonGameweeks +
+                "GW horizon · " +
+                (data.freshness === "LIVE_FPL"
+                  ? "live FPL"
+                  : "latest snapshot")
+              : error
+                ? "Data unavailable"
+                : "Loading live data…"}
+          </small>
+        </div>
+
+        {!data && !error ? (
+          <div className="hq-loading">
+            Scanning player value, form and future windows…
+          </div>
+        ) : error ? (
+          <div className="hq-loading error">{error}</div>
+        ) : data ? (
+          <div className="hq-market-grid">
+            <section>
+              <header>
+                <span>ESSENTIAL</span>
+                <strong>High-confidence core</strong>
+                <small>Strong now + strong six-Gameweek outlook.</small>
+              </header>
+              <div>
+                {essentials.map((profile) => (
+                  <PlayerRow key={profile.player.id} profile={profile} />
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <header>
+                <span>WATCHLIST</span>
+                <strong>Not necessarily now</strong>
+                <small>Players whose better window may open later.</small>
+              </header>
+              <div>
+                {watchlist.map((profile) => (
+                  <PlayerRow key={profile.player.id} profile={profile} />
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <header>
+                <span>TRANSFER TARGETS</span>
+                <strong>Value worth investigating</strong>
+                <small>
+                  Undervalued or buy-now players that clear model filters.
+                </small>
+              </header>
+              <div>
+                {transfers.map((profile) => (
+                  <PlayerRow key={profile.player.id} profile={profile} />
+                ))}
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
