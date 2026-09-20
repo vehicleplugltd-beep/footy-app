@@ -195,7 +195,9 @@ export function LeagueView({
 
   useEffect(() => {
     if (selectedEntryId || !sortedRows[0]) return;
-    const ownTeam = initialEntryId && sortedRows.find((row) => row.entry_id === initialEntryId);
+    const ownTeam = initialEntryId
+      ? sortedRows.find((row) => row.entry_id === initialEntryId)
+      : undefined;
     setSelectedEntryId(ownTeam?.entry_id ?? sortedRows[0].entry_id);
   }, [initialEntryId, selectedEntryId, sortedRows]);
 
