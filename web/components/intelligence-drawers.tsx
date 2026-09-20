@@ -582,20 +582,25 @@ export function TeamIntelDrawer({
           </div>
         </div>
         <div className="intel-player-links">
-          {team.topPlayers.map((item) => {
-            const profile = players.find((player) => player.player.id === item.id);
-            return (
+          {players
+            .filter((profile) => profile.player.teamName === team.team)
+            .sort((a, b) => b.score6 - a.score6)
+            .map((profile) => (
               <button
                 type="button"
-                key={item.id}
-                disabled={!profile}
-                onClick={() => profile && onOpenPlayer(profile)}
+                key={profile.player.id}
+                onClick={() => onOpenPlayer(profile)}
               >
-                <span><b>{item.name}</b><small>{item.position} · £{item.price.toFixed(1)}m</small></span>
-                <strong>{item.score6.toFixed(1)} <small>6GW</small></strong>
+                <span>
+                  <b>{profile.player.name}</b>
+                  <small>
+                    {profile.player.position} · £{profile.player.price.toFixed(1)}m ·{" "}
+                    {profile.reasons[0] ?? "Modelled from role, process and fixtures."}
+                  </small>
+                </span>
+                <strong>{profile.score6.toFixed(1)} <small>6GW</small></strong>
               </button>
-            );
-          })}
+            ))}
         </div>
       </section>
     </DrawerShell>
@@ -778,7 +783,7 @@ export function ManagerIntelDrawer({
         </div>
         <div>
           <span>WEAK LINKS / ROUTES</span>
-          {(manager?.weakLinks ?? []).slice(0, 3).map((move) => (
+          {(manager?.weakLinks ?? []).map((move) => (
             <p key={move.player.id}>
               <b>{move.player.name}</b>
               {move.replacement ? " → " + move.replacement.name : " · hold"}

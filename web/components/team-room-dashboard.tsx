@@ -531,6 +531,12 @@ export function TeamRoomDashboard({
               </button>
             ))}
           </div>
+          <Link
+            className="team-room-deep-link"
+            href={"/league/" + leagueId + "?team=" + teamId}
+          >
+            View full league table & manager analysis →
+          </Link>
         </article>
       </section>
 
@@ -540,7 +546,7 @@ export function TeamRoomDashboard({
           <span>SQUAD RATING</span>
           <strong>{squadNow ?? "—"}</strong>
           <small>
-            {squadNow != null ? ratingBand(squadNow) : "Loading"}
+            {squadNow != null ? ratingBand(squadNow) + " · squad percentile model" : "Loading"}
           </small>
         </div>
         <div>
@@ -548,7 +554,7 @@ export function TeamRoomDashboard({
           <strong>{squadFuture ?? "—"}</strong>
           <small>
             {squadFuture != null
-              ? ratingBand(squadFuture)
+              ? ratingBand(squadFuture) + " · six-Gameweek process + fixtures"
               : "Loading"}
           </small>
         </div>
@@ -580,7 +586,10 @@ export function TeamRoomDashboard({
             <span>SQUAD</span>
             <h2>Current team + player ratings</h2>
           </div>
-          <small>Tap any player for EPA, fixtures, risks and source detail</small>
+          <small>
+            Tap any player for EPA, fixtures, risks and source detail ·{" "}
+            <Link href="/research#players">research every player →</Link>
+          </small>
         </div>
 
         <div className="team-room-player-table">
@@ -602,6 +611,7 @@ export function TeamRoomDashboard({
                     {pick.team} · {pick.position} · £
                     {pick.price.toFixed(1)}m
                   </small>
+                  <em>{profile.reasons[0] ?? "Role, process and fixtures drive the rating."}</em>
                 </div>
                 <div>
                   <span>Now</span>
@@ -649,7 +659,7 @@ export function TeamRoomDashboard({
             <span>OPPONENT RESOURCES</span>
             <h2>Chips, transfers and behaviour</h2>
           </div>
-          <small>Public FPL history only</small>
+          <small>Public FPL history only · tap any manager for the full dossier</small>
         </div>
 
         <div className="team-room-rivals">
@@ -686,6 +696,12 @@ export function TeamRoomDashboard({
             ),
           )}
         </div>
+        <Link
+          className="team-room-deep-link"
+          href={"/league/" + leagueId + "?team=" + teamId}
+        >
+          View every league manager & full standings →
+        </Link>
       </section>
 
       <section className="team-room-next">

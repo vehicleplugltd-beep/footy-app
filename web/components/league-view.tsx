@@ -545,14 +545,20 @@ export function LeagueView({
             <span className="eyebrow">Standings</span>
             <h2>Who you actually need to beat</h2>
           </div>
-          <span>{rows.length} managers shown</span>
+          <span>{rows.length} managers shown · tap any row to focus the analysis</span>
         </div>
 
         <div className="league-table">
-          {sortedRows.slice(0, 50).map((row) => {
+          {sortedRows.map((row) => {
             const delta = rankDelta(row);
             return (
-              <div className="league-row" key={row.entry_id}>
+              <button
+                type="button"
+                className={"league-row " + (selected?.entry_id === row.entry_id ? "active" : "")}
+                key={row.entry_id}
+                onClick={() => setSelectedEntryId(row.entry_id)}
+                aria-label={"Inspect " + row.entry_name}
+              >
                 <span className="league-rank">{row.rank}</span>
                 <div>
                   <strong>{row.entry_name}</strong>
@@ -571,7 +577,7 @@ export function LeagueView({
                 </span>
                 <span>{row.event_total} GW</span>
                 <strong>{row.total} pts</strong>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -710,7 +716,6 @@ export function LeagueView({
                           </article>
                         ))
                       : edgePreview.analysis.manager.weakLinks
-                          .slice(0, 3)
                           .map(({ player, replacement, reason }) => (
                             <article key={player.id}>
                               <strong>
@@ -782,7 +787,6 @@ export function LeagueView({
                   <div>
                     <span>Your rival-only threats</span>
                     {edgePreview.analysis.overlap.rivalOnly
-                      .slice(0, 4)
                       .map((player) => (
                         <small key={player.id}>
                           {player.name} · {player.team}
@@ -810,7 +814,7 @@ export function LeagueView({
                 <div className="beta-trends">
                   <div>
                     <span>Player trend radar</span>
-                    {edgePreview.analysis.playerTrends.slice(0, 4).map((player) => (
+                    {edgePreview.analysis.playerTrends.map((player) => (
                       <small key={player.id}>
                         <b>{player.name}</b> · {player.team} · form {player.form.toFixed(1)}
                         {" · "}
@@ -821,7 +825,7 @@ export function LeagueView({
                   </div>
                   <div>
                     <span>Recent team process</span>
-                    {edgePreview.analysis.teamTrends.slice(0, 4).map((team) => (
+                    {edgePreview.analysis.teamTrends.map((team) => (
                       <small key={team.team}>
                         <b>{team.team}</b> · ATT {team.attackIndex.toFixed(2)}
                         {" · "}DEF {team.defenceIndex.toFixed(2)}
