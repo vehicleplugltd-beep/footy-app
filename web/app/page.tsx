@@ -46,11 +46,11 @@ export default async function Home({
       <section className="shell hq-connect">
         <div className="hq-connect-copy">
           <span>FPL HQ</span>
-          <h1>Start with your team. Then choose the league you want to win.</h1>
+          <h1>Connect your team. See what matters now — and why.</h1>
           <p>
-            Footy combines your real squad, mini-league position, live player
-            market data and underlying football process into a plan you can
-            inspect and test.
+            Footy turns live FPL state, mini-league pressure and underlying
+            football process into a clear decision, its evidence, and the
+            failure mode that could make it wrong.
           </p>
           <blockquote className="footy-quip">{footyQuip("hq")}</blockquote>
         </div>
@@ -69,6 +69,9 @@ export default async function Home({
         <div>
           <span>HOW FOOTY FLOWS</span>
           <h2>HQ → Team Room → Preview</h2>
+          <p className="hq-flow-principle">
+            Decision first. Evidence second. Model depth only when you ask for it.
+          </p>
         </div>
         <div>
           <p>

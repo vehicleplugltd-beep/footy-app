@@ -253,12 +253,25 @@ export function PlayerIntelDrawer({
         <strong>{read}</strong>
       </section>
 
+      <div className="intel-decision-band">
+        <div>
+          <span>CONFIDENCE</span>
+          <strong>{profile.decisionConfidence}</strong>
+        </div>
+        <div>
+          <span>FAILURE MODE</span>
+          <strong>{profile.risks[0] ?? "Role, minutes or team news can change the call."}</strong>
+        </div>
+      </div>
+
       <EvidenceBlock
         rows={[
           {
-            label: "Underlying involvement",
-            value: player.xgiPer90.toFixed(2) + " xGI/90",
-            kind: "FACT",
+            label: "Role-adjusted involvement",
+            value:
+              (profile.evidence?.regressedXgiPer90 ?? player.xgiPer90).toFixed(2) +
+              " xGI/90",
+            kind: profile.evidence?.priorAvailable ? "MODEL" : "FACT",
           },
           {
             label: "Expected vs realised attack",
@@ -298,45 +311,40 @@ export function PlayerIntelDrawer({
           },
         ]}
         source={profile.coreSources.join(" · ")}
-        confidence={
-          profile.epa.volumeFloorPass === true && player.startReliability >= 0.9
-            ? "HIGH CONFIDENCE"
-            : profile.epa.volumeFloorPass === false
-              ? "LOWER MINUTES CONFIDENCE"
-              : "MEDIUM CONFIDENCE"
-        }
+        confidence={profile.decisionConfidence + " DECISION CONFIDENCE"}
         caveat="EPA, future ratings and timing are model outputs, not observed facts. Team news, role changes and a small minutes sample can move the conclusion."
       />
 
-      <section className="intel-grid">
-        <Metric label="Now" value={player.assistantScore.toFixed(1)} sub="model score" />
-        <Metric label="3GW" value={profile.score3.toFixed(1)} />
-        <Metric label="6GW" value={profile.score6.toFixed(1)} />
-        <Metric label="8GW" value={profile.score8.toFixed(1)} />
-        <Metric label="EPA" value={(profile.epa.epa >= 0 ? "+" : "") + profile.epa.epa.toFixed(2)} />
-        <Metric label="EPA / £m" value={profile.epa.epaPerMillion.toFixed(3)} />
-        <Metric label="xGI/90" value={player.xgiPer90.toFixed(2)} />
-        <Metric label="Available" value={player.availability + "%"} />
+      <section className="intel-grid intel-grid-primary">
+        <Metric label="EPA" value={(profile.epa.epa >= 0 ? "+" : "") + profile.epa.epa.toFixed(2)} sub="vs replacement" />
+        <Metric label="Reg xGI/90" value={(profile.evidence?.regressedXgiPer90 ?? player.xgiPer90).toFixed(2)} sub={profile.evidence?.priorAvailable ? "prior-regressed" : "current evidence"} />
+        <Metric label="Expected mins" value={profile.epa.expectedMinutes.toFixed(0)} sub={player.availability + "% available"} />
+        <Metric label="6GW" value={profile.score6.toFixed(1)} sub={profile.bestWindow.startName + " best window"} />
       </section>
 
-      <section className="intel-section">
-        <div className="intel-section-head">
-          <div>
-            <span>UNDERLYING</span>
-            <h3>What is driving the rating?</h3>
+      <details className="intel-audit intel-model-depth">
+        <summary>Open model depth</summary>
+        <section className="intel-section">
+          <div className="intel-section-head">
+            <div>
+              <span>UNDERLYING</span>
+              <h3>What is driving the rating?</h3>
+            </div>
           </div>
-        </div>
-        <div className="intel-stat-list">
-          <p><span>xG / 90</span><b>{player.xgPer90.toFixed(2)}</b></p>
-          <p><span>xA / 90</span><b>{player.xaPer90.toFixed(2)}</b></p>
-          <p><span>xGI / 90</span><b>{player.xgiPer90.toFixed(2)}</b></p>
-          <p><span>Form</span><b>{player.form.toFixed(1)}</b></p>
-          <p><span>Starts / minutes</span><b>{player.starts} / {player.minutes}</b></p>
-          <p><span>Start reliability</span><b>{Math.round(player.startReliability * 100)}%</b></p>
-          <p><span>Bonus</span><b>{player.bonus}</b></p>
-          <p><span>Transfers net</span><b>{player.transfersNet >= 0 ? "+" : ""}{player.transfersNet.toLocaleString()}</b></p>
-        </div>
-      </section>
+          <div className="intel-stat-list">
+            <p><span>Official xG / 90</span><b>{player.xgPer90.toFixed(2)}</b></p>
+            <p><span>Official xA / 90</span><b>{player.xaPer90.toFixed(2)}</b></p>
+            <p><span>Regressed xGI / 90</span><b>{(profile.evidence?.regressedXgiPer90 ?? player.xgiPer90).toFixed(2)}</b></p>
+            <p><span>Prior xGI / 90</span><b>{profile.evidence?.priorAvailable ? profile.evidence.priorXgiPer90.toFixed(2) : "—"}</b></p>
+            <p><span>Current evidence weight</span><b>{profile.evidence ? Math.round(profile.evidence.currentEvidenceWeight * 100) + "%" : "—"}</b></p>
+            <p><span>Form</span><b>{player.form.toFixed(1)}</b></p>
+            <p><span>Starts / minutes</span><b>{player.starts} / {player.minutes}</b></p>
+            <p><span>Start reliability</span><b>{Math.round(player.startReliability * 100)}%</b></p>
+            <p><span>Bonus</span><b>{player.bonus}</b></p>
+            <p><span>Transfers net</span><b>{player.transfersNet >= 0 ? "+" : ""}{player.transfersNet.toLocaleString()}</b></p>
+          </div>
+        </section>
+      </details>
 
       <section className="intel-section">
         <div className="intel-section-head">
@@ -516,7 +524,7 @@ export function TeamIntelDrawer({
               <p><span>Box touches</span><b>{process.metrics.boxTouches.toFixed(1)}</b></p>
               <p><span>Key passes</span><b>{process.metrics.keyPasses.toFixed(1)}</b></p>
               <p><span>xA</span><b>{process.metrics.xa.toFixed(2)}</b></p>
-              <p><span>Field tilt</span><b>{process.metrics.fieldTilt.toFixed(1)}</b></p>
+              <p><span>Territory proxy</span><b>{process.metrics.territoryProxy.toFixed(1)}%</b></p>
             </div>
           </section>
         </>

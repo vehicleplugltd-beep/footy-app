@@ -27,6 +27,14 @@ function pct(value: number) {
   return `${(value * 100).toFixed(0)}%`;
 }
 
+function confidenceLabel(profile: ScoutPlayerProfile) {
+  return `${profile.decisionConfidence} CONFIDENCE`;
+}
+
+function headlineXgi(profile: ScoutPlayerProfile) {
+  return profile.evidence?.regressedXgiPer90 ?? profile.player.xgiPer90;
+}
+
 function PlayerProfile({
   profile,
   onTeam,
@@ -40,9 +48,14 @@ function PlayerProfile({
     <article className="scout-profile">
       <header className="scout-profile-head">
         <div>
-          <span className={`scout-status scout-${profile.status.toLowerCase().replaceAll("_", "-")}`}>
-            {statusLabel(profile.status)}
-          </span>
+          <div className="scout-profile-badges">
+            <span className={`scout-status scout-${profile.status.toLowerCase().replaceAll("_", "-")}`}>
+              {statusLabel(profile.status)}
+            </span>
+            <span className={`scout-confidence-pill confidence-${profile.decisionConfidence.toLowerCase()}`}>
+              {confidenceLabel(profile)}
+            </span>
+          </div>
           <h3>{player.name}</h3>
           <p>
             {player.teamName} · {player.position} · £{player.price.toFixed(1)}m
@@ -53,20 +66,61 @@ function PlayerProfile({
         </button>
       </header>
 
-      <div className="scout-profile-metrics">
-        <div><span>xGI/90</span><strong>{player.xgiPer90.toFixed(2)}</strong></div>
-        <div><span>xG/90</span><strong>{player.xgPer90.toFixed(2)}</strong></div>
-        <div><span>xA/90</span><strong>{player.xaPer90.toFixed(2)}</strong></div>
-        <div><span>Form</span><strong>{player.form.toFixed(1)}</strong></div>
-        <div><span>Starts</span><strong>{player.starts}</strong></div>
-        <div><span>Minutes</span><strong>{player.minutes}</strong></div>
-        <div><span>Owned</span><strong>{player.selectedBy.toFixed(1)}%</strong></div>
-        <div><span>Available</span><strong>{player.availability}%</strong></div>
-        <div><span>FPL points</span><strong>{player.totalPoints}</strong></div>
-        <div><span>PPG</span><strong>{player.pointsPerGame.toFixed(1)}</strong></div>
-        <div><span>Bonus</span><strong>{player.bonus}</strong></div>
-        <div><span>Def. contrib.</span><strong>{player.defensiveContribution.toFixed(0)}</strong></div>
+      <div className="scout-headline-signals">
+        <div>
+          <span>EPA</span>
+          <strong>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)}</strong>
+          <small>{profile.epa.undervalued ? "value flag" : "vs replacement"}</small>
+        </div>
+        <div>
+          <span>Regressed xGI/90</span>
+          <strong>{headlineXgi(profile).toFixed(2)}</strong>
+          <small>
+            {profile.evidence?.priorAvailable
+              ? `${Math.round(profile.evidence.currentEvidenceWeight * 100)}% current-season weight`
+              : "current evidence"}
+          </small>
+        </div>
+        <div>
+          <span>Expected minutes</span>
+          <strong>{profile.epa.expectedMinutes.toFixed(0)}</strong>
+          <small>{player.availability}% available</small>
+        </div>
+        <div>
+          <span>6GW score</span>
+          <strong>{profile.score6.toFixed(1)}</strong>
+          <small>{profile.bestWindow.startName} → {profile.bestWindow.endName}</small>
+        </div>
       </div>
+
+      <div className="scout-decision-why">
+        <section>
+          <span>WHY THIS CALL</span>
+          <strong>{profile.reasons[0] ?? "The combined model clears the current shortlist."}</strong>
+        </section>
+        <section>
+          <span>FAILURE MODE</span>
+          <strong>{profile.risks[0] ?? "Role, minutes or team news can still move the call."}</strong>
+        </section>
+      </div>
+
+      <details className="scout-advanced-metrics">
+        <summary>Open underlying player detail</summary>
+        <div className="scout-profile-metrics">
+          <div><span>Official xGI/90</span><strong>{player.xgiPer90.toFixed(2)}</strong></div>
+          <div><span>xG/90</span><strong>{player.xgPer90.toFixed(2)}</strong></div>
+          <div><span>xA/90</span><strong>{player.xaPer90.toFixed(2)}</strong></div>
+          <div><span>Form</span><strong>{player.form.toFixed(1)}</strong></div>
+          <div><span>Starts</span><strong>{player.starts}</strong></div>
+          <div><span>Minutes</span><strong>{player.minutes}</strong></div>
+          <div><span>Owned</span><strong>{player.selectedBy.toFixed(1)}%</strong></div>
+          <div><span>FPL points</span><strong>{player.totalPoints}</strong></div>
+          <div><span>PPG</span><strong>{player.pointsPerGame.toFixed(1)}</strong></div>
+          <div><span>Bonus</span><strong>{player.bonus}</strong></div>
+          <div><span>Def. contrib.</span><strong>{player.defensiveContribution.toFixed(0)}</strong></div>
+          <div><span>Start reliability</span><strong>{pct(player.startReliability)}</strong></div>
+        </div>
+      </details>
 
       <section className={`epa-panel ${profile.epa.undervalued ? "epa-undervalued" : ""}`}>
         <div className="epa-panel-head">
@@ -124,6 +178,42 @@ function PlayerProfile({
         </details>
       </section>
 
+      {profile.evidence ? (
+        <section className="scout-process-story">
+          <header>
+            <div>
+              <span>PROCESS STORY</span>
+              <strong>
+                {profile.evidence.priorAvailable
+                  ? "Prior-season baseline → current role"
+                  : "Current-season role evidence"}
+              </strong>
+            </div>
+            <small>{pct(profile.evidence.sourceConfidence)} evidence confidence</small>
+          </header>
+          <div className="scout-process-bars">
+            <div>
+              <span>xG/90</span>
+              <strong>{profile.evidence.regressedXgPer90.toFixed(2)}</strong>
+              <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXgPer90 * 100))}%` }} /></i>
+              <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXgPer90.toFixed(2)}` : "no established prior"}</small>
+            </div>
+            <div>
+              <span>xA/90</span>
+              <strong>{profile.evidence.regressedXaPer90.toFixed(2)}</strong>
+              <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXaPer90 * 125))}%` }} /></i>
+              <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXaPer90.toFixed(2)}` : "current sample"}</small>
+            </div>
+            <div>
+              <span>Workload</span>
+              <strong>{profile.evidence.minutes7.toFixed(0)} min</strong>
+              <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.minutes7 / 2.1))}%` }} /></i>
+              <small>{profile.evidence.nonLeagueMinutes14.toFixed(0)} non-league min / 14d</small>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <div className="scout-window">
         <div>
           <span>3GW</span>
@@ -149,6 +239,9 @@ function PlayerProfile({
             <span>{item.name}</span>
             <strong>{item.opponent ?? "—"} {item.homeAway !== "—" ? `(${item.homeAway})` : ""}</strong>
             <small>FDR {item.difficulty} · score {item.score.toFixed(1)}</small>
+            <i className="scout-horizon-meter">
+              <b style={{ width: `${Math.min(100, Math.max(10, item.score * 10))}%` }} />
+            </i>
           </div>
         ))}
       </div>
@@ -425,9 +518,14 @@ export function ScoutRoom() {
                 {filteredPicks.map((profile) => (
                   <article key={profile.player.id}>
                     <div className="scout-pick-main">
-                      <span className={`scout-status scout-${profile.status.toLowerCase().replaceAll("_", "-")}`}>
-                        {statusLabel(profile.status)}
-                      </span>
+                      <div className="scout-pick-badges">
+                        <span className={`scout-status scout-${profile.status.toLowerCase().replaceAll("_", "-")}`}>
+                          {statusLabel(profile.status)}
+                        </span>
+                        <span className={`scout-confidence-pill confidence-${profile.decisionConfidence.toLowerCase()}`}>
+                          {profile.decisionConfidence}
+                        </span>
+                      </div>
                       <button type="button" onClick={() => openPlayer(profile.player.id)}>
                         {profile.player.name}
                       </button>
