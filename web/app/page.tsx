@@ -16,11 +16,10 @@ export default function Home() {
 
       <section className="shell minimal-home-hero">
         <div className="minimal-home-copy">
-          <span>FPL DECISIONS, MADE CLEAR</span>
-          <h1>Know who to beat. Know what to do next.</h1>
+          <span>YOUR FPL ASSISTANT MANAGER</span>
+          <h1>A trusted second opinion for every FPL decision.</h1>
           <p>
-            Footy turns your real squad, mini-league position, rival resources
-            and underlying football data into one clear plan.
+            Footy knows your squad, mini-league battle, rivals, fixtures and underlying football data. It gives you one clear plan, explains the evidence, and tells you when the smartest move is to hold.
           </p>
           <TeamConnectForm />
           <small>No FPL password. Team ID or public FPL team URL only.</small>
@@ -53,15 +52,15 @@ export default function Home() {
         </article>
         <article>
           <span>3</span>
-          <strong>Get one clear plan</strong>
-          <p>Transfer, captain and resource advice with the facts behind it.</p>
+          <strong>Get the assistant’s brief</strong>
+          <p>Transfer, captain and resource advice — including when discipline means doing nothing.</p>
         </article>
       </section>
 
       <section className="shell minimal-home-trust">
         <div>
           <span>UNDER THE HOOD</span>
-          <h2>Simple on the surface. Serious underneath.</h2>
+          <h2>Calm advice on the surface. Serious analysis underneath.</h2>
         </div>
         <div>
           <p>Underlying team process and player xGI</p>

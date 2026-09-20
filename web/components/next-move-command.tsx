@@ -303,7 +303,7 @@ export function NextMoveCommand({
       <div className="minimal-command-top">
         <div>
           <span className="minimal-label">
-            {nextEvent?.name ?? "TODAY"}
+            ASSISTANT BRIEF · {nextEvent?.name ?? "TODAY"}
             {deadlineLabel ? ` · deadline ${deadlineLabel}` : ""}
           </span>
           <strong>{leagueName ?? "Selected mini-league"}</strong>
@@ -395,7 +395,7 @@ export function NextMoveCommand({
           <div className="multi-gw-plan-head">
             <div>
               <span>PLAN AHEAD</span>
-              <strong>One move now. Keep the next decisions flexible.</strong>
+              <strong>Your assistant plan: act where the edge is real, keep flexibility where it isn’t.</strong>
             </div>
             {payload.decision_path.resources.estimated_free_transfers_now != null ? (
               <small>
