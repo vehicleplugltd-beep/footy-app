@@ -108,8 +108,8 @@ export default function Home() {
           </article>
           <article>
             <span>3</span>
-            <h3>We rank your moves</h3>
-            <p>Transfers, captaincy and chips are judged by how they change your chance of winning this league.</p>
+            <h3>Paid beta: rank your moves</h3>
+            <p>Transfers, captaincy and chips will be judged by how they change your chance of winning this league.</p>
           </article>
           <article>
             <span>4</span>
@@ -180,7 +180,7 @@ export default function Home() {
         <div className="league-edge-section-head">
           <span className="eyebrow">One season. One price.</span>
           <h2>Founding passes</h2>
-          <p>No auto-renew. Paid features unlock as they ship.</p>
+          <p>No auto-renew. Founding checkout opens only when the paid features are ready to deliver.</p>
         </div>
         <div className="edge-price-grid">
           <article>
