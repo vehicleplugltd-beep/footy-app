@@ -40,13 +40,11 @@ export function LeagueView({ leagueId }: { leagueId: string }) {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(
-          `https://fantasy.premierleague.com/api/leagues-classic/${leagueId}/standings/`,
-          {
-            signal: controller.signal,
-            headers: { Accept: "application/json" },
-          },
-        );
+        const response = await fetch(`/api/league/${leagueId}`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
         if (!response.ok) {
           throw new Error(
             response.status === 404
