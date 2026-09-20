@@ -33,14 +33,17 @@ function confidenceLabel(profile: ScoutPlayerProfile) {
 
 function headlineProcess(profile: ScoutPlayerProfile) {
   if (profile.player.position === "GKP") {
-    const goalsPrevented = profile.evidence?.goalsPreventedPer90 ?? 0;
-    const faced = profile.evidence?.xgotFacedPer90 ?? 0;
+    if (!profile.evidence) {
+      return {
+        label: "Goals prevented/90",
+        value: null as number | null,
+        sub: "post-shot evidence unavailable",
+      };
+    }
     return {
       label: "Goals prevented/90",
-      value: goalsPrevented,
-      sub: profile.evidence
-        ? `${faced.toFixed(2)} xGOT faced/90`
-        : "post-shot process",
+      value: profile.evidence.goalsPreventedPer90,
+      sub: `${profile.evidence.xgotFacedPer90.toFixed(2)} xGOT faced/90`,
     };
   }
   return {
@@ -93,8 +96,9 @@ function PlayerProfile({
         <div>
           <span>{processHeadline.label}</span>
           <strong>
-            {processHeadline.value >= 0 && player.position === "GKP" ? "+" : ""}
-            {processHeadline.value.toFixed(2)}
+            {processHeadline.value == null
+              ? "—"
+              : `${processHeadline.value >= 0 && player.position === "GKP" ? "+" : ""}${processHeadline.value.toFixed(2)}`}
           </strong>
           <small>{processHeadline.sub}</small>
         </div>

@@ -221,8 +221,8 @@ export function PlayerIntelDrawer({
   const player = profile.player;
   const isKeeper = player.position === "GKP";
   const processMetricLabel = isKeeper ? "Goals prevented/90" : "Reg xGI/90";
-  const processMetricValue = isKeeper
-    ? profile.evidence?.goalsPreventedPer90 ?? 0
+  const processMetricValue: number | null = isKeeper
+    ? profile.evidence?.goalsPreventedPer90 ?? null
     : profile.evidence?.regressedXgiPer90 ?? player.xgiPer90;
   const team = teams.find((item) => item.team === player.teamName) ?? null;
   const read =
@@ -274,8 +274,10 @@ export function PlayerIntelDrawer({
           {
             label: isKeeper ? "Post-shot goalkeeping" : "Role-adjusted involvement",
             value: isKeeper
-              ? (profile.evidence?.goalsPreventedPer90 ?? 0).toFixed(2) +
-                " goals prevented/90"
+              ? profile.evidence
+                ? profile.evidence.goalsPreventedPer90.toFixed(2) +
+                  " goals prevented/90"
+                : "Post-shot evidence unavailable"
               : (profile.evidence?.regressedXgiPer90 ?? player.xgiPer90).toFixed(2) +
                 " xGI/90",
             kind: "MODEL",
@@ -326,8 +328,21 @@ export function PlayerIntelDrawer({
         <Metric label="EPA" value={(profile.epa.epa >= 0 ? "+" : "") + profile.epa.epa.toFixed(2)} sub="vs replacement" />
         <Metric
           label={processMetricLabel}
-          value={(processMetricValue >= 0 && isKeeper ? "+" : "") + processMetricValue.toFixed(2)}
-          sub={isKeeper ? "recent post-shot process" : profile.evidence?.priorAvailable ? "prior-regressed" : "current evidence"}
+          value={
+            processMetricValue == null
+              ? "—"
+              : (processMetricValue >= 0 && isKeeper ? "+" : "") +
+                processMetricValue.toFixed(2)
+          }
+          sub={
+            isKeeper
+              ? profile.evidence
+                ? "recent post-shot process"
+                : "evidence unavailable"
+              : profile.evidence?.priorAvailable
+                ? "prior-regressed"
+                : "current evidence"
+          }
         />
         <Metric label="Expected mins" value={profile.epa.expectedMinutes.toFixed(0)} sub={player.availability + "% available"} />
         <Metric label="6GW" value={profile.score6.toFixed(1)} sub={profile.bestWindow.startName + " best window"} />

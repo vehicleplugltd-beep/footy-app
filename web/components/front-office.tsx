@@ -306,7 +306,17 @@ export function FrontOffice({
                 </div>
                 <div className="hq-now-signals">
                   <div><span>EPA</span><strong>{topDecision.epa.epa >= 0 ? "+" : ""}{topDecision.epa.epa.toFixed(2)}</strong></div>
-                  <div><span>Reg xGI/90</span><strong>{(topDecision.evidence?.regressedXgiPer90 ?? topDecision.player.xgiPer90).toFixed(2)}</strong></div>
+                  <div>
+                    <span>{topDecision.player.position === "GKP" ? "Goals prevented/90" : "Reg xGI/90"}</span>
+                    <strong>
+                      {topDecision.player.position === "GKP"
+                        ? topDecision.evidence
+                          ? (topDecision.evidence.goalsPreventedPer90 >= 0 ? "+" : "") +
+                            topDecision.evidence.goalsPreventedPer90.toFixed(2)
+                          : "—"
+                        : (topDecision.evidence?.regressedXgiPer90 ?? topDecision.player.xgiPer90).toFixed(2)}
+                    </strong>
+                  </div>
                   <div><span>6GW</span><strong>{topDecision.score6.toFixed(1)}</strong></div>
                   <div><span>Window</span><strong>{topDecision.bestWindow.startName}</strong></div>
                 </div>
