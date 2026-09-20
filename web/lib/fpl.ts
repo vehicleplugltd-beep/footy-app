@@ -92,15 +92,27 @@ type MetricRow = {
   team: string;
   opponent: string;
   xg: number | string | null;
+  npxg: number | string | null;
   xga: number | string | null;
+  npxga: number | string | null;
   shots: number | string | null;
   shots_on_target: number | string | null;
   shots_conceded: number | string | null;
   sot_conceded: number | string | null;
+  big_chances: number | string | null;
+  big_chances_conceded: number | string | null;
+  box_touches: number | string | null;
+  key_passes: number | string | null;
+  xa: number | string | null;
   set_piece_xg: number | string | null;
   set_piece_xga: number | string | null;
+  possession: number | string | null;
   ppda: number | string | null;
+  field_tilt: number | string | null;
   deep_completions: number | string | null;
+  source: string | null;
+  retrieved_at: string | null;
+  source_confidence?: number;
 };
 
 export type TeamProcess = {
@@ -110,16 +122,26 @@ export type TeamProcess = {
   defenceIndex: number;
   attackTrend: number;
   defenceTrend: number;
+  sourceConfidence: number;
   metrics: {
     xg: number;
+    npxg: number;
     xga: number;
+    npxga: number;
     shots: number;
     shotsOnTarget: number;
     shotsConceded: number;
     sotConceded: number;
+    bigChances: number;
+    bigChancesConceded: number;
+    boxTouches: number;
+    keyPasses: number;
+    xa: number;
     setPieceXg: number;
     setPieceXga: number;
+    possession: number;
     ppda: number;
+    fieldTilt: number;
     deepCompletions: number;
   };
 };
@@ -344,33 +366,192 @@ function weightedAverage(values: number[]) {
   return denominator ? numerator / denominator : 0;
 }
 
+const SOURCE_RELIABILITY: Record<string, number> = {
+  opta: 1,
+  statsbomb: 0.98,
+  "statsbomb-open": 0.96,
+  understat: 0.96,
+  fbref: 0.9,
+  sofascore: 0.86,
+  "football-data.co.uk": 0.82,
+  openfootball: 0.78,
+};
+
+function metricSourceKey(value: string | null | undefined) {
+  const raw = String(value ?? "unknown").trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "soccerdata-understat": "understat",
+    "soccerdata-sofascore": "sofascore",
+    "soccerdata-fbref": "fbref",
+    "statsbomb open": "statsbomb-open",
+    statsbomb_open: "statsbomb-open",
+  };
+  return aliases[raw] ?? raw;
+}
+
+function metricSourceWeight(value: string | null | undefined) {
+  return SOURCE_RELIABILITY[metricSourceKey(value)] ?? 0.7;
+}
+
+function weightedMedian(values: Array<{ value: number; weight: number }>) {
+  const usable = values
+    .filter((item) => Number.isFinite(item.value))
+    .sort((a, b) => a.value - b.value);
+  if (!usable.length) return 0;
+  const total = usable.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
+  if (total <= 0) return usable[Math.floor(usable.length / 2)].value;
+  let running = 0;
+  for (const item of usable) {
+    running += Math.max(0, item.weight);
+    if (running >= total / 2) return item.value;
+  }
+  return usable[usable.length - 1].value;
+}
+
+function canonicaliseMetricRows(rows: MetricRow[]) {
+  const groups = new Map<string, MetricRow[]>();
+  for (const row of rows) {
+    const key = `${row.match_id}::${canonicalTeam(row.team)}`;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  const modelled = new Set([
+    "xg",
+    "npxg",
+    "xga",
+    "npxga",
+    "xa",
+    "set_piece_xg",
+    "set_piece_xga",
+    "field_tilt",
+  ]);
+  const fields: Array<keyof MetricRow> = [
+    "xg",
+    "npxg",
+    "xga",
+    "npxga",
+    "shots",
+    "shots_on_target",
+    "shots_conceded",
+    "sot_conceded",
+    "big_chances",
+    "big_chances_conceded",
+    "box_touches",
+    "key_passes",
+    "xa",
+    "set_piece_xg",
+    "set_piece_xga",
+    "possession",
+    "ppda",
+    "field_tilt",
+    "deep_completions",
+  ];
+
+  return [...groups.values()].map((group) => {
+    const preferred = [...group].sort(
+      (a, b) => metricSourceWeight(b.source) - metricSourceWeight(a.source),
+    )[0];
+    const out = { ...preferred } as MetricRow;
+    const confidences: number[] = [];
+
+    for (const field of fields) {
+      const observations = group
+        .map((row) => ({
+          value: num(row[field] as number | string | null),
+          raw: row[field],
+          weight: metricSourceWeight(row.source),
+          source: row.source,
+        }))
+        .filter((item) => item.raw !== null && item.raw !== undefined);
+
+      if (!observations.length) continue;
+      let canonical = 0;
+      if (modelled.has(String(field))) {
+        const chosen = [...observations].sort((a, b) => b.weight - a.weight)[0];
+        canonical = chosen.value;
+      } else {
+        canonical = weightedMedian(observations);
+      }
+
+      const scale = Math.max(
+        Math.abs(canonical),
+        observations.reduce((sum, item) => sum + Math.abs(item.value), 0) /
+          observations.length,
+        0.5,
+      );
+      const deviations = observations
+        .map((item) => Math.abs(item.value - canonical))
+        .sort((a, b) => a - b);
+      const medianDeviation =
+        deviations[Math.floor(deviations.length / 2)] ?? 0;
+      const agreement = clamp(0.98 - (medianDeviation / scale) * 0.9, 0.35, 0.98);
+      const bestReliability = Math.max(...observations.map((item) => item.weight));
+      const confidence = clamp(
+        agreement * 0.62 +
+          bestReliability * 0.3 +
+          Math.min(0.08, Math.max(0, observations.length - 1) * 0.04),
+        0,
+        1,
+      );
+      confidences.push(confidence);
+      (out as unknown as Record<string, unknown>)[String(field)] = canonical;
+    }
+
+    out.source_confidence = confidences.length
+      ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+      : 0.7;
+    return out;
+  });
+}
+
 function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
+  const canonicalMetrics = canonicaliseMetricRows(metrics);
   const dateByMatch = new Map(
     matches.map((match) => [match.match_id, new Date(match.kickoff_at).getTime()]),
   );
-  const usable = metrics
+  const usable = canonicalMetrics
     .filter((row) => dateByMatch.has(row.match_id))
     .sort((a, b) => (dateByMatch.get(a.match_id) ?? 0) - (dateByMatch.get(b.match_id) ?? 0));
 
   const fields = [
     "xg",
+    "npxg",
     "xga",
+    "npxga",
     "shots",
     "shots_on_target",
     "shots_conceded",
     "sot_conceded",
+    "big_chances",
+    "big_chances_conceded",
+    "box_touches",
+    "key_passes",
+    "xa",
     "set_piece_xg",
     "set_piece_xga",
+    "possession",
     "ppda",
+    "field_tilt",
     "deep_completions",
   ] as const;
 
   const league: Record<string, number> = {};
+  const populated = new Set<string>();
   for (const field of fields) {
-    const values = usable.map((row) => num(row[field])).filter((value) => value > 0);
-    league[field] = values.length
-      ? values.reduce((sum, value) => sum + value, 0) / values.length
-      : 1;
+    const values = usable
+      .map((row) => row[field])
+      .filter((value) => value !== null && value !== undefined)
+      .map((value) => num(value))
+      .filter((value) => Number.isFinite(value));
+    if (values.length) {
+      league[field] =
+        values.reduce((sum, value) => sum + value, 0) / values.length;
+      populated.add(field);
+    } else {
+      league[field] = 0;
+    }
   }
 
   const byTeam = new Map<string, MetricRow[]>();
@@ -388,34 +569,73 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
     const regression = n / (n + 6);
 
     const avg = (field: (typeof fields)[number]) => {
-      const observed = weightedAverage(last.map((row) => num(row[field])));
+      if (!populated.has(field)) return 0;
+      const values = last
+        .map((row) => row[field])
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => num(value));
+      const observed = values.length ? weightedAverage(values) : league[field];
       return observed * regression + league[field] * (1 - regression);
     };
     const ratio = (field: (typeof fields)[number]) =>
-      league[field] > 0 ? avg(field) / league[field] : 1;
+      populated.has(field) && league[field] > 0
+        ? avg(field) / league[field]
+        : 1;
     const inverseRatio = (field: (typeof fields)[number]) =>
-      avg(field) > 0 ? league[field] / avg(field) : 1;
+      populated.has(field) && avg(field) > 0
+        ? league[field] / avg(field)
+        : 1;
+    const weightedComposite = (
+      components: Array<{ value: number; weight: number; field: string }>,
+    ) => {
+      const available = components.filter((item) => populated.has(item.field));
+      const totalWeight = available.reduce((sum, item) => sum + item.weight, 0);
+      if (!available.length || totalWeight <= 0) return 1;
+      return (
+        available.reduce(
+          (sum, item) => sum + item.value * item.weight,
+          0,
+        ) / totalWeight
+      );
+    };
 
-    const attack =
-      ratio("xg") * 0.42 +
-      ratio("shots_on_target") * 0.18 +
-      ratio("shots") * 0.10 +
-      ratio("set_piece_xg") * 0.10 +
-      ratio("deep_completions") * 0.10 +
-      inverseRatio("ppda") * 0.10;
+    const attack = weightedComposite([
+      { field: "npxg", value: ratio("npxg"), weight: 0.24 },
+      { field: "xg", value: ratio("xg"), weight: 0.18 },
+      { field: "shots_on_target", value: ratio("shots_on_target"), weight: 0.12 },
+      { field: "big_chances", value: ratio("big_chances"), weight: 0.10 },
+      { field: "box_touches", value: ratio("box_touches"), weight: 0.08 },
+      { field: "xa", value: ratio("xa"), weight: 0.08 },
+      { field: "key_passes", value: ratio("key_passes"), weight: 0.05 },
+      { field: "shots", value: ratio("shots"), weight: 0.05 },
+      { field: "set_piece_xg", value: ratio("set_piece_xg"), weight: 0.04 },
+      { field: "deep_completions", value: ratio("deep_completions"), weight: 0.03 },
+      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.02 },
+      { field: "ppda", value: inverseRatio("ppda"), weight: 0.01 },
+    ]);
 
-    const defence =
-      inverseRatio("xga") * 0.50 +
-      inverseRatio("sot_conceded") * 0.20 +
-      inverseRatio("shots_conceded") * 0.15 +
-      inverseRatio("set_piece_xga") * 0.15;
+    const defence = weightedComposite([
+      { field: "npxga", value: inverseRatio("npxga"), weight: 0.30 },
+      { field: "xga", value: inverseRatio("xga"), weight: 0.22 },
+      { field: "big_chances_conceded", value: inverseRatio("big_chances_conceded"), weight: 0.14 },
+      { field: "sot_conceded", value: inverseRatio("sot_conceded"), weight: 0.12 },
+      { field: "shots_conceded", value: inverseRatio("shots_conceded"), weight: 0.10 },
+      { field: "set_piece_xga", value: inverseRatio("set_piece_xga"), weight: 0.07 },
+      { field: "field_tilt", value: ratio("field_tilt"), weight: 0.03 },
+      { field: "possession", value: ratio("possession"), weight: 0.02 },
+    ]);
 
     // Recent form is useful, but three-match swings are noisy. Regress the
     // latest three toward the already-regressed eight-match process baseline.
     const recent = last.slice(-3);
     const recentRegression = recent.length / (recent.length + 5);
     const recentAvg = (field: (typeof fields)[number]) => {
-      const observed = weightedAverage(recent.map((row) => num(row[field])));
+      if (!populated.has(field)) return 0;
+      const values = recent
+        .map((row) => row[field])
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => num(value));
+      const observed = values.length ? weightedAverage(values) : avg(field);
       return observed * recentRegression + avg(field) * (1 - recentRegression);
     };
     const safeRatio = (a: number, b: number) => (b > 0 ? a / b : 1);
@@ -434,16 +654,30 @@ function buildTeamProcess(matches: MatchRow[], metrics: MetricRow[]) {
       defenceIndex: clamp(defence, 0.78, 1.28),
       attackTrend: clamp(attackTrendRaw - 1, -0.25, 0.25),
       defenceTrend: clamp(defenceTrendRaw - 1, -0.25, 0.25),
+      sourceConfidence: clamp(
+        weightedAverage(last.map((row) => row.source_confidence ?? 0.74)),
+        0.35,
+        1,
+      ),
       metrics: {
         xg: avg("xg"),
+        npxg: avg("npxg"),
         xga: avg("xga"),
+        npxga: avg("npxga"),
         shots: avg("shots"),
         shotsOnTarget: avg("shots_on_target"),
         shotsConceded: avg("shots_conceded"),
         sotConceded: avg("sot_conceded"),
+        bigChances: avg("big_chances"),
+        bigChancesConceded: avg("big_chances_conceded"),
+        boxTouches: avg("box_touches"),
+        keyPasses: avg("key_passes"),
+        xa: avg("xa"),
         setPieceXg: avg("set_piece_xg"),
         setPieceXga: avg("set_piece_xga"),
+        possession: avg("possession"),
         ppda: avg("ppda"),
+        fieldTilt: avg("field_tilt"),
         deepCompletions: avg("deep_completions"),
       },
     });
@@ -458,7 +692,7 @@ async function footyProcesses() {
   if (!matches.length) return new Map<string, TeamProcess>();
   const ids = matches.map((match) => `"${match.match_id}"`).join(",");
   const metrics = await supabaseRest<MetricRow>(
-    `footy_match_team_metrics?select=match_id,team,opponent,xg,xga,shots,shots_on_target,shots_conceded,sot_conceded,set_piece_xg,set_piece_xga,ppda,deep_completions&match_id=in.(${encodeURIComponent(ids)})`,
+    `footy_match_team_metrics?select=match_id,team,opponent,xg,npxg,xga,npxga,shots,shots_on_target,shots_conceded,sot_conceded,big_chances,big_chances_conceded,box_touches,key_passes,xa,set_piece_xg,set_piece_xga,possession,ppda,field_tilt,deep_completions,source,retrieved_at&match_id=in.(${encodeURIComponent(ids)})`,
   );
   return buildTeamProcess(matches, metrics);
 }
@@ -642,7 +876,9 @@ function rankPlayers(
               (teamProcess?.attackTrend ?? 0) * 0.35
             : (teamProcess?.attackTrend ?? 0);
       const trendFactor = 1 + clamp(teamTrend * 0.35, -0.08, 0.08);
-      const processMultiplier = 1 + (processFactor - 1) * 0.50;
+      const processTrust = 0.65 + 0.35 * (teamProcess?.sourceConfidence ?? 0.74);
+      const processMultiplier =
+        1 + (processFactor - 1) * 0.50 * processTrust;
       const availabilityMultiplier = clamp(available / 100, 0, 1);
       const startMultiplier = 0.85 + startReliability * 0.15;
 
