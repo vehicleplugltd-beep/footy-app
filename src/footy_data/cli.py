@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -10,6 +11,12 @@ from .normalizers.understat import (
     normalise_understat,
     normalise_understat_matches,
 )
+from .normalizers.fpl_core_insights import (
+    normalise_fpl_core_matches,
+    reconcile_fpl_core_to_footy,
+)
+from .sources.fpl_core_insights import FPLCoreInsightsSource
+from .verification import verify_provider_rows
 from .quality import assess_match_team_metrics
 from .storage import (
     SupabaseRESTWriter,
@@ -65,7 +72,8 @@ def command_sources() -> None:
         "available_adapters_not_yet_active_in_consensus": [
             "soccerdata / Sofascore",
             "soccerdata / FBref",
-            "OpenFootball fallback",
+            "OpenFootball fixture/result cross-check",
+            "FPL-Core-Insights enrichment — verification-first",
         ],
         "research_or_partial_coverage": [
             "StatsBomb Open Data",
@@ -117,8 +125,30 @@ def command_understat_ingest(args: argparse.Namespace) -> None:
 
     writer = SupabaseRESTWriter()
     writer.upsert_matches(frame_records(matches, MATCH_FIELDS))
+
+    # Understat has passed Footy's structural/invariant checks. New rows are
+    # admitted as WARN until an independent Official-FPL score/identity
+    # reconciliation upgrades the quality run to PASS.
+    verified_at = datetime.now(timezone.utc).isoformat()
+    metrics = metrics.copy()
+    metrics["verified"] = True
+    metrics["verification_status"] = "WARN"
+    metrics["verified_at"] = verified_at
     writer.upsert_match_team_metrics(
         frame_records(metrics, MATCH_TEAM_METRIC_FIELDS)
+    )
+    writer.insert_data_quality_run(
+        source="understat",
+        league=args.league[0] if isinstance(args.league, list) else str(args.league),
+        season=args.season[0] if isinstance(args.season, list) else str(args.season),
+        status="WARN",
+        report={
+            "basis": "internal quality/invariant gate",
+            "rows": report.rows,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+            "note": "Independent Official-FPL score reconciliation upgrades this source to PASS.",
+        },
     )
 
     print(json.dumps({
@@ -127,6 +157,87 @@ def command_understat_ingest(args: argparse.Namespace) -> None:
         "metric_rows_upserted": len(metrics),
         "quality_usable": report.usable,
     }, indent=2))
+
+
+def command_fpl_core_ingest(args: argparse.Namespace) -> None:
+    source = FPLCoreInsightsSource()
+    matches = source.matches(args.gameweek)
+    teams = source.teams(args.gameweek)
+    normalized = normalise_fpl_core_matches(matches, teams)
+    if normalized.empty:
+        raise RuntimeError("FPL-Core-Insights returned no finished Premier League rows.")
+
+    reader = SupabaseRESTReader()
+    history = reader.historical_match_team_metrics(include_unverified=True)
+    if history.empty:
+        raise RuntimeError("No Footy reference history available for reconciliation.")
+
+    scope = history[
+        (history["league"].astype(str) == str(args.league))
+        & (history["season"].astype(str) == str(args.season))
+        & (history["source"].astype(str) == "understat")
+    ].copy()
+    if scope.empty:
+        raise RuntimeError("No verified Understat reference rows in requested scope.")
+
+    reconciled, match_rate = reconcile_fpl_core_to_footy(normalized, scope)
+    if match_rate < args.min_match_rate:
+        raise RuntimeError(
+            f"FPL-Core reconciliation {match_rate:.1%} below "
+            f"{args.min_match_rate:.1%}"
+        )
+
+    reference = scope[
+        [
+            "match_id",
+            "team",
+            "opponent",
+            "home_away",
+            "goals",
+            "goals_conceded",
+            "shots",
+            "shots_on_target",
+            "xg",
+            "npxg",
+        ]
+    ].copy()
+    report = verify_provider_rows(
+        reconciled,
+        reference,
+        source="fpl-core-insights",
+        minimum_match_rate=args.min_match_rate,
+    )
+
+    writer = SupabaseRESTWriter()
+    writer.insert_data_quality_run(
+        source="fpl-core-insights",
+        league=args.league,
+        season=args.season,
+        status=report.status,
+        report=report.as_dict(),
+    )
+
+    if report.status == "BLOCKED":
+        raise RuntimeError(
+            "FPL-Core-Insights failed verification: "
+            + json.dumps(report.as_dict())
+        )
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    reconciled["verified"] = True
+    reconciled["verification_status"] = report.status
+    reconciled["verified_at"] = stamp
+    writer.upsert_match_team_metrics(
+        frame_records(reconciled, MATCH_TEAM_METRIC_FIELDS)
+    )
+
+    print(json.dumps({
+        "status": report.status,
+        "provider": "fpl-core-insights",
+        "gameweek": args.gameweek,
+        "rows_upserted": len(reconciled),
+        "verification": report.as_dict(),
+    }, indent=2, default=str))
 
 
 def command_clubelo_ingest(args: argparse.Namespace) -> None:
@@ -911,6 +1022,15 @@ def main() -> None:
     )
     _add_understat_args(ingest)
 
+    fpl_core = sub.add_parser(
+        "fpl-core-ingest",
+        help="Verify and ingest FPL-Core-Insights enrichment rows",
+    )
+    fpl_core.add_argument("--gameweek", type=int, required=True)
+    fpl_core.add_argument("--league", default="ENG-Premier League")
+    fpl_core.add_argument("--season", default="2627")
+    fpl_core.add_argument("--min-match-rate", type=float, default=0.92)
+
     clubelo = sub.add_parser(
         "clubelo-ingest",
         help="Fetch historical Club Elo ratings for stored Footy fixtures",
@@ -1207,6 +1327,8 @@ def main() -> None:
         command_understat(args)
     elif args.command == "understat-ingest":
         command_understat_ingest(args)
+    elif args.command == "fpl-core-ingest":
+        command_fpl_core_ingest(args)
     elif args.command == "clubelo-ingest":
         command_clubelo_ingest(args)
     elif args.command == "external-elo-import":

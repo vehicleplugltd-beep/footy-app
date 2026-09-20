@@ -1,0 +1,67 @@
+name: Verify and ingest FPL-Core enrichment
+
+on:
+  schedule:
+    # Upstream advertises twice-daily refreshes at 07:30 and 17:30 UTC.
+    - cron: "15 8,18 * * *"
+  workflow_dispatch:
+    inputs:
+      gameweek:
+        description: "FPL Gameweek override (leave blank to auto-detect)"
+        required: false
+        type: string
+
+concurrency:
+  group: ingest-fpl-core-current
+  cancel-in-progress: true
+
+jobs:
+  verify-ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Resolve current Gameweek
+        id: gw
+        env:
+          OVERRIDE_GW: ${{ github.event.inputs.gameweek }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          override = (os.environ.get("OVERRIDE_GW") or "").strip()
+          if override:
+              gw = int(override)
+          else:
+              data = requests.get(
+                  "https://fantasy.premierleague.com/api/bootstrap-static/",
+                  timeout=30,
+                  headers={"User-Agent":"Mozilla/5.0","Referer":"https://fantasy.premierleague.com/"},
+              ).json()
+              current = next((e for e in data["events"] if e.get("is_current")), None)
+              if current is None:
+                  current = next((e for e in data["events"] if not e.get("finished")), None)
+              if current is None:
+                  raise SystemExit("No current/upcoming FPL event.")
+              gw = int(current["id"])
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"gameweek={gw}\n")
+          print(f"Using GW{gw}")
+          PY
+
+      - name: Verify then ingest enrichment
+        run: |
+          footy-data fpl-core-ingest             --gameweek "${{ steps.gw.outputs.gameweek }}"             --league "ENG-Premier League"             --season "2627"             --min-match-rate 0.92

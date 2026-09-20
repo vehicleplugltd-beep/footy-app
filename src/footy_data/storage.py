@@ -25,7 +25,8 @@ MATCH_TEAM_METRIC_FIELDS = {
     "box_touches", "key_passes", "xa",
     "set_piece_xg", "set_piece_xga",
     "possession", "ppda", "field_tilt", "deep_completions",
-    "source", "retrieved_at",
+    "crosses", "shots_inside_box", "xgot",
+    "source", "retrieved_at", "verified", "verification_status", "verified_at",
 }
 
 TEAM_RATING_FIELDS = {
@@ -169,6 +170,33 @@ class SupabaseRESTWriter:
             HISTORICAL_PREDICTION_FIELDS,
         )
 
+    def insert_data_quality_run(
+        self,
+        source: str,
+        league: str,
+        season: str,
+        status: str,
+        report: Mapping[str, Any],
+    ) -> None:
+        response = requests.post(
+            f"{self.url}/rest/v1/footy_data_quality_runs",
+            headers={
+                "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json=[{
+                "source": source,
+                "league": league,
+                "season": season,
+                "status": status,
+                "report": dict(report),
+            }],
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+
     def insert_model_outputs(
         self,
         rows: Iterable[Mapping[str, Any]],
@@ -303,6 +331,7 @@ class SupabaseRESTReader:
     def historical_match_team_metrics(
         self,
         include_ratings: bool = False,
+        include_unverified: bool = False,
     ) -> pd.DataFrame:
         matches = pd.DataFrame(self._get_all(
             "footy_matches",
@@ -315,7 +344,8 @@ class SupabaseRESTReader:
                 "xg,npxg,xga,npxga,shots,shots_on_target,"
                 "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
                 "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
-                "possession,ppda,field_tilt,deep_completions,source,retrieved_at"
+                "possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,"
+                "source,retrieved_at,verified,verification_status,verified_at"
             ),
         ))
         if matches.empty or metrics.empty:

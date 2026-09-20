@@ -60,6 +60,9 @@ ROBUST_METRICS = {
     "possession",
     "ppda",
     "deep_completions",
+    "crosses",
+    "shots_inside_box",
+    "xgot",
 }
 
 METRICS = sorted(MODELLED_METRICS | ROBUST_METRICS)

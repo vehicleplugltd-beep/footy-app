@@ -711,7 +711,7 @@ async function footyProcesses() {
   if (!matches.length) return new Map<string, TeamProcess>();
   const ids = matches.map((match) => `"${match.match_id}"`).join(",");
   const metrics = await supabaseRest<MetricRow>(
-    `footy_match_team_metrics?select=match_id,team,opponent,xg,npxg,xga,npxga,shots,shots_on_target,shots_conceded,sot_conceded,big_chances,big_chances_conceded,box_touches,key_passes,xa,set_piece_xg,set_piece_xga,possession,ppda,field_tilt,deep_completions,source,retrieved_at&match_id=in.(${encodeURIComponent(ids)})`,
+    `footy_match_team_metrics?select=match_id,team,opponent,xg,npxg,xga,npxga,shots,shots_on_target,shots_conceded,sot_conceded,big_chances,big_chances_conceded,box_touches,key_passes,xa,set_piece_xg,set_piece_xga,possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,source,retrieved_at&verified=eq.true&match_id=in.(${encodeURIComponent(ids)})`,
   );
   return buildTeamProcess(matches, metrics);
 }
