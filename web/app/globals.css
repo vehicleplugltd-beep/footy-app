@@ -11529,3 +11529,32 @@ body.intel-open {
     line-height: 1.02;
   }
 }
+
+
+/* Light workspace theme tokens: prevent legacy dark variables leaking into HQ/Team Room/Preview */
+.footy-hq,
+.team-room-page,
+.preview-page {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --line: #e1e5e9;
+  --line-soft: #e6e8ee;
+  --text: #111318;
+  --muted: #697386;
+  --accent: #10b981;
+  --amber: #b7791f;
+  --red: #b84c5a;
+  --blue: #2563eb;
+}
+
+.hq-connect-form .league-connect {
+  max-width: none;
+  margin-top: 0;
+}
+.hq-connect-form .league-connect label > span {
+  color: #5f6875;
+  font-size: 9px;
+}
+.hq-connect-form .league-connect small {
+  color: #7a8390;
+}
