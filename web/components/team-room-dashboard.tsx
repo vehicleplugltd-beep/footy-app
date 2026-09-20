@@ -1042,6 +1042,16 @@ export function TeamRoomDashboard({
 
           {counterPlay.horizon_results && activeCounterHorizon ? (
             <div className="counterplay-horizon-shell">
+              <div className="counterplay-horizon-head">
+                <div>
+                  <span>STATEFUL PATH</span>
+                  <strong>{activeCounterHorizon.horizon}GW command plan</strong>
+                </div>
+                <small>
+                  Transfers, captaincy, FT, cash, hits and supported chips are
+                  re-evaluated at each deadline.
+                </small>
+              </div>
               <div className="counterplay-horizon-toggle" aria-label="CounterPlay horizon">
                 {([1, 3, 5] as const).map((horizon) => {
                   const key = String(horizon) as "1" | "3" | "5";
@@ -1051,6 +1061,8 @@ export function TeamRoomDashboard({
                       key={horizon}
                       type="button"
                       className={activeCounterHorizon.horizon === horizon ? "active" : ""}
+                      aria-pressed={activeCounterHorizon.horizon === horizon}
+                      title={"Model the next " + horizon + " Gameweek" + (horizon === 1 ? "" : "s")}
                       onClick={() => setCounterHorizon(horizon)}
                     >
                       {horizon}GW
@@ -1061,7 +1073,7 @@ export function TeamRoomDashboard({
 
               <div className="counterplay-horizon-summary">
                 <div>
-                  <span>PATH OBJECTIVE</span>
+                  <span>CONTROL PROBABILITY</span>
                   <strong>
                     {activeCounterHorizon.recommended_scenario
                       ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "%"
