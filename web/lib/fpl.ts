@@ -2226,13 +2226,11 @@ function buildManagerFuturePlan(
 }
 
 export async function getFplHub(teamId?: number): Promise<FplHub> {
-  const [bootstrapSnapshot, fixturesSnapshot, process, volatilitySnapshot] =
-    await Promise.all([
-      cachedFpl<Bootstrap>("bootstrap-static"),
-      cachedFpl<Fixture[]>("fixtures"),
-      footyProcesses(),
-      cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
-    ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
+    cachedFpl<Bootstrap>("bootstrap-static"),
+    cachedFpl<Fixture[]>("fixtures"),
+    footyProcesses(),
+  ]);
 
   let bootstrap = bootstrapSnapshot?.payload ?? null;
   let fixtures = fixturesSnapshot?.payload ?? null;
@@ -2383,11 +2381,13 @@ export async function getLeagueManagerEdgeAnalysis(
     throw new Error("A valid FPL entry ID is required.");
   }
 
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
-    cachedFpl<Bootstrap>("bootstrap-static"),
-    cachedFpl<Fixture[]>("fixtures"),
-    footyProcesses(),
-  ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process, volatilitySnapshot] =
+    await Promise.all([
+      cachedFpl<Bootstrap>("bootstrap-static"),
+      cachedFpl<Fixture[]>("fixtures"),
+      footyProcesses(),
+      cachedFpl<FplVolatilityCalibration>("counterplay-volatility-v1"),
+    ]);
 
   let bootstrap: Bootstrap | null = null;
   let fixtures: Fixture[] | null = null;
