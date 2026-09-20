@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TeamPitch } from "@/components/team-pitch";
 import { NextMoveCommand } from "@/components/next-move-command";
+import { LeaguePreference } from "@/components/league-preference";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { BuildTestWorkspace } from "@/components/build-test-workspace";
 
@@ -92,6 +93,12 @@ export default async function TeamPage({
         </div>
         <Link className="change-team-link" href="/">Change team</Link>
       </section>
+
+      <LeaguePreference
+        teamId={team.id}
+        leagueId={leagueId}
+        validLeagueIds={leagues.map((league) => league.id)}
+      />
 
       <div className="workspace-tabs shell" aria-label="Footy workspace">
         <a href="#squad"><span>01</span> Squad</a>
