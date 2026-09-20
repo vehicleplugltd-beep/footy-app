@@ -58,11 +58,19 @@ function TargetCard({
       <div className="research-target-metrics">
         <div><span>{horizon === "SHORT" ? "3GW" : "8GW"}</span><strong>{score.toFixed(1)}</strong></div>
         <div><span>Reg xGI/90</span><strong>{playerProcess(profile).toFixed(2)}</strong></div>
+        <div><span>xG/90</span><strong>{profile.evidence?.regressedXgPer90.toFixed(2) ?? profile.player.xgPer90.toFixed(2)}</strong></div>
+        <div><span>xA/90</span><strong>{profile.evidence?.regressedXaPer90.toFixed(2) ?? profile.player.xaPer90.toFixed(2)}</strong></div>
         <div><span>EPA</span><strong>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)}</strong></div>
         <div><span>xMins</span><strong>{profile.epa.expectedMinutes.toFixed(0)}</strong></div>
+        <div><span>Ownership</span><strong>{profile.player.selectedBy.toFixed(1)}%</strong></div>
+        <div><span>Set pieces</span><strong>{profile.player.setPieceRole ?? "—"}</strong></div>
       </div>
       <small className="research-risk">
         <b>Risk:</b> {profile.risks[0] ?? "Late role, minutes or team-news changes can move the call."}
+      </small>
+      <small className="research-source-note">
+        Underlying: regressed xG/xA, expected minutes, team process, fixtures, price/value
+        and official ownership. Player NPxG and true EO are not inferred when unavailable.
       </small>
       <button type="button" onClick={() => onOpen(profile)}>
         Full reasoning & underlying data →
