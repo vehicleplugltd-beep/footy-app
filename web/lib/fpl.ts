@@ -266,6 +266,13 @@ export type PortfolioHealth = {
   differentialCount: number;
   highOwnershipCount: number;
   averageFieldOwnership: number;
+  bench: {
+    spend: number;
+    spendShare: number;
+    currentModelScore: number;
+    reliable: number;
+    expensiveBenchPlayers: number;
+  };
   priceStructure: {
     midBandMidfielders: number;
     midBandForwards: number;
@@ -1672,6 +1679,19 @@ function buildPortfolioHealth(
   const averageFieldOwnership = squad.length
     ? squad.reduce((sum, player) => sum + player.selectedBy, 0) / squad.length
     : 0;
+  const totalSquadSpend = squad.reduce((sum, player) => sum + player.price, 0);
+  const benchSpend = bench.reduce((sum, player) => sum + player.price, 0);
+  const benchSpendShare =
+    totalSquadSpend > 0 ? benchSpend / totalSquadSpend : 0;
+  const benchModelScore = bench.reduce(
+    (sum, player) => sum + player.assistantScore,
+    0,
+  );
+  const expensiveBenchPlayers = bench.filter(
+    (player) =>
+      (player.position === "GKP" && player.price > 4.5) ||
+      (player.position !== "GKP" && player.price > 5.0),
+  ).length;
 
   const midBandMidfielders = squad.filter(
     (player) =>
@@ -1761,6 +1781,8 @@ function buildPortfolioHealth(
   score -= unavailablePlayers * 5;
   if (bank < 0.5) score -= 8;
   if (bank > 2.0) score -= 3;
+  if (benchSpendShare > 0.22) score -= 4;
+  if (expensiveBenchPlayers > 1) score -= 3;
   if (goalkeeperSpend > 9.5) score -= 4;
   if (!midfieldRoute) score -= 8;
   if (!forwardRoute) score -= 8;
@@ -1782,6 +1804,7 @@ function buildPortfolioHealth(
     `${reliableBench}/4 bench players currently clear Footy's availability, start-reliability and fixture-availability test.`,
     `Bank is £${bank.toFixed(1)}m (${bankStatus.toLowerCase()}); a £0.5m–£1.0m buffer is treated as useful optionality, not a hard rule.`,
     `Price structure has ${midBandMidfielders} midfielder(s) in £6.5m–£8.0m and ${midBandForwards} forward(s) in £7.0m–£8.5m.`,
+    `Current bench carries £${benchSpend.toFixed(1)}m (${Math.round(benchSpendShare * 100)}% of squad market value) and ${benchModelScore.toFixed(1)} model-score points this Gameweek.`,
     `Goalkeeper spend is £${goalkeeperSpend.toFixed(1)}m; defender bands are ${premiumDefenders} premium / ${midDefenders} mid / ${budgetDefenders} budget; midfield has ${premiumMidfielders} premium / ${midMidfielders} mid / ${enablerMidfielders} enabler.`,
     `Forward bands are ${premiumMidForwards} at £7.5m+ / ${valueForwards} value / ${budgetForwards} budget. These bands are structural heuristics, not hard selection rules.`,
     `Six-Gameweek best-XI model average is ${sixGwAverageBestXi.toFixed(1)}; eight-Gameweek average is ${eightGwAverageBestXi.toFixed(1)}.`,
@@ -1790,6 +1813,11 @@ function buildPortfolioHealth(
   const risks: string[] = [];
   if (reliableBench < 2) {
     risks.push("Bench resilience is thin: fewer than two substitutes currently project as dependable cover.");
+  }
+  if (benchSpendShare > 0.22 || expensiveBenchPlayers > 1) {
+    risks.push(
+      `Bench capital is heavy: £${benchSpend.toFixed(1)}m is outside the current XI and ${expensiveBenchPlayers} bench player(s) sit above Footy's usual value-band threshold.`,
+    );
   }
   if (goalkeeperSpend > 9.5) {
     risks.push(
@@ -1832,6 +1860,13 @@ function buildPortfolioHealth(
     differentialCount,
     highOwnershipCount,
     averageFieldOwnership,
+    bench: {
+      spend: benchSpend,
+      spendShare: benchSpendShare,
+      currentModelScore: benchModelScore,
+      reliable: reliableBench,
+      expensiveBenchPlayers,
+    },
     priceStructure: {
       midBandMidfielders,
       midBandForwards,
@@ -1864,7 +1899,7 @@ function buildPortfolioHealth(
       "Official FPL prices, ownership, availability, starts and minutes",
       "Regressed player process and team attack/defence process",
       "Best-XI formation-constrained model score across 6GW and 8GW",
-      "Actual FPL bench positions from the current squad",
+      "Actual FPL bench positions, current bench market value and current model-score leakage",
       "Indicative price-band escape routes using current bank and public market prices",
     ],
     missing: [
