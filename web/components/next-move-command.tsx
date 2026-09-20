@@ -7,32 +7,63 @@ type Player = {
   id: number;
   name: string;
   team: string;
+  teamName?: string;
+  position?: string;
   opponent: string | null;
+  opponentName?: string | null;
   assistantScore: number;
+  expectedNext?: number;
+  fixtureDifficulty?: number;
   processBoost?: number;
+  processFactor?: number;
+  fixtureFactor?: number;
+  trendFactor?: number;
   availability?: number;
   form?: number;
   xgiPer90?: number;
+  xgPer90?: number;
+  xaPer90?: number;
+  xgcPer90?: number;
+  minutes?: number;
+  starts?: number;
+  news?: string;
+  setPieceRole?: string | null;
+  teamAttackIndex?: number;
+  teamDefenceIndex?: number;
+  selectedBy?: number;
+  transfersNet?: number;
 };
 
 type Strategy = {
   mode: "PROTECT" | "CHASE" | "RECOVER";
+  pressure_focus?: "PROTECT" | "BOTH_SIDES" | "CHASE_AND_PROTECT" | "CHASE";
   gap_to_leader: number;
+  gap_above?: number | null;
+  gap_below?: number | null;
   rival_name: string | null;
+  target_name?: string | null;
+  chaser_name?: string | null;
   captain_moves: Array<{
     player: Player;
     league_score: number;
+    rival_owns?: boolean;
+    chaser_owns?: boolean;
     rationale: string;
   }>;
   transfer_moves: Array<{
     out: Player;
     in: Player;
     raw_gain: number;
+    minimum_gain?: number;
+    horizon_gain?: number;
+    timing?: "NOW" | "WAIT" | "HOLD";
     league_score: number;
     rival_owns?: boolean;
+    chaser_owns?: boolean;
     process_adjustment?: number;
     rationale: string;
   }>;
+  caveat?: string;
 };
 
 type ResourceAdvice = {
@@ -79,20 +110,69 @@ type DecisionPath = {
   caveat: string;
 };
 
+type Standing = {
+  entry_id?: number;
+  rank: number | null;
+  total: number | null;
+  entry_name: string;
+  gap?: number | null;
+};
+
+type TeamProcess = {
+  team: string;
+  matches: number;
+  attackIndex: number;
+  defenceIndex: number;
+  attackTrend: number;
+  defenceTrend: number;
+  sourceConfidence: number;
+  metrics: {
+    xg: number;
+    npxg: number;
+    xga: number;
+    npxga: number;
+    shots: number;
+    shotsOnTarget: number;
+    shotsConceded: number;
+    sotConceded: number;
+    bigChances: number;
+    bigChancesConceded: number;
+    boxTouches: number;
+    keyPasses: number;
+    xa: number;
+    setPieceXg: number;
+    setPieceXga: number;
+    possession: number;
+    ppda: number;
+    fieldTilt: number;
+    deepCompletions: number;
+  };
+};
+
+type WeakLink = {
+  player: Player;
+  replacement: Player | null;
+  reason: string;
+  gain: number;
+  minimumGain: number;
+  horizonGain: number;
+  timing: "NOW" | "WAIT" | "HOLD";
+};
+
 type Payload = {
   decision_path?: DecisionPath;
-  manager_standing?: {
-    rank: number | null;
-    total: number | null;
-    entry_name: string;
+  manager_standing?: Standing;
+  rival_standing?: Standing | null;
+  target_standing?: Standing | null;
+  chaser_standings?: Standing[];
+  pressure_map?: {
+    above: Standing[];
+    below: Standing[];
+    leader: Standing;
   };
-  rival_standing?: {
-    rank: number | null;
-    total: number | null;
-    entry_name: string;
-  } | null;
   league_strategy?: Strategy;
   resource_advice?: ResourceAdvice | null;
+  chaser_resource_advice?: ResourceAdvice | null;
   analysis?: {
     dataRetrievedAt?: string;
     nextEvent?: {
@@ -102,6 +182,14 @@ type Payload = {
     } | null;
     freshness?: {
       source?: "LIVE_FPL" | "CACHED_FALLBACK";
+    };
+    manager?: {
+      weakLinks?: WeakLink[];
+    };
+    teamProcesses?: TeamProcess[];
+    dataCoverage?: {
+      measured: string[];
+      notMeasured: string[];
     };
   };
 };
@@ -220,23 +308,39 @@ export function NextMoveCommand({
     );
   }
 
+  const pressure = payload?.pressure_map;
+  const nearestAbove = pressure?.above?.[0] ?? payload?.target_standing ?? null;
+  const nearestChaser =
+    pressure?.below?.[0] ?? payload?.chaser_standings?.[0] ?? null;
   const target =
+    strategy.target_name ??
+    nearestAbove?.entry_name ??
     strategy.rival_name ??
-    (strategy.mode === "PROTECT" ? "the manager behind you" : "the manager above you");
+    (strategy.mode === "PROTECT"
+      ? "the manager behind you"
+      : "the manager above you");
 
   const postureCopy =
-    strategy.mode === "PROTECT"
-      ? "protect your lead"
-      : strategy.mode === "CHASE"
-        ? "close the gap"
-        : "make up ground";
+    strategy.pressure_focus === "BOTH_SIDES"
+      ? "move up without giving away your position"
+      : strategy.pressure_focus === "CHASE_AND_PROTECT"
+        ? "close the gap while protecting your place"
+        : strategy.mode === "PROTECT"
+          ? "protect your lead"
+          : strategy.mode === "CHASE"
+            ? "close the gap"
+            : "make up ground";
 
   const modeLabel =
-    strategy.mode === "PROTECT"
-      ? "Protect your lead"
-      : strategy.mode === "CHASE"
-        ? "Close the gap"
-        : "Make up ground";
+    strategy.pressure_focus === "BOTH_SIDES"
+      ? "Pressure both sides"
+      : strategy.pressure_focus === "CHASE_AND_PROTECT"
+        ? "Chase + protect"
+        : strategy.mode === "PROTECT"
+          ? "Protect your lead"
+          : strategy.mode === "CHASE"
+            ? "Close the gap"
+            : "Make up ground";
 
   const resourceLabel =
     resources?.status === "ADVANTAGE"
@@ -249,14 +353,25 @@ export function NextMoveCommand({
 
   const resourceInstruction =
     resources?.status === "ADVANTAGE"
-      ? "Preserve your resource edge."
+      ? "Keep the resource edge unless the football edge is strong."
       : resources?.status === "THREAT"
         ? "Avoid a speculative hit and keep flexibility."
-        : "Let the player edge drive the move.";
+        : "Let the football edge drive the move.";
+
+  const gapAbove = strategy.gap_above;
+  const gapBelow = strategy.gap_below;
+  const pressureSentence =
+    nearestAbove && nearestChaser
+      ? `${gapAbove != null ? `${Math.abs(gapAbove)} pt${Math.abs(gapAbove) === 1 ? "" : "s"} to ${nearestAbove.entry_name}` : nearestAbove.entry_name}; ${gapBelow != null ? `${Math.abs(gapBelow)} pt${Math.abs(gapBelow) === 1 ? "" : "s"} clear of ${nearestChaser.entry_name}` : `${nearestChaser.entry_name} is chasing`}.`
+      : nearestAbove && gapAbove != null
+        ? `${Math.abs(gapAbove)} pt${Math.abs(gapAbove) === 1 ? "" : "s"} to ${nearestAbove.entry_name}.`
+        : nearestChaser && gapBelow != null
+          ? `${Math.abs(gapBelow)} pt${Math.abs(gapBelow) === 1 ? "" : "s"} clear of ${nearestChaser.entry_name}.`
+          : "";
 
   const decisionSentence = transfer
-    ? `To ${postureCopy} on ${target}, sell ${transfer.out.name} for ${transfer.in.name}${captain ? `, captain ${captain.player.name}` : ""}. ${resourceInstruction}`
-    : `To ${postureCopy} on ${target}, hold the transfer${captain ? ` and captain ${captain.player.name}` : ""}. ${resourceInstruction}`;
+    ? `To ${postureCopy}, sell ${transfer.out.name} for ${transfer.in.name}${captain ? `, captain ${captain.player.name}` : ""}. ${pressureSentence} ${resourceInstruction}`
+    : `To ${postureCopy}, hold the transfer${captain ? ` and captain ${captain.player.name}` : ""}. ${pressureSentence} ${resourceInstruction}`;
 
   const transferProcess = transfer?.in.processBoost ?? 0;
   const transferAvailability = transfer?.in.availability ?? 100;
@@ -286,17 +401,25 @@ export function NextMoveCommand({
   const scoreDelta = transfer
     ? transfer.in.assistantScore - transfer.out.assistantScore
     : 0;
+  const watchMove =
+    payload?.analysis?.manager?.weakLinks?.find(
+      (move) => move.timing === "WAIT" && move.replacement,
+    ) ?? null;
+  const alternatives = strategy.transfer_moves.slice(1);
+  const incomingTeamProcess = transfer?.in.teamName
+    ? payload?.analysis?.teamProcesses?.find(
+        (process) => process.team === transfer.in.teamName,
+      ) ?? null
+    : null;
+  const opponentProcess = transfer?.in.opponentName
+    ? payload?.analysis?.teamProcesses?.find(
+        (process) => process.team === transfer.in.opponentName,
+      ) ?? null
+    : null;
 
   const managerStanding = payload?.manager_standing;
-  const rivalStanding = payload?.rival_standing;
   const rankLabel =
     managerStanding?.rank != null ? `#${managerStanding.rank}` : "—";
-  const rivalRankLabel =
-    rivalStanding?.rank != null ? `#${rivalStanding.rank}` : "—";
-  const directGap =
-    managerStanding?.total != null && rivalStanding?.total != null
-      ? rivalStanding.total - managerStanding.total
-      : null;
 
   return (
     <section className="shell next-move-command minimal-command" id="next-move">
@@ -320,26 +443,34 @@ export function NextMoveCommand({
         </div>
       </div>
 
-      <div className="minimal-position">
-        <div>
-          <span>You</span>
-          <strong>{rankLabel}</strong>
-        </div>
-        <div className="minimal-position-arrow">→</div>
-        <div>
-          <span>Target</span>
-          <strong>{target}</strong>
+      <div className="pressure-band">
+        <article>
+          <span>AHEAD</span>
+          <strong>{nearestAbove?.entry_name ?? "You lead this battle"}</strong>
           <small>
-            {rivalRankLabel}
-            {directGap != null
-              ? directGap > 0
-                ? ` · ${directGap} pts ahead`
-                : directGap < 0
-                  ? ` · ${Math.abs(directGap)} pts behind`
-                  : " · level on points"
+            {nearestAbove?.rank != null ? `#${nearestAbove.rank}` : ""}
+            {gapAbove != null
+              ? ` · ${Math.abs(gapAbove)} pt${Math.abs(gapAbove) === 1 ? "" : "s"} ahead`
               : ""}
           </small>
-        </div>
+        </article>
+
+        <article className="pressure-you">
+          <span>YOU</span>
+          <strong>{rankLabel}</strong>
+          <small>{managerStanding?.entry_name ?? "Your team"}</small>
+        </article>
+
+        <article>
+          <span>CHASING YOU</span>
+          <strong>{nearestChaser?.entry_name ?? "No immediate chaser"}</strong>
+          <small>
+            {nearestChaser?.rank != null ? `#${nearestChaser.rank}` : ""}
+            {gapBelow != null
+              ? ` · ${Math.abs(gapBelow)} pt${Math.abs(gapBelow) === 1 ? "" : "s"} behind`
+              : ""}
+          </small>
+        </article>
       </div>
 
       <div className="minimal-decision">
@@ -366,8 +497,10 @@ export function NextMoveCommand({
           </strong>
           <small>
             {transfer
-              ? "Strongest model-backed upgrade"
-              : "No move clears the threshold"}
+              ? `+${transfer.raw_gain.toFixed(1)} now · threshold +${(transfer.minimum_gain ?? 0).toFixed(1)}`
+              : watchMove?.replacement
+                ? `Hold now · watch ${watchMove.replacement.name}`
+                : "No move clears the threshold"}
           </small>
         </article>
         <article>
@@ -449,48 +582,87 @@ export function NextMoveCommand({
         <summary>Why this decision?</summary>
         <div className="minimal-evidence-list">
           <div className="evidence-row">
-            <span>Model</span>
+            <span>Decision threshold</span>
             <strong>
               {transfer
-                ? `${transfer.in.name} +${scoreDelta.toFixed(1)} vs ${transfer.out.name}`
-                : "Current squad still grades best"}
+                ? `+${transfer.raw_gain.toFixed(1)} now · +${(transfer.horizon_gain ?? 0).toFixed(1)} 4GW · +${(transfer.minimum_gain ?? 0).toFixed(1)} required`
+                : watchMove?.replacement
+                  ? `${watchMove.replacement.name}: +${watchMove.gain.toFixed(1)} now · +${watchMove.horizonGain.toFixed(1)} 4GW`
+                  : "HOLD"}
             </strong>
             <small>
               {transfer
-                ? "The incoming player improves Footy's expected-output score."
-                : "No available replacement improves the model enough to justify using a transfer."}
+                ? "This move clears both the immediate edge and the value of keeping a free transfer."
+                : watchMove?.replacement
+                  ? `The longer-term idea is interesting, but it does not clear the +${watchMove.minimumGain.toFixed(1)} act-now threshold. Waiting preserves flexibility.`
+                  : "No same-position alternative is strong enough after fixture, process, availability and transfer-value adjustments."}
             </small>
           </div>
 
           <div className="evidence-row">
-            <span>Underlying</span>
+            <span>Player process</span>
             <strong>
               {transfer
-                ? `xGI/90 ${incomingXgi.toFixed(2)} vs ${outgoingXgi.toFixed(2)} · form ${incomingForm.toFixed(1)} vs ${outgoingForm.toFixed(1)}`
-                : "No strong underlying upgrade"}
+                ? `xG/90 ${(transfer.in.xgPer90 ?? 0).toFixed(2)} · xA/90 ${(transfer.in.xaPer90 ?? 0).toFixed(2)} · xGI/90 ${incomingXgi.toFixed(2)}`
+                : watchMove?.replacement
+                  ? `Watch: ${watchMove.replacement.name} · xGI/90 ${(watchMove.replacement.xgiPer90 ?? 0).toFixed(2)}`
+                  : "No player edge strong enough"}
             </strong>
             <small>
               {transfer
-                ? `${transfer.in.team} process ${transferProcess >= 0 ? "+" : ""}${(
-                    transferProcess * 100
-                  ).toFixed(0)}% · ${transfer.in.opponent ? `next vs ${transfer.in.opponent} · ` : ""}${transferAvailability}% availability`
-                : "The current alternatives do not create a strong enough process, fixture or player-level edge."}
+                ? `${transfer.in.starts ?? "—"} starts · ${transfer.in.minutes ?? "—"} mins${transfer.in.setPieceRole ? ` · ${transfer.in.setPieceRole}` : ""} · form ${incomingForm.toFixed(1)} vs ${outgoingForm.toFixed(1)}`
+                : "Footy regresses small-sample per-90 numbers before using them."}
             </small>
           </div>
 
           <div className="evidence-row">
-            <span>League</span>
+            <span>Team process</span>
             <strong>
-              {transfer
-                ? transfer.rival_owns
-                  ? `Cover ${target}`
-                  : `Create separation from ${target}`
-                : resources?.status ?? "Even"}
+              {incomingTeamProcess
+                ? `${incomingTeamProcess.team}: npxG ${incomingTeamProcess.metrics.npxg.toFixed(2)} · npxGA ${incomingTeamProcess.metrics.npxga.toFixed(2)} · SOT ${incomingTeamProcess.metrics.shotsOnTarget.toFixed(1)}`
+                : transfer
+                  ? `${transfer.in.teamName ?? transfer.in.team} attack index ${(transfer.in.teamAttackIndex ?? 1).toFixed(2)} · defence ${(transfer.in.teamDefenceIndex ?? 1).toFixed(2)}`
+                  : "Current team process retained"}
             </strong>
             <small>
-              {resources
-                ? `Free-transfer edge ${resources.free_transfer_edge >= 0 ? "+" : ""}${resources.free_transfer_edge}. ${resources.recommendation}`
-                : "Footy uses rival ownership and resources only after the underlying player case is strong enough."}
+              {incomingTeamProcess
+                ? `xG ${incomingTeamProcess.metrics.xg.toFixed(2)} · xGA ${incomingTeamProcess.metrics.xga.toFixed(2)} · set-piece xG ${incomingTeamProcess.metrics.setPieceXg.toFixed(2)} · recent attack trend ${incomingTeamProcess.attackTrend >= 0 ? "+" : ""}${(incomingTeamProcess.attackTrend * 100).toFixed(0)}% · source confidence ${(incomingTeamProcess.sourceConfidence * 100).toFixed(0)}%`
+                : "Team-process detail appears when the source feed can be reconciled to the selected player."}
+            </small>
+          </div>
+
+          <div className="evidence-row">
+            <span>Matchup</span>
+            <strong>
+              {transfer
+                ? `${transfer.in.team} vs ${transfer.in.opponent ?? "—"} · FDR ${transfer.in.fixtureDifficulty ?? "—"}`
+                : "No transfer matchup needed"}
+            </strong>
+            <small>
+              {transfer
+                ? `Fixture factor ${(transfer.in.fixtureFactor ?? 1).toFixed(2)} · opponent/process factor ${(transfer.in.processFactor ?? 1).toFixed(2)} · team trend factor ${(transfer.in.trendFactor ?? 1).toFixed(2)}${opponentProcess ? ` · opponent xG ${opponentProcess.metrics.xg.toFixed(2)} / npxG ${opponentProcess.metrics.npxg.toFixed(2)}` : ""}`
+                : watchMove?.replacement
+                  ? `The watchlist move is being delayed because the immediate matchup/value is weaker than the later horizon.`
+                  : "Footy is preserving the transfer rather than forcing a marginal matchup."}
+            </small>
+          </div>
+
+          <div className="evidence-row">
+            <span>League pressure</span>
+            <strong>
+              {nearestAbove && nearestChaser
+                ? `Catch ${nearestAbove.entry_name} · protect from ${nearestChaser.entry_name}`
+                : nearestAbove
+                  ? `Catch ${nearestAbove.entry_name}`
+                  : nearestChaser
+                    ? `Protect from ${nearestChaser.entry_name}`
+                    : "No immediate pressure"}
+            </strong>
+            <small>
+              {transfer
+                ? `${transfer.rival_owns ? "Target owns incoming player" : "Incoming player creates target separation"}${transfer.chaser_owns ? " · nearest chaser owns him, so the move also covers that threat" : ""}. ${resources?.recommendation ?? ""}`
+                : resources?.recommendation ??
+                  "League context only adjusts a move after the football edge clears the threshold."}
             </small>
           </div>
 
@@ -499,10 +671,51 @@ export function NextMoveCommand({
             <strong>{captain?.player.name ?? "No change"}</strong>
             <small>
               {captain
-                ? `Footy score ${captain.player.assistantScore.toFixed(1)} · xGI/90 ${(captain.player.xgiPer90 ?? 0).toFixed(2)}${captain.player.opponent ? ` · vs ${captain.player.opponent}` : ""}`
+                ? `Footy score ${captain.player.assistantScore.toFixed(1)} · xGI/90 ${(captain.player.xgiPer90 ?? 0).toFixed(2)}${captain.player.opponent ? ` · vs ${captain.player.opponent}` : ""}. ${captain.rationale}`
                 : "No captain signal is currently strong enough to surface."}
             </small>
           </div>
+
+          {alternatives.length ? (
+            <div className="evidence-row">
+              <span>Other options</span>
+              <strong>
+                {alternatives
+                  .map((move) => `${move.out.name} → ${move.in.name}`)
+                  .join(" · ")}
+              </strong>
+              <small>
+                These also clear the football threshold but rank below the primary move after expected gain and league context.
+              </small>
+            </div>
+          ) : null}
+
+          <details className="analysis-scope">
+            <summary>What data did Footy check?</summary>
+            <div>
+              <p>
+                {(payload?.analysis?.dataCoverage?.measured ?? []).join(" · ") ||
+                  "Official FPL player data, fixtures and Footy team-process data."}
+              </p>
+              <p>
+                <b>Not measured:</b>{" "}
+                {(payload?.analysis?.dataCoverage?.notMeasured ?? []).join(" · ") ||
+                  "Unavailable tactical metrics are excluded rather than invented."}
+              </p>
+              {pressure?.below?.length && pressure.below.length > 1 ? (
+                <p>
+                  <b>Other chasers:</b>{" "}
+                  {pressure.below
+                    .slice(1)
+                    .map(
+                      (standing) =>
+                        `${standing.entry_name} (#${standing.rank ?? "—"} · ${standing.gap ?? "—"} pts behind)`,
+                    )
+                    .join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          </details>
         </div>
       </details>
 
