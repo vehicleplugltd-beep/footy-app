@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TeamPitch } from "@/components/team-pitch";
 import { SquadLab } from "@/components/squad-lab";
+import { NextMoveCommand } from "@/components/next-move-command";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { getPlayerDatabase } from "@/lib/fpl";
 
@@ -60,6 +61,10 @@ export default async function TeamPage({
   const leagues = team.miniLeagues.length
     ? team.miniLeagues
     : team.otherClassicLeagues.slice(0, 12);
+  const selectedLeague =
+    leagueId && Number.isInteger(leagueId)
+      ? leagues.find((league) => league.id === leagueId) ?? null
+      : null;
 
   return (
     <main className="league-edge-app footy-workspace">
@@ -93,6 +98,12 @@ export default async function TeamPage({
         <a href="#build-test"><span>03</span> Build &amp; Test</a>
         <Link href="/results"><span>04</span> Receipts</Link>
       </div>
+
+      <NextMoveCommand
+        teamId={team.id}
+        leagueId={leagueId}
+        leagueName={selectedLeague?.name ?? null}
+      />
 
       <section className="shell team-first-dashboard" id="squad">
         <div className="team-pitch-panel">
@@ -152,7 +163,7 @@ export default async function TeamPage({
                   <div className="team-league-card-wrap" key={league.id}>
                     <Link
                       className="team-league-card"
-                      href={`/league/${league.id}?team=${team.id}${rankParam}`}
+                      href={`/team/${team.id}?league=${league.id}#next-move`}
                     >
                       <div>
                         <span>YOUR RANK</span>
@@ -165,16 +176,24 @@ export default async function TeamPage({
                       </div>
                       <div>
                         <h3>{league.name}</h3>
-                        <p>Open the rival battle and league intelligence.</p>
+                        <p>Get the move Footy recommends to beat this league.</p>
                       </div>
                       <b>→</b>
                     </Link>
-                    <Link
-                      className="league-build-link"
-                      href={`/team/${team.id}?league=${league.id}#build-test`}
-                    >
-                      Build &amp; test for this league
-                    </Link>
+                    <div className="league-card-actions">
+                      <Link
+                        className="league-build-link"
+                        href={`/team/${team.id}?league=${league.id}#build-test`}
+                      >
+                        Build &amp; test
+                      </Link>
+                      <Link
+                        className="league-build-link"
+                        href={`/league/${league.id}?team=${team.id}${rankParam}`}
+                      >
+                        Full league view
+                      </Link>
+                    </div>
                   </div>
                 );
               })
