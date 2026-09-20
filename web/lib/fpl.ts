@@ -2599,13 +2599,17 @@ function scoutReasons(
   const avgFdr3 = average(firstThree.map((item) => item.difficulty));
   const avgFdr6 = average(firstSix.map((item) => item.difficulty));
 
-  if (player.xgiPer90 >= 0.55) {
+  const involvement = evidence?.regressedXgiPer90 ?? player.xgiPer90;
+  const involvementLabel = evidence?.priorAvailable
+    ? "Role-adjusted underlying involvement"
+    : "Underlying involvement";
+  if (involvement >= 0.55) {
     reasons.push(
-      `Strong underlying involvement: ${player.xgiPer90.toFixed(2)} xGI/90.`,
+      `Strong ${involvementLabel.toLowerCase()}: ${involvement.toFixed(2)} xGI/90.`,
     );
-  } else if (player.xgiPer90 >= 0.35) {
+  } else if (involvement >= 0.35) {
     reasons.push(
-      `Useful underlying involvement: ${player.xgiPer90.toFixed(2)} xGI/90.`,
+      `Useful ${involvementLabel.toLowerCase()}: ${involvement.toFixed(2)} xGI/90.`,
     );
   }
 
@@ -2647,12 +2651,6 @@ function scoutReasons(
   if (player.selectedBy < 10 && player.assistantScore > 0) {
     reasons.push(
       `Low ownership (${player.selectedBy.toFixed(1)}%) gives upside if the football case continues to hold.`,
-    );
-  }
-
-  if (evidence?.priorAvailable && evidence.regressedXgiPer90 >= 0.35) {
-    reasons.push(
-      `Role-adjusted process holds after prior-season shrinkage: ${evidence.regressedXgiPer90.toFixed(2)} xGI/90.`,
     );
   }
 
@@ -2708,6 +2706,14 @@ function scoutRisks(
   }
   if (player.minutes < 270) {
     risks.push("Player per-90 data is still a small sample and is being regressed.");
+  }
+  if (
+    evidence?.priorAvailable &&
+    evidence.currentEvidenceWeight < 0.30
+  ) {
+    risks.push(
+      `Only ${Math.round(evidence.currentEvidenceWeight * 100)}% of the role-adjusted process estimate comes from current-season evidence; the prior still carries most of the weight.`,
+    );
   }
   if (evidence?.loadRisk != null && evidence.loadRisk >= 0.06) {
     risks.push(

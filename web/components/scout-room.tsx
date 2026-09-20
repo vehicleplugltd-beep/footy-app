@@ -31,8 +31,25 @@ function confidenceLabel(profile: ScoutPlayerProfile) {
   return `${profile.decisionConfidence} CONFIDENCE`;
 }
 
-function headlineXgi(profile: ScoutPlayerProfile) {
-  return profile.evidence?.regressedXgiPer90 ?? profile.player.xgiPer90;
+function headlineProcess(profile: ScoutPlayerProfile) {
+  if (profile.player.position === "GKP") {
+    const goalsPrevented = profile.evidence?.goalsPreventedPer90 ?? 0;
+    const faced = profile.evidence?.xgotFacedPer90 ?? 0;
+    return {
+      label: "Goals prevented/90",
+      value: goalsPrevented,
+      sub: profile.evidence
+        ? `${faced.toFixed(2)} xGOT faced/90`
+        : "post-shot process",
+    };
+  }
+  return {
+    label: "Regressed xGI/90",
+    value: profile.evidence?.regressedXgiPer90 ?? profile.player.xgiPer90,
+    sub: profile.evidence?.priorAvailable
+      ? `${Math.round(profile.evidence.currentEvidenceWeight * 100)}% current-season weight`
+      : "current evidence",
+  };
 }
 
 function PlayerProfile({
@@ -43,6 +60,7 @@ function PlayerProfile({
   onTeam: (teamName: string) => void;
 }) {
   const player = profile.player;
+  const processHeadline = headlineProcess(profile);
 
   return (
     <article className="scout-profile">
@@ -73,13 +91,12 @@ function PlayerProfile({
           <small>{profile.epa.undervalued ? "value flag" : "vs replacement"}</small>
         </div>
         <div>
-          <span>Regressed xGI/90</span>
-          <strong>{headlineXgi(profile).toFixed(2)}</strong>
-          <small>
-            {profile.evidence?.priorAvailable
-              ? `${Math.round(profile.evidence.currentEvidenceWeight * 100)}% current-season weight`
-              : "current evidence"}
-          </small>
+          <span>{processHeadline.label}</span>
+          <strong>
+            {processHeadline.value >= 0 && player.position === "GKP" ? "+" : ""}
+            {processHeadline.value.toFixed(2)}
+          </strong>
+          <small>{processHeadline.sub}</small>
         </div>
         <div>
           <span>Expected minutes</span>
@@ -192,18 +209,37 @@ function PlayerProfile({
             <small>{pct(profile.evidence.sourceConfidence)} evidence confidence</small>
           </header>
           <div className="scout-process-bars">
-            <div>
-              <span>xG/90</span>
-              <strong>{profile.evidence.regressedXgPer90.toFixed(2)}</strong>
-              <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXgPer90 * 100))}%` }} /></i>
-              <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXgPer90.toFixed(2)}` : "no established prior"}</small>
-            </div>
-            <div>
-              <span>xA/90</span>
-              <strong>{profile.evidence.regressedXaPer90.toFixed(2)}</strong>
-              <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXaPer90 * 125))}%` }} /></i>
-              <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXaPer90.toFixed(2)}` : "current sample"}</small>
-            </div>
+            {player.position === "GKP" ? (
+              <>
+                <div>
+                  <span>xGOT faced / 90</span>
+                  <strong>{profile.evidence.xgotFacedPer90.toFixed(2)}</strong>
+                  <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.xgotFacedPer90 * 45))}%` }} /></i>
+                  <small>post-shot workload</small>
+                </div>
+                <div>
+                  <span>Goals prevented / 90</span>
+                  <strong>{profile.evidence.goalsPreventedPer90 >= 0 ? "+" : ""}{profile.evidence.goalsPreventedPer90.toFixed(2)}</strong>
+                  <i><b style={{ width: `${Math.min(100, Math.max(8, Math.abs(profile.evidence.goalsPreventedPer90) * 220))}%` }} /></i>
+                  <small>shot-stopping vs xGOT</small>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span>xG/90</span>
+                  <strong>{profile.evidence.regressedXgPer90.toFixed(2)}</strong>
+                  <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXgPer90 * 100))}%` }} /></i>
+                  <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXgPer90.toFixed(2)}` : "no established prior"}</small>
+                </div>
+                <div>
+                  <span>xA/90</span>
+                  <strong>{profile.evidence.regressedXaPer90.toFixed(2)}</strong>
+                  <i><b style={{ width: `${Math.min(100, Math.max(8, profile.evidence.regressedXaPer90 * 125))}%` }} /></i>
+                  <small>{profile.evidence.priorAvailable ? `prior ${profile.evidence.priorXaPer90.toFixed(2)}` : "current sample"}</small>
+                </div>
+              </>
+            )}
             <div>
               <span>Workload</span>
               <strong>{profile.evidence.minutes7.toFixed(0)} min</strong>
