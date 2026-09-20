@@ -245,6 +245,134 @@ function buildResourceAdvice(
 }
 
 
+function buildPortfolioPlan(
+  analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
+  leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
+  managerHistory: Awaited<ReturnType<typeof getRivalResourceHistory>> | null,
+  resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
+) {
+  const portfolio = analysis.manager.portfolio;
+  const transfer = leagueStrategy.transfer_moves[0] ?? null;
+  const freeTransfers = managerHistory?.estimatedFreeTransfers ?? null;
+  const firstTwoEvents = new Set(
+    analysis.futurePlan.slice(0, 2).map((item) => item.name),
+  );
+  const chipSignal =
+    analysis.chipRadar.find(
+      (signal) =>
+        signal.status === "STRONG" &&
+        signal.eventName != null &&
+        firstTwoEvents.has(signal.eventName),
+    ) ?? null;
+
+  let action:
+    | "BANK"
+    | "HOLD"
+    | "TRANSFER"
+    | "STRUCTURAL_REPAIR"
+    | "CHIP_PREP";
+  if (chipSignal && portfolio.status !== "REPAIR") {
+    action = "CHIP_PREP";
+  } else if (
+    portfolio.status === "REPAIR" ||
+    (portfolio.status === "FRAGILE" &&
+      (portfolio.reliableBench < 2 ||
+        !portfolio.priceStructure.midfieldRoute ||
+        !portfolio.priceStructure.forwardRoute))
+  ) {
+    action = "STRUCTURAL_REPAIR";
+  } else if (transfer) {
+    action = "TRANSFER";
+  } else if (freeTransfers != null && freeTransfers < 5) {
+    action = "BANK";
+  } else {
+    action = "HOLD";
+  }
+
+  const hitCostForExtraMove =
+    freeTransfers == null ? null : freeTransfers >= 2 ? 0 : 4;
+  const captain = leagueStrategy.captain_moves[0]?.player ?? null;
+
+  const why: string[] = [
+    ...portfolio.reasons,
+    freeTransfers == null
+      ? "Free-transfer bank could not be reconstructed with high confidence, so no hit is assumed."
+      : `Estimated free transfers: ${freeTransfers}/5. One extra transfer beyond the current bank costs 4 points under standard FPL rules.`,
+  ];
+
+  if (transfer) {
+    why.push(
+      `${transfer.out.name} → ${transfer.in.name} clears the current football threshold: +${transfer.raw_gain.toFixed(1)} immediate model gain versus +${(transfer.minimum_gain ?? 0).toFixed(1)} required, with +${(transfer.horizon_gain ?? 0).toFixed(1)} weighted horizon value.`,
+    );
+  } else {
+    why.push(
+      "No current transfer clears Footy's football, timing and transfer-option-value threshold.",
+    );
+  }
+
+  if (captain) {
+    why.push(
+      `${captain.name} is the current captain model leader. Official ownership is ${captain.selectedBy.toFixed(1)}%; Footy does not relabel that figure as effective ownership.`,
+    );
+  }
+
+  const failureModes = [
+    ...portfolio.risks,
+    analysis.freshness.nearDeadline
+      ? "The deadline is close; late official team news can materially change minutes and captaincy."
+      : "Fresh team news, role changes, prices or fixture rescheduling can change the portfolio optimum before the deadline.",
+  ];
+
+  if (resourceAdvice?.status === "THREAT") {
+    failureModes.push(
+      "A nearby rival currently has the stronger chip/free-transfer resource position; matching low-quality moves would still be a mistake, but their flexibility raises tactical risk.",
+    );
+  }
+
+  const differentialGuidance =
+    portfolio.differentialCount > 3
+      ? "Differential exposure is already high. Do not add another low-ownership player unless the underlying football edge is materially stronger."
+      : portfolio.differentialCount >= 2
+        ? "Differential allocation is already within the intended 2–3 slot range; add risk selectively."
+        : "There is room for a targeted differential, but only where underlying process and fixtures justify it.";
+
+  const headline =
+    action === "BANK"
+      ? "Bank the transfer"
+      : action === "HOLD"
+        ? "Hold structure"
+        : action === "TRANSFER"
+          ? `Transfer: ${transfer?.out.name ?? "out"} → ${transfer?.in.name ?? "in"}`
+          : action === "STRUCTURAL_REPAIR"
+            ? "Repair the squad structure"
+            : `Prepare ${chipSignal?.chip ?? "chip"} window`;
+
+  return {
+    action,
+    headline,
+    portfolio,
+    free_transfers: freeTransfers,
+    hit_cost_for_one_extra_move: hitCostForExtraMove,
+    chip_signal: chipSignal,
+    league_mode: leagueStrategy.mode,
+    field_ownership_proxy: {
+      average_squad_ownership: portfolio.averageFieldOwnership,
+      high_ownership_assets: portfolio.highOwnershipCount,
+      differentials_under_10: portfolio.differentialCount,
+      caveat:
+        "These are official FPL ownership percentages, not true effective ownership. Connected mini-league ownership/captaincy is analysed separately.",
+    },
+    differential_guidance: differentialGuidance,
+    why,
+    failure_modes: failureModes,
+    underlying: portfolio.underlying,
+    missing: portfolio.missing,
+    resource_status: resourceAdvice?.status ?? "UNKNOWN",
+    caveat:
+      "Portfolio action is re-run each deadline. Structural flexibility and free-transfer option value can outweigh a small one-week projected-points edge.",
+  };
+}
+
 function buildDecisionPath(
   analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
   leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
@@ -606,6 +734,12 @@ export async function GET(
             "PROTECT",
           )
         : null;
+    const portfolioPlan = buildPortfolioPlan(
+      analysis,
+      leagueStrategy,
+      managerHistory,
+      resourceAdvice,
+    );
     const decisionPath = buildDecisionPath(
       analysis,
       leagueStrategy,
@@ -664,6 +798,7 @@ export async function GET(
       resource_advice: resourceAdvice,
       chaser_resource_advice: chaserResourceAdvice,
       decision_path: decisionPath,
+      portfolio_plan: portfolioPlan,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {
