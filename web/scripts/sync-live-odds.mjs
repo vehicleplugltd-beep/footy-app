@@ -265,6 +265,21 @@ function yyyymmdd(date) {
   ].join("");
 }
 
+function londonDateKey(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${values.year}${values.month}${values.day}`;
+}
+
 function titleFromSlug(value) {
   const slug = String(value || "")
     .replace(/^\d{4}(?:-\d{2})?-/, "")
@@ -654,7 +669,7 @@ async function captureUserClosingLines(capturedAt) {
   return { betsUpdated, legsUpdated, accasUpdated };
 }
 
-async function fetchEspnScoreboard(competition, dateRange) {
+async function fetchEspnScoreboard(competition, dateKey) {
   const hosts = [
     "https://site.api.espn.com",
     "https://site.web.api.espn.com",
@@ -665,22 +680,25 @@ async function fetchEspnScoreboard(competition, dateRange) {
     const endpoint = new URL(
       `${host}/apis/site/v2/sports/soccer/${competition.slug}/scoreboard`,
     );
-    endpoint.searchParams.set("dates", dateRange);
-    endpoint.searchParams.set("limit", "500");
+    for (const includeLimit of [true, false]) {
+      endpoint.searchParams.set("dates", dateKey);
+      if (includeLimit) endpoint.searchParams.set("limit", "500");
+      else endpoint.searchParams.delete("limit");
 
-    try {
-      const response = await fetch(endpoint, {
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) {
-        lastError = new Error(
-          `ESPN ${competition.slug} ${response.status}: ${(await response.text()).slice(0, 220)}`,
-        );
-        continue;
+      try {
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          lastError = new Error(
+            `ESPN ${competition.slug} ${response.status}: ${(await response.text()).slice(0, 220)}`,
+          );
+          continue;
+        }
+        return await response.json();
+      } catch (error) {
+        lastError = error;
       }
-      return await response.json();
-    } catch (error) {
-      lastError = error;
     }
   }
 
@@ -689,13 +707,7 @@ async function fetchEspnScoreboard(competition, dateRange) {
 
 async function syncEspnFixtures(capturedAt) {
   const anchor = new Date(capturedAt);
-  const rangeStart = new Date(Date.UTC(
-    anchor.getUTCFullYear(),
-    anchor.getUTCMonth(),
-    anchor.getUTCDate() - 1,
-  ));
-  const rangeEnd = new Date(rangeStart.getTime() + 4 * 24 * 60 * 60 * 1000);
-  const dateRange = `${yyyymmdd(rangeStart)}-${yyyymmdd(rangeEnd)}`;
+  const dateKey = londonDateKey(anchor);
 
   const eventMap = new Map();
   const errors = [];
@@ -705,7 +717,7 @@ async function syncEspnFixtures(capturedAt) {
     const results = await Promise.allSettled(
       batch.map(async (competition) => ({
         competition,
-        payload: await fetchEspnScoreboard(competition, dateRange),
+        payload: await fetchEspnScoreboard(competition, dateKey),
       })),
     );
 
