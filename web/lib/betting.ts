@@ -185,7 +185,9 @@ function latestRows<T extends { match_id: string; market: string; selection: str
 
 function avg(rows: MetricRow[], key: keyof MetricRow) {
   const values = rows
-    .map((row) => Number(row[key]))
+    .map((row) => row[key])
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => Number(value))
     .filter((value) => Number.isFinite(value));
   if (!values.length) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
