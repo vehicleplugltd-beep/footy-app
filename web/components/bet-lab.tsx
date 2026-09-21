@@ -23,7 +23,8 @@ type ModelMarket = {
   minimumTakePrice: number;
   validationStatus: string;
   verdict: string;
-  williamHillOdds: number | null;
+  bestOdds: number | null;
+  bestBookmaker: string | null;
 };
 
 function toNumber(value: string, fallback = 0) {
@@ -235,7 +236,7 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
     const offered = fractionalToDecimal(offeredOdds);
     if (!market) return null;
 
-    const effective = offered ?? market.williamHillOdds;
+    const effective = offered ?? market.bestOdds;
     const edge =
       effective && effective > 1
         ? market.modelProbability * effective - 1
@@ -462,7 +463,7 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
               <input
                 value={offeredOdds}
                 onChange={(event) => setOfferedOdds(event.target.value)}
-                placeholder="Leave blank to use WH"
+                placeholder="Leave blank to use best verified"
               />
             </label>
           </div>
@@ -484,6 +485,7 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
               <div>
                 <span>Offer checked</span>
                 <strong>{oddsLabel(marketCheck.effective)}</strong>
+                <small>{offeredOdds ? "user-entered price" : marketCheck.market.bestBookmaker ?? "best verified market"}</small>
               </div>
               <div>
                 <span>EV at offer</span>
