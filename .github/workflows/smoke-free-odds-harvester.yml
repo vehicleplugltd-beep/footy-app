@@ -36,8 +36,8 @@ jobs:
           timeout 10m oddsharvester upcoming \
             -s football \
             -l england-premier-league \
+            -d 20260926 \
             -m 1x2 \
-            --kickoff-within-hours 168 \
             --bookies-filter all \
             --request-delay 1.2 \
             --concurrency 2 \
@@ -69,7 +69,7 @@ jobs:
               if line.strip().startswith("{")
           ]
 
-          print(f"FOOTY_SMOKE_MATCHES={len(rows)}")
+          print(f"FOOTY_SMOKE_MATCHES_DATE_20260926={len(rows)}")
           bookmaker_quotes = 0
           for row in rows:
               market = row.get("1x2_market") or []
