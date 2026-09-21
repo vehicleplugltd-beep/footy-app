@@ -47,21 +47,35 @@ jobs:
           )
 
           targets = {
-              "Championship",
-              "League One",
-              "League Two",
-              "Premiership",
+              ("Championship", "ENG"): "ENG-Championship",
+              ("League One", "ENG"): "ENG-League One",
+              ("League Two", "ENG"): "ENG-League Two",
+              ("Premiership", "SCO"): "SCO-Premiership",
           }
           found = {}
+          candidates = []
 
           for league in payload.get("leagues", []):
               name = str(league.get("name") or "")
-              if name not in targets:
-                  continue
+              ccode = str(
+                  league.get("ccode")
+                  or league.get("countryCode")
+                  or league.get("country")
+                  or ""
+              ).upper()
+              if name in {key[0] for key in targets}:
+                  candidates.append({
+                      "name": name,
+                      "ccode": ccode,
+                      "id": league.get("id"),
+                      "matches": len(league.get("matches") or []),
+                  })
+              canonical = targets.get((name, ccode))
               matches = league.get("matches") or []
-              if matches:
-                  found[name] = matches[0]
+              if canonical and matches:
+                  found[canonical] = matches[0]
 
+          print("FOOTY_FOTMOB_CANDIDATES=" + json.dumps(candidates))
           print("FOOTY_FOTMOB_LEAGUES=" + json.dumps(sorted(found)))
 
           for league_name, match in found.items():
@@ -98,6 +112,8 @@ jobs:
                       "match_id": match_id,
                       "home": match.get("home", {}).get("name"),
                       "away": match.get("away", {}).get("name"),
+                      "top_level_keys": list(details.keys()),
+                      "content_keys": list((details.get("content") or {}).keys()),
                       "process_fields": unique[:80],
                       "has_xg": any(
                           "expected goals" in field.lower() or field.lower() == "xg"
