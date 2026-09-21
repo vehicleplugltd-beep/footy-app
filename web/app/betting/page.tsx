@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BettingAgeGate } from "@/components/age-gate";
 import { BettingBoard } from "@/components/betting-board";
 import { DailyPredictions } from "@/components/daily-predictions";
+import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
 import { getBettingWorkspaceData } from "@/lib/betting";
 
@@ -20,6 +21,11 @@ export default async function BettingPage() {
     <main className="betting-app">
       <BettingAgeGate />
       <BettingNav active="edge" />
+      <DecisionFeed
+        todayGames={data.todayGames}
+        selections={data.selections}
+        accas={data.accas}
+      />
 
       <section className="betting-hero shell">
         <div>
