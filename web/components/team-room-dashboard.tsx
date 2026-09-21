@@ -907,11 +907,11 @@ export function TeamRoomDashboard({
         </span>
       </div>
 
-      <nav className="team-room-section-rail" aria-label="Team Room sections">
-        <a href="#decision">Decision</a>
-        <a href="#portfolio">Portfolio</a>
-        <a href="#counterplay">CounterPlay</a>
-        <a href="#audit">Audit</a>
+      <nav className="team-room-section-rail" aria-label="Team Room workflow">
+        <a href="#decision">Now</a>
+        <a href="#counterplay">Plan</a>
+        <a href="#what-if">Test</a>
+        <a href="#audit">Review</a>
         <a href="#squad">Squad</a>
       </nav>
 
@@ -1380,6 +1380,7 @@ export function TeamRoomDashboard({
 
           <details
             className="counterplay-tool-drawer"
+            id="what-if"
             open={counterPlay.what_if.status === "VALID"}
           >
             <summary>
@@ -2285,9 +2286,9 @@ export function TeamRoomDashboard({
           <span>POSTURE</span>
           <strong>{activeCounterPosture}</strong>
         </a>
-        <a href="#audit">
-          <span>CAPTAIN</span>
-          <strong>{captain?.player.name ?? "—"}</strong>
+        <a href="#what-if">
+          <span>TEST</span>
+          <strong>What-If</strong>
         </a>
       </aside>
 
