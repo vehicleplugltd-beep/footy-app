@@ -101,7 +101,7 @@ export function TeamRoomPhaseHeading({
     <div className={className} id={id}>
       <div>
         <span>
-          {step} / {label}
+          STEP {step} · {label}
         </span>
         <strong>{title}</strong>
       </div>
