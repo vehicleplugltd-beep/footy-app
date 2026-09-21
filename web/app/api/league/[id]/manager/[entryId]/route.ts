@@ -2351,6 +2351,7 @@ function buildCounterPlay(
           event.eventId,
           iteration,
           cache,
+          analysis.volatilityCalibration,
         );
       }
     }
