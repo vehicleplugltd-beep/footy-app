@@ -21,6 +21,7 @@ from .normalizers.fpl_core_insights import (
     normalise_fpl_core_player_priors,
 )
 from .sources.fpl_core_insights import FPLCoreInsightsSource
+from .sources.official_fpl import OfficialFPLSource
 from .verification import verify_provider_rows
 from .quality import assess_match_team_metrics
 from .storage import (
@@ -758,11 +759,33 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical Footy data found for league/history scope.")
 
-    source = SoccerDataSource(
-        leagues=[args.league],
-        seasons=[args.season],
-    )
-    schedule = source.understat_schedule()
+    schedule_source = "understat"
+    schedule = pd.DataFrame()
+
+    if args.league == "ENG-Premier League":
+        try:
+            schedule = OfficialFPLSource().schedule(
+                season=args.season,
+                league=args.league,
+            )
+            schedule_source = "official-fpl"
+        except Exception as exc:
+            print(
+                json.dumps({
+                    "status": "warning",
+                    "source": "official-fpl",
+                    "message": f"Official FPL schedule unavailable: {exc}",
+                })
+            )
+
+    if schedule.empty:
+        source = SoccerDataSource(
+            leagues=[args.league],
+            seasons=[args.season],
+        )
+        schedule = source.understat_schedule()
+        schedule_source = "understat"
+
     fixtures = normalise_upcoming_fixtures(
         schedule,
         horizon_days=args.horizon_days,
@@ -863,6 +886,7 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         "status": "ok",
         "model_version": args.model_version,
         "validation_status": status,
+        "fixture_source": schedule_source,
         "fixtures": int(len(fixtures)),
         "predictions": int(len(predictions)),
         "model_output_rows": int(len(outputs)),
