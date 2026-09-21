@@ -1,6 +1,15 @@
 import Link from "next/link";
 
-export function BettingNav({ active }: { active: "edge" | "bets" }) {
+type BettingArea = "edge" | "results" | "tools" | "bets";
+
+export function BettingNav({ active }: { active: BettingArea }) {
+  const items = [
+    { key: "edge" as const, label: "Today", href: "/betting" },
+    { key: "results" as const, label: "Results", href: "/betting/results" },
+    { key: "tools" as const, label: "Bet Lab", href: "/betting/tools" },
+    { key: "bets" as const, label: "My Bets", href: "/betting/my-bets" },
+  ];
+
   return (
     <nav className="betting-nav shell" aria-label="Footy betting">
       <Link className="betting-brand" href="/betting">
@@ -12,22 +21,19 @@ export function BettingNav({ active }: { active: "edge" | "bets" }) {
       </Link>
 
       <div className="betting-nav-links">
-        <Link
-          href="/betting"
-          className={active === "edge" ? "active" : undefined}
-          aria-current={active === "edge" ? "page" : undefined}
-        >
-          Edge
+        {items.map((item) => (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={active === item.key ? "active" : undefined}
+            aria-current={active === item.key ? "page" : undefined}
+          >
+            {item.label}
+          </Link>
+        ))}
+        <Link href="/" aria-label="Open Footy FPL">
+          FPL
         </Link>
-        <Link
-          href="/betting/my-bets"
-          className={active === "bets" ? "active" : undefined}
-          aria-current={active === "bets" ? "page" : undefined}
-        >
-          My Bets
-        </Link>
-        <Link href="/research">Football Research</Link>
-        <Link href="/">FPL</Link>
       </div>
     </nav>
   );
