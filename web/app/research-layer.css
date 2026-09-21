@@ -1360,3 +1360,206 @@
     font-size: 10px;
   }
 }
+
+
+/* CounterPlay What-If Lab */
+.counterplay-whatif-shell {
+  margin: 0 0 12px;
+  border: 1px solid #d9e3f2;
+  border-radius: 14px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, .07), transparent 34%),
+    #fff;
+}
+.counterplay-whatif-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.counterplay-whatif-head span,
+.counterplay-whatif-head strong,
+.counterplay-whatif-head small {
+  display: block;
+}
+.counterplay-whatif-head span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .11em;
+}
+.counterplay-whatif-head strong {
+  margin-top: 3px;
+  color: #172033;
+  font-size: 14px;
+}
+.counterplay-whatif-head small {
+  max-width: 430px;
+  color: #718096;
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: right;
+}
+.counterplay-whatif-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+.counterplay-whatif-controls label {
+  min-width: 0;
+}
+.counterplay-whatif-controls label > span {
+  display: block;
+  margin: 0 0 5px;
+  color: #6b7787;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.counterplay-whatif-controls select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d8e1ec;
+  border-radius: 9px;
+  padding: 8px 30px 8px 9px;
+  background: #fff;
+  color: #253044;
+  font: inherit;
+  font-size: 11px;
+}
+.counterplay-whatif-controls select:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+  background: #f6f8fb;
+}
+.counterplay-whatif-controls select:focus-visible,
+.counterplay-whatif-actions button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .22);
+  outline-offset: 2px;
+}
+.counterplay-whatif-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+}
+.counterplay-whatif-actions button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: #172033;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .045em;
+  cursor: pointer;
+}
+.counterplay-whatif-actions button.secondary {
+  border: 1px solid #dce4ee;
+  background: #fff;
+  color: #526071;
+}
+.counterplay-whatif-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+.counterplay-whatif-actions small {
+  margin-left: auto;
+  max-width: 55%;
+  color: #718096;
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: right;
+}
+.counterplay-whatif-result {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr .8fr;
+  gap: 8px;
+  margin-top: 10px;
+  border-top: 1px solid #e8edf3;
+  padding-top: 10px;
+}
+.counterplay-whatif-result > div {
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 9px;
+  background: #fbfdff;
+}
+.counterplay-whatif-result > div:first-child {
+  border-color: #cbdcf4;
+  background: #f5f9ff;
+}
+.counterplay-whatif-result span,
+.counterplay-whatif-result strong,
+.counterplay-whatif-result small {
+  display: block;
+}
+.counterplay-whatif-result span {
+  color: #718096;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+.counterplay-whatif-result strong {
+  margin-top: 4px;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.counterplay-whatif-result small {
+  margin-top: 3px;
+  color: #66758a;
+  font-size: 9px;
+  line-height: 1.4;
+}
+@media (max-width: 760px) {
+  .counterplay-whatif-head {
+    display: block;
+  }
+  .counterplay-whatif-head strong {
+    font-size: 15px;
+  }
+  .counterplay-whatif-head small {
+    margin-top: 5px;
+    max-width: none;
+    font-size: 11px;
+    text-align: left;
+  }
+  .counterplay-whatif-controls {
+    grid-template-columns: 1fr;
+  }
+  .counterplay-whatif-controls label > span {
+    font-size: 9px;
+  }
+  .counterplay-whatif-controls select {
+    min-height: 46px;
+    font-size: 12px;
+  }
+  .counterplay-whatif-actions {
+    flex-wrap: wrap;
+  }
+  .counterplay-whatif-actions button {
+    min-height: 42px;
+    font-size: 10px;
+  }
+  .counterplay-whatif-actions small {
+    flex-basis: 100%;
+    margin-left: 0;
+    max-width: none;
+    font-size: 10px;
+    text-align: left;
+  }
+  .counterplay-whatif-result {
+    grid-template-columns: 1fr;
+  }
+  .counterplay-whatif-result strong {
+    font-size: 13px;
+  }
+  .counterplay-whatif-result small {
+    font-size: 10px;
+  }
+}
