@@ -9,6 +9,7 @@ type MatchRow = {
   league: string;
   home_team: string;
   away_team: string;
+  source?: string;
 };
 
 type ModelRow = {
@@ -237,6 +238,125 @@ export type PredictionResultsData = {
     averageClv: number | null;
   };
 };
+
+function canonicalFixtureTeam(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(fc|afc|cf|sc|ac|calcio|club|football|futbol|deportivo)\b/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function sameFixture(a: MatchRow, b: MatchRow) {
+  if (
+    canonicalFixtureTeam(a.home_team) !== canonicalFixtureTeam(b.home_team) ||
+    canonicalFixtureTeam(a.away_team) !== canonicalFixtureTeam(b.away_team)
+  ) {
+    return false;
+  }
+  const aTime = new Date(a.kickoff_at).getTime();
+  const bTime = new Date(b.kickoff_at).getTime();
+  return (
+    Number.isFinite(aTime) &&
+    Number.isFinite(bTime) &&
+    Math.abs(aTime - bTime) <= 6 * 60 * 60 * 1000
+  );
+}
+
+function fotMobLeagueName(name: string, countryCode?: string | null) {
+  const raw = String(name || "").trim();
+  const key = raw.toLowerCase();
+  const aliases: Record<string, string> = {
+    "premier league": "ENG-Premier League",
+    "championship": "ENG-Championship",
+    "league one": "ENG-League One",
+    "league two": "ENG-League Two",
+    "premiership": countryCode === "SCO" ? "SCO-Premiership" : raw,
+    "la liga": "ESP-La Liga",
+    "laliga": "ESP-La Liga",
+    "serie a": countryCode === "ITA" ? "ITA-Serie A" : raw,
+    "serie b": countryCode === "ITA" ? "ITA-Serie B" : raw,
+    "bundesliga": countryCode === "GER" ? "GER-Bundesliga" : raw,
+    "2. bundesliga": "GER-2. Bundesliga",
+    "ligue 1": "FRA-Ligue 1",
+    "ligue 2": "FRA-Ligue 2",
+    "eredivisie": "NED-Eredivisie",
+    "primeira liga": "POR-Primeira Liga",
+    "super lig": "TUR-Super Lig",
+    "super league": countryCode === "GRE" ? "GRE-Super League" : raw,
+    "major league soccer": "USA-MLS",
+  };
+  if (aliases[key]) return aliases[key];
+  return countryCode ? `${countryCode}-${raw}` : raw || "Football";
+}
+
+async function fetchFotMobFixtures(nowDate: Date): Promise<MatchRow[]> {
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(nowDate)
+    .replaceAll("-", "");
+
+  const endpoints = [
+    `https://www.fotmob.com/api/data/matches?date=${date}&timezone=Europe%2FLondon&ccode3=GBR`,
+    `https://www.fotmob.com/api/matches?date=${date}`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: "application/json,text/plain,*/*",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+          Referer: "https://www.fotmob.com/",
+        },
+        next: { revalidate: 300 },
+      });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const leagues = Array.isArray(payload?.leagues) ? payload.leagues : [];
+      const rows: MatchRow[] = [];
+
+      for (const league of leagues) {
+        for (const match of league?.matches ?? []) {
+          if (match?.status?.cancelled) continue;
+          const kickoff =
+            match?.status?.utcTime ??
+            (Number.isFinite(Number(match?.timeTS))
+              ? new Date(Number(match.timeTS)).toISOString()
+              : null);
+          const home = match?.home?.name;
+          const away = match?.away?.name;
+          if (!match?.id || !kickoff || !home || !away) continue;
+
+          rows.push({
+            match_id: `fotmob:${match.id}`,
+            kickoff_at: kickoff,
+            league: fotMobLeagueName(
+              league?.name ?? match?.league?.name ?? "Football",
+              league?.ccode ?? match?.league?.ccode ?? null,
+            ),
+            home_team: home,
+            away_team: away,
+            source: "fotmob",
+          });
+        }
+      }
+
+      if (rows.length) return rows;
+    } catch {
+      // Fall through to the next verified FotMob route.
+    }
+  }
+
+  return [];
+}
 
 function config() {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
@@ -514,10 +634,10 @@ export async function getBettingWorkspaceData() {
   const scopeStart = new Date(nowDate.getTime() - 18 * 60 * 60 * 1000).toISOString();
   const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
-  const [scopeMatches, outputs, validations, liveOdds, feedRows, recentMatches] =
+  const [dbScopeMatches, outputs, validations, liveOdds, feedRows, recentMatches, discoveredMatches] =
     await Promise.all([
       rest<MatchRow>(
-        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=140`,
+        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1200`,
       ),
       rest<ModelRow>(
         `footy_model_outputs?select=match_id,model_version,home_xg,away_xg,market,selection,model_probability,fair_odds,uncertainty_haircut,minimum_take_price,created_at&model_version=eq.${MODEL_VERSION}&order=created_at.desc&limit=2000`,
@@ -532,9 +652,17 @@ export async function getBettingWorkspaceData() {
         "footy_odds_feed_status?select=provider,last_success_at,last_attempt_at,events_received,prices_received,last_error&order=last_attempt_at.desc&limit=1",
       ),
       rest<MatchRow>(
-        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=120`,
+        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=240`,
       ),
+      fetchFotMobFixtures(nowDate),
     ]);
+
+  const scopeMatches = [...dbScopeMatches];
+  for (const discovered of discoveredMatches) {
+    if (scopeMatches.some((existing) => sameFixture(existing, discovered))) continue;
+    scopeMatches.push(discovered);
+  }
+  scopeMatches.sort((a, b) => a.kickoff_at.localeCompare(b.kickoff_at));
 
   const recentIds = recentMatches.map((match) => match.match_id);
   const metricRows = recentIds.length
@@ -701,6 +829,7 @@ export async function getBettingWorkspaceData() {
     latestModelAt,
     latestFixtureAt,
     livePrices: liveOdds.length,
+    discoveredFixtures: discoveredMatches.length,
     dataState:
       futureMatches.length === 0
         ? "NO_UPCOMING_FIXTURES"
