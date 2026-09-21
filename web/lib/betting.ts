@@ -159,7 +159,6 @@ export type BettingSelection = {
   uncertaintyHaircut: number | null;
   homeXg: number | null;
   awayXg: number | null;
-  williamHillPrice: LivePriceRow | null;
   bestPrice: LivePriceRow | null;
   bookmakerQuotes: BookmakerQuote[];
   marketPrice: number | null;
@@ -180,7 +179,7 @@ export type AccaCandidate = {
   modelProbability: number;
   fairOdds: number;
   minimumTakePrice: number;
-  williamHillOdds: number;
+  combinedOdds: number;
   edge: number;
   verdict: "BET";
 };
@@ -509,18 +508,15 @@ function buildDailyGames(
 function verdictFor(
   model: ModelRow,
   validation: ValidationRow | null,
-  williamHill: LivePriceRow | null,
   best: LivePriceRow | null,
 ): { verdict: BettingVerdict; reason: string; price: number | null; edge: number | null } {
-  const wh = williamHill ? Number(williamHill.decimal_odds) : null;
   const bestPrice = best ? Number(best.decimal_odds) : null;
-  const comparison = wh ?? bestPrice;
   const edge =
-    comparison && comparison > 1
-      ? Number(model.model_probability) * comparison - 1
+    bestPrice && bestPrice > 1
+      ? Number(model.model_probability) * bestPrice - 1
       : null;
 
-  if (!comparison) {
+  if (!bestPrice) {
     return {
       verdict: "WATCH",
       reason: "Model price exists, but no fresh bookmaker price is verified.",
@@ -531,47 +527,39 @@ function verdictFor(
 
   if (validation?.status !== "APPROVED") {
     return {
-      verdict: comparison >= Number(model.minimum_take_price) ? "WATCH" : "PASS",
+      verdict:
+        bestPrice >= Number(model.minimum_take_price) ? "WATCH" : "PASS",
       reason: `Market validation is ${validation?.status ?? "UNVERIFIED"}; no production BET label.`,
-      price: comparison,
+      price: bestPrice,
       edge,
     };
   }
 
-  if (!wh) {
-    return {
-      verdict: comparison >= Number(model.minimum_take_price) ? "WATCH" : "PASS",
-      reason:
-        comparison >= Number(model.minimum_take_price)
-          ? "Wider market clears the take price, but William Hill is not verified."
-          : "Current wider-market price is below the take threshold.",
-      price: comparison,
-      edge,
-    };
-  }
-
-  if (wh >= Number(model.minimum_take_price)) {
+  if (bestPrice >= Number(model.minimum_take_price)) {
     return {
       verdict: "BET",
-      reason: "William Hill price clears the uncertainty-adjusted minimum take price.",
-      price: wh,
+      reason:
+        "Best fresh verified market price clears the uncertainty-adjusted minimum take price.",
+      price: bestPrice,
       edge,
     };
   }
 
-  if (wh < Number(model.fair_odds) * 0.92) {
+  if (bestPrice < Number(model.fair_odds) * 0.92) {
     return {
       verdict: "FADE",
-      reason: "William Hill price is materially shorter than the model fair price.",
-      price: wh,
+      reason:
+        "Best fresh verified market price is materially shorter than the model fair price.",
+      price: bestPrice,
       edge,
     };
   }
 
   return {
     verdict: "PASS",
-    reason: "Likely outcome is not enough; the available price does not clear the take threshold.",
-    price: wh,
+    reason:
+      "Likely outcome is not enough; the best verified price does not clear the take threshold.",
+    price: bestPrice,
     edge,
   };
 }
@@ -601,7 +589,7 @@ function buildAccas(selections: BettingSelection[]): AccaCandidate[] {
   }
 
   const pool = [...bestPerMatch.values()]
-    .filter((row) => row.williamHillPrice)
+    .filter((row) => row.bestPrice)
     .sort((a, b) => (b.edge ?? 0) - (a.edge ?? 0))
     .slice(0, 8);
 
@@ -619,13 +607,13 @@ function buildAccas(selections: BettingSelection[]): AccaCandidate[] {
         1,
       );
       const minimumTakePrice = baseTake * Math.pow(1.015, size - 1);
-      const williamHillOdds = legs.reduce(
-        (product, leg) => product * Number(leg.williamHillPrice?.decimal_odds ?? 1),
+      const combinedOdds = legs.reduce(
+        (product, leg) => product * Number(leg.bestPrice?.decimal_odds ?? 1),
         1,
       );
-      const edge = probability * williamHillOdds - 1;
+      const edge = probability * combinedOdds - 1;
 
-      if (williamHillOdds < minimumTakePrice || edge <= 0) continue;
+      if (combinedOdds < minimumTakePrice || edge <= 0) continue;
 
       accas.push({
         id: legs.map((leg) => `${leg.matchId}:${leg.selection}`).join("|"),
@@ -640,7 +628,7 @@ function buildAccas(selections: BettingSelection[]): AccaCandidate[] {
         modelProbability: probability,
         fairOdds,
         minimumTakePrice,
-        williamHillOdds,
+        combinedOdds,
         edge,
         verdict: "BET",
       });
@@ -648,7 +636,10 @@ function buildAccas(selections: BettingSelection[]): AccaCandidate[] {
   }
 
   return accas
-    .sort((a, b) => b.edge / Math.sqrt(b.legCount) - a.edge / Math.sqrt(a.legCount))
+    .sort(
+      (a, b) =>
+        b.edge / Math.sqrt(b.legCount) - a.edge / Math.sqrt(a.legCount),
+    )
     .slice(0, 12);
 }
 
@@ -774,7 +765,7 @@ export async function getBettingWorkspaceData() {
         modelHistory.find((row) => row.created_at < model.created_at) ?? null;
       const validation =
         validationByMarket.get(`${match.league}:${model.market}`) ?? null;
-      const state = verdictFor(model, validation, williamHill, best);
+      const state = verdictFor(model, validation, best);
 
       selections.push({
         matchId: match.match_id,
@@ -801,7 +792,6 @@ export async function getBettingWorkspaceData() {
             : Number(model.uncertainty_haircut),
         homeXg: model.home_xg == null ? null : Number(model.home_xg),
         awayXg: model.away_xg == null ? null : Number(model.away_xg),
-        williamHillPrice: williamHill,
         bestPrice: best,
         bookmakerQuotes: sortedPrices.slice(0, 6).map((row) => ({
           bookmakerKey: row.bookmaker_key,
