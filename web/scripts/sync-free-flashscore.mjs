@@ -1,0 +1,675 @@
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const PROVIDER = "flashscore-free";
+const MODEL_VERSION = "v7-r16-p50-v20";
+
+const FEED_URLS = [
+  "https://local-global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
+  "https://global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
+];
+const ODDS_URLS = [
+  "https://global.ds.lsapp.eu/odds/pq_graphql",
+  "https://2.ds.lsapp.eu/pq_graphql",
+];
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("Missing Supabase server credentials");
+}
+
+const supabaseHeaders = {
+  apikey: SUPABASE_SERVICE_ROLE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  "Content-Type": "application/json",
+};
+
+const flashHeaders = {
+  "User-Agent":
+    "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+  Accept: "*/*",
+  "Accept-Language": "en-GB,en;q=0.9",
+  Referer: "https://www.flashscore.com/",
+  Origin: "https://www.flashscore.com",
+  "x-fsign": "SW9D1eZo",
+  Connection: "keep-alive",
+  Pragma: "no-cache",
+  "Cache-Control": "no-cache",
+};
+
+async function sb(path, init = {}) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    headers: { ...supabaseHeaders, ...(init.headers || {}) },
+  });
+  if (!response.ok) {
+    throw new Error(`Supabase ${response.status}: ${await response.text()}`);
+  }
+  if (response.status === 204) return null;
+  const body = await response.text();
+  return body ? JSON.parse(body) : null;
+}
+
+async function upsert(table, rows, onConflict) {
+  if (!rows.length) return;
+  await sb(`${table}?on_conflict=${encodeURIComponent(onConflict)}`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows),
+  });
+}
+
+async function insert(table, rows) {
+  if (!rows.length) return;
+  await sb(table, {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(rows),
+  });
+}
+
+function clean(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9& ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const teamAliases = new Map(
+  Object.entries({
+    "man utd": "manchester united",
+    "man united": "manchester united",
+    "man city": "manchester city",
+    "nottm forest": "nottingham forest",
+    "wolves": "wolverhampton wanderers",
+    "spurs": "tottenham",
+    "tottenham hotspur": "tottenham",
+    "newcastle": "newcastle united",
+    "west ham": "west ham united",
+    "inter milan": "inter",
+    "internazionale": "inter",
+    "bayern munchen": "bayern munich",
+    "paris sg": "paris saint germain",
+    "psg": "paris saint germain",
+    "atletico de madrid": "atletico madrid",
+    "ath madrid": "atletico madrid",
+    "ath bilbao": "athletic club",
+  }),
+);
+
+function canonicalTeam(value) {
+  const normalized = clean(value)
+    .replace(/\b(fc|afc|cf|sc|ac|calcio|club|football|futbol)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return teamAliases.get(normalized) || normalized;
+}
+
+function teamMatches(a, b) {
+  const left = canonicalTeam(a);
+  const right = canonicalTeam(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const aCompact = left.replace(/\s+/g, "");
+  const bCompact = right.replace(/\s+/g, "");
+  return (
+    aCompact.length >= 6 &&
+    bCompact.length >= 6 &&
+    (aCompact.includes(bCompact) || bCompact.includes(aCompact))
+  );
+}
+
+function parseRecord(raw) {
+  const row = {};
+  for (const piece of String(raw || "").split("¬")) {
+    if (!piece) continue;
+    let splitAt = piece.indexOf("÷");
+    if (splitAt < 0) splitAt = piece.indexOf("·");
+    if (splitAt < 0) continue;
+    const key = piece.slice(0, splitAt);
+    const value = piece.slice(splitAt + 1);
+    if (!key) continue;
+    if (row[key] == null) row[key] = value;
+    else row[`${key}_2`] = value;
+  }
+  return row;
+}
+
+function normalizeLeague(country, league) {
+  const c = clean(country);
+  const l = clean(league);
+  const key = `${c}|${l}`;
+  const aliases = new Map([
+    ["england|premier league", "ENG-Premier League"],
+    ["england|championship", "ENG-Championship"],
+    ["england|league one", "ENG-League One"],
+    ["england|league two", "ENG-League Two"],
+    ["scotland|premiership", "SCO-Premiership"],
+    ["spain|laliga", "ESP-La Liga"],
+    ["spain|la liga", "ESP-La Liga"],
+    ["spain|laliga2", "ESP-La Liga 2"],
+    ["germany|bundesliga", "GER-Bundesliga"],
+    ["germany|2 bundesliga", "GER-2. Bundesliga"],
+    ["italy|serie a", "ITA-Serie A"],
+    ["italy|serie b", "ITA-Serie B"],
+    ["france|ligue 1", "FRA-Ligue 1"],
+    ["france|ligue 2", "FRA-Ligue 2"],
+    ["netherlands|eredivisie", "NED-Eredivisie"],
+    ["portugal|liga portugal", "POR-Primeira Liga"],
+    ["portugal|primeira liga", "POR-Primeira Liga"],
+    ["belgium|jupiler pro league", "BEL-First Division A"],
+    ["turkey|super lig", "TUR-Super Lig"],
+    ["greece|super league", "GRE-Super League"],
+    ["europe|champions league", "UEFA-Champions League"],
+    ["europe|europa league", "UEFA-Europa League"],
+    ["europe|conference league", "UEFA-Conference League"],
+    ["usa|mls", "USA-MLS"],
+    ["brazil|serie a", "BRA-Serie A"],
+    ["argentina|liga profesional", "ARG-Primera Division"],
+    ["mexico|liga mx", "MEX-Liga MX"],
+  ]);
+  if (aliases.has(key)) return aliases.get(key);
+
+  if (l.includes("champions league")) return "UEFA-Champions League";
+  if (l.includes("europa league")) return "UEFA-Europa League";
+  if (l.includes("conference league")) return "UEFA-Conference League";
+
+  const prefix = c ? c.slice(0, 3).toUpperCase() : "INT";
+  return `${prefix}-${league || "Football"}`;
+}
+
+function parseTodayFeed(raw) {
+  const events = [];
+  let context = {
+    country: "",
+    league: "",
+  };
+
+  for (const rawRecord of String(raw || "").split("~")) {
+    const row = parseRecord(rawRecord);
+    if (!Object.keys(row).length) continue;
+
+    if (row.ZA || row.ZK || row.ZY) {
+      context = {
+        country: row.ZY || row.ZAF || context.country,
+        league:
+          row.ZK ||
+          (row.ZA && row.ZA.includes(":")
+            ? row.ZA.split(":").slice(1).join(":").trim()
+            : row.ZA) ||
+          context.league,
+      };
+    }
+
+    if (!row.AA || !row.AD || !row.AE || !row.AF) continue;
+
+    const timestamp = Number(row.AD);
+    if (!Number.isFinite(timestamp)) continue;
+    events.push({
+      eventId: String(row.AA),
+      kickoffAt: new Date(timestamp * 1000).toISOString(),
+      homeTeam: String(row.AE),
+      awayTeam: String(row.AF),
+      league: normalizeLeague(context.country, context.league),
+      country: context.country,
+      providerLeague: context.league,
+      status: String(row.AB || "1"),
+    });
+  }
+
+  return events;
+}
+
+async function fetchText(url, headers = {}) {
+  const response = await fetch(url, {
+    headers: { ...flashHeaders, ...headers },
+    signal: AbortSignal.timeout(15000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${response.status} from ${url}: ${body.slice(0, 200)}`);
+  }
+  return body;
+}
+
+async function fetchTodayFeed() {
+  const errors = [];
+  for (const url of FEED_URLS) {
+    try {
+      const body = await fetchText(url);
+      const events = parseTodayFeed(body);
+      if (events.length) return { events, url };
+      errors.push(`${url}: empty parsed feed`);
+    } catch (error) {
+      errors.push(String(error?.message || error));
+    }
+  }
+  throw new Error(errors.join(" | ").slice(0, 1200));
+}
+
+function bookmakerMap(root) {
+  const map = new Map();
+  const entries = Array.isArray(root?.settings?.bookmakers)
+    ? root.settings.bookmakers
+    : [];
+  for (const entry of entries) {
+    const id = entry?.bookmaker?.id;
+    const name = entry?.bookmaker?.name;
+    if (id != null && name) map.set(String(id), String(name));
+  }
+  return map;
+}
+
+async function fetchEventOdds(eventId) {
+  const attempts = [
+    { hash: "oce", projectId: "2020", geo: "GB", subdivision: "GBENG" },
+    { hash: "oce", projectId: "5", geo: "GB", subdivision: "GBENG" },
+    { hash: "oce", projectId: "5", geo: "US", subdivision: "USCA" },
+    { hash: "ope", projectId: "2", geo: "GB", subdivision: "GBENG" },
+  ];
+  const errors = [];
+
+  for (const base of ODDS_URLS) {
+    for (const config of attempts) {
+      const url = new URL(base);
+      url.searchParams.set("_hash", config.hash);
+      url.searchParams.set("eventId", eventId);
+      url.searchParams.set("projectId", config.projectId);
+      url.searchParams.set("geoIpCode", config.geo);
+      url.searchParams.set("geoIpSubdivisionCode", config.subdivision);
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            ...flashHeaders,
+            Accept: "application/json,text/plain,*/*",
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = await response.text();
+        if (!response.ok) {
+          errors.push(`${base} ${response.status}`);
+          continue;
+        }
+        const payload = body ? JSON.parse(body) : {};
+        const root = payload?.data?.findOddsByEventId;
+        if (root && Array.isArray(root.odds)) return root;
+        errors.push(`${base}: no odds root`);
+      } catch (error) {
+        errors.push(String(error?.message || error));
+      }
+    }
+  }
+
+  throw new Error(errors.slice(0, 8).join(" | "));
+}
+
+function seasonCode(kickoffAt) {
+  const date = new Date(kickoffAt);
+  const year = date.getUTCFullYear();
+  const start = date.getUTCMonth() >= 6 ? year : year - 1;
+  return `${String(start).slice(-2)}${String(start + 1).slice(-2)}`;
+}
+
+function findMatch(event, matches) {
+  const eventTime = new Date(event.kickoffAt).getTime();
+  const candidates = matches
+    .filter(
+      (match) =>
+        teamMatches(match.home_team, event.homeTeam) &&
+        teamMatches(match.away_team, event.awayTeam),
+    )
+    .map((match) => ({
+      match,
+      diff: Math.abs(new Date(match.kickoff_at).getTime() - eventTime),
+    }))
+    .filter((row) => row.diff <= 8 * 60 * 60 * 1000)
+    .sort((a, b) => a.diff - b.diff);
+  return candidates[0]?.match || null;
+}
+
+function priceNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 1 ? parsed : null;
+}
+
+function marketParticipantOrder(items) {
+  const ids = [];
+  for (const item of items || []) {
+    const id = item?.eventParticipantId;
+    if (id == null) continue;
+    const key = String(id);
+    if (!ids.includes(key)) ids.push(key);
+  }
+  return ids;
+}
+
+function normalizeMarket(entry) {
+  const type = String(entry?.bettingType || "").toUpperCase();
+  const scope = String(entry?.bettingScope || "FULL_TIME").toUpperCase();
+  if (scope !== "FULL_TIME") return [];
+
+  const items = Array.isArray(entry?.odds)
+    ? entry.odds.filter((item) => item?.active !== false)
+    : [];
+  if (!items.length) return [];
+
+  if (type === "HOME_DRAW_AWAY") {
+    const participants = marketParticipantOrder(items);
+    return items.flatMap((item) => {
+      const id =
+        item?.eventParticipantId == null
+          ? null
+          : String(item.eventParticipantId);
+      const selection =
+        id == null
+          ? "draw"
+          : id === participants[0]
+            ? "home"
+            : id === participants[1]
+              ? "away"
+              : null;
+      const price = priceNumber(item?.value);
+      return selection && price
+        ? [{ market: "1X2", selection, line: null, price }]
+        : [];
+    });
+  }
+
+  if (type === "OVER_UNDER") {
+    return items.flatMap((item) => {
+      const line = Number(item?.handicap?.value);
+      const selection = clean(item?.selection);
+      const price = priceNumber(item?.value);
+      if (
+        !Number.isFinite(line) ||
+        !["over", "under"].includes(selection) ||
+        !price
+      ) {
+        return [];
+      }
+      return [
+        {
+          market: `TOTAL_${line}`,
+          selection,
+          line,
+          price,
+        },
+      ];
+    });
+  }
+
+  if (type === "BOTH_TEAMS_TO_SCORE") {
+    return items.flatMap((item) => {
+      const flag = item?.bothTeamsToScore;
+      const price = priceNumber(item?.value);
+      if (typeof flag !== "boolean" || !price) return [];
+      return [
+        {
+          market: "BTTS",
+          selection: flag ? "yes" : "no",
+          line: null,
+          price,
+        },
+      ];
+    });
+  }
+
+  if (type === "DRAW_NO_BET") {
+    const participants = marketParticipantOrder(items);
+    return items.flatMap((item) => {
+      const id =
+        item?.eventParticipantId == null
+          ? null
+          : String(item.eventParticipantId);
+      const selection =
+        id === participants[0]
+          ? "home"
+          : id === participants[1]
+            ? "away"
+            : null;
+      const price = priceNumber(item?.value);
+      return selection && price
+        ? [{ market: "DNB", selection, line: 0, price }]
+        : [];
+    });
+  }
+
+  if (type === "DOUBLE_CHANCE") {
+    const participants = marketParticipantOrder(items);
+    return items.flatMap((item) => {
+      const id =
+        item?.eventParticipantId == null
+          ? null
+          : String(item.eventParticipantId);
+      const selection =
+        id == null
+          ? "X2"
+          : id === participants[0]
+            ? "1X"
+            : id === participants[1]
+              ? "12"
+              : null;
+      const price = priceNumber(item?.value);
+      return selection && price
+        ? [{ market: "DC", selection, line: null, price }]
+        : [];
+    });
+  }
+
+  return [];
+}
+
+function priceKey(eventId, bookmakerId, market, selection, line) {
+  return [
+    PROVIDER,
+    eventId,
+    bookmakerId,
+    market,
+    selection,
+    line ?? "",
+  ].join("|");
+}
+
+async function main() {
+  const capturedAt = new Date().toISOString();
+  const { events, url: feedUrl } = await fetchTodayFeed();
+
+  const validation =
+    (await sb(
+      `footy_model_market_validation?select=league,market,status,model_version&model_version=eq.${encodeURIComponent(MODEL_VERSION)}`,
+    )) || [];
+  const modelLeagues = new Set(validation.map((row) => row.league));
+
+  const start = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  const end = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const matches =
+    (await sb(
+      `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=10000`,
+    )) || [];
+
+  const existing =
+    (await sb(
+      `footy_live_odds_current?select=price_key,decimal_odds,previous_decimal_odds&provider=eq.${encodeURIComponent(PROVIDER)}&limit=30000`,
+    )) || [];
+  const existingMap = new Map(existing.map((row) => [row.price_key, row]));
+
+  const targetEvents = events.filter((event) => modelLeagues.has(event.league));
+  const fixtureRows = [];
+  const currentRows = [];
+  const historyRows = [];
+  const errors = [];
+
+  for (let index = 0; index < targetEvents.length; index += 4) {
+    const batch = targetEvents.slice(index, index + 4);
+    const results = await Promise.allSettled(
+      batch.map(async (event) => ({
+        event,
+        oddsRoot: await fetchEventOdds(event.eventId),
+      })),
+    );
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        errors.push(String(result.reason?.message || result.reason));
+        continue;
+      }
+
+      const { event, oddsRoot } = result.value;
+      let match = findMatch(event, matches);
+      if (!match) {
+        match = {
+          match_id: `flashscore:${event.eventId}`,
+          kickoff_at: event.kickoffAt,
+          league: event.league,
+          home_team: event.homeTeam,
+          away_team: event.awayTeam,
+        };
+        matches.push(match);
+        fixtureRows.push({
+          match_id: match.match_id,
+          league: event.league,
+          season: seasonCode(event.kickoffAt),
+          kickoff_at: event.kickoffAt,
+          home_team: event.homeTeam,
+          away_team: event.awayTeam,
+          status:
+            event.status === "3"
+              ? "finished"
+              : event.status === "2"
+                ? "in_progress"
+                : "scheduled",
+          source: "flashscore-feed",
+          retrieved_at: capturedAt,
+        });
+      }
+
+      const books = bookmakerMap(oddsRoot);
+      for (const entry of oddsRoot.odds || []) {
+        const bookmakerId = String(entry?.bookmakerId ?? "");
+        if (!bookmakerId) continue;
+        const bookmakerName =
+          books.get(bookmakerId) || `Bookmaker ${bookmakerId}`;
+
+        for (const quote of normalizeMarket(entry)) {
+          const key = priceKey(
+            event.eventId,
+            bookmakerId,
+            quote.market,
+            quote.selection,
+            quote.line,
+          );
+          const before = existingMap.get(key);
+          const changed =
+            !before ||
+            Math.abs(Number(before.decimal_odds) - quote.price) > 1e-9;
+
+          const row = {
+            price_key: key,
+            provider: PROVIDER,
+            provider_event_id: event.eventId,
+            match_id: match.match_id,
+            sport_key: "football",
+            home_team: match.home_team,
+            away_team: match.away_team,
+            commence_time: match.kickoff_at,
+            bookmaker_key: `flashscore:${bookmakerId}`,
+            bookmaker_name: bookmakerName,
+            market: quote.market,
+            selection: quote.selection,
+            line: quote.line,
+            decimal_odds: quote.price,
+            previous_decimal_odds: changed
+              ? Number(before?.decimal_odds) || null
+              : Number(before?.previous_decimal_odds) || null,
+            provider_last_update: null,
+            captured_at: capturedAt,
+          };
+          currentRows.push(row);
+
+          if (changed) {
+            historyRows.push({
+              price_key: key,
+              provider: PROVIDER,
+              provider_event_id: event.eventId,
+              match_id: match.match_id,
+              bookmaker_key: row.bookmaker_key,
+              bookmaker_name: bookmakerName,
+              market: quote.market,
+              selection: quote.selection,
+              line: quote.line,
+              decimal_odds: quote.price,
+              captured_at: capturedAt,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  await upsert("footy_matches", fixtureRows, "match_id");
+  await upsert("footy_live_odds_current", currentRows, "price_key");
+  await insert("footy_live_odds_history", historyRows);
+  await upsert(
+    "footy_odds_feed_status",
+    [{
+      provider: PROVIDER,
+      sport_key: "football",
+      last_attempt_at: capturedAt,
+      last_success_at: currentRows.length ? capturedAt : null,
+      events_received: events.length,
+      prices_received: currentRows.length,
+      last_error: errors.length
+        ? errors.slice(0, 6).join(" | ").slice(0, 1000)
+        : currentRows.length
+          ? null
+          : "Feed worked but no model-league prices were returned",
+      updated_at: capturedAt,
+    }],
+    "provider",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        status: currentRows.length ? "ok" : "empty",
+        provider: PROVIDER,
+        feed: feedUrl,
+        events_discovered: events.length,
+        model_league_events: targetEvents.length,
+        new_fixture_rows: fixtureRows.length,
+        prices: currentRows.length,
+        changed_prices: historyRows.length,
+        bookmakers: new Set(currentRows.map((row) => row.bookmaker_name)).size,
+        markets: [...new Set(currentRows.map((row) => row.market))].sort(),
+        errors: errors.slice(0, 10),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+main().catch(async (error) => {
+  const capturedAt = new Date().toISOString();
+  try {
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: PROVIDER,
+        sport_key: "football",
+        last_attempt_at: capturedAt,
+        last_success_at: null,
+        events_received: 0,
+        prices_received: 0,
+        last_error: String(error?.message || error).slice(0, 1000),
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+  } catch {}
+  throw error;
+});
