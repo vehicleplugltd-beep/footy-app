@@ -230,6 +230,51 @@ def publish_model_calls(
     return len(rows)
 
 
+def _canonical_team(value: str) -> str:
+    raw = "".join(ch for ch in str(value).lower() if ch.isalnum())
+    aliases = {
+        "mancity": "manchestercity",
+        "manutd": "manchesterunited",
+        "spurs": "tottenham",
+        "tottenhamhotspur": "tottenham",
+        "newcastle": "newcastleunited",
+        "nottmforest": "nottinghamforest",
+        "wolves": "wolverhamptonwanderers",
+    }
+    return aliases.get(raw, raw)
+
+
+def _identity_result(
+    call: dict[str, Any],
+    results: pd.DataFrame,
+) -> tuple[int, int] | None:
+    if results.empty:
+        return None
+
+    kickoff = pd.to_datetime(call.get("kickoff_at"), utc=True, errors="coerce")
+    if pd.isna(kickoff):
+        return None
+
+    home = _canonical_team(str(call.get("home_team", "")))
+    away = _canonical_team(str(call.get("away_team", "")))
+    candidates = results[
+        (results["home_team_key"] == home)
+        & (results["away_team_key"] == away)
+    ].copy()
+    if candidates.empty:
+        return None
+
+    candidates["kickoff_diff"] = (candidates["kickoff_at"] - kickoff).abs()
+    candidates = candidates[
+        candidates["kickoff_diff"] <= pd.Timedelta(hours=12)
+    ].sort_values("kickoff_diff")
+    if candidates.empty:
+        return None
+
+    row = candidates.iloc[0]
+    return int(row["home_goals"]), int(row["away_goals"])
+
+
 def _settlement(selection: str, home_goals: int, away_goals: int) -> str:
     if selection == "home":
         won = home_goals > away_goals
@@ -287,6 +332,32 @@ def settle_public_calls(now: pd.Timestamp | None = None) -> int:
     if results.empty:
         return 0
 
+    result_matches = pd.DataFrame(
+        reader._get_all(
+            "footy_matches",
+            "match_id,kickoff_at,home_team,away_team",
+        )
+    )
+    if not result_matches.empty:
+        result_matches["kickoff_at"] = pd.to_datetime(
+            result_matches["kickoff_at"],
+            utc=True,
+            errors="coerce",
+        )
+        results = results.merge(
+            result_matches,
+            on="match_id",
+            how="left",
+        )
+        results["home_team_key"] = results["home_team"].fillna("").map(_canonical_team)
+        results["away_team_key"] = results["away_team"].fillna("").map(_canonical_team)
+    else:
+        results["kickoff_at"] = pd.NaT
+        results["home_team"] = ""
+        results["away_team"] = ""
+        results["home_team_key"] = ""
+        results["away_team_key"] = ""
+
     result_map = {
         str(row.match_id): (int(row.home_goals), int(row.away_goals))
         for row in results.itertuples(index=False)
@@ -295,14 +366,17 @@ def settle_public_calls(now: pd.Timestamp | None = None) -> int:
     settled = 0
     for row in calls.to_dict(orient="records"):
         match_id = str(row["match_id"])
-        if match_id not in result_map:
+        result = result_map.get(match_id)
+        if result is None:
+            result = _identity_result(row, results)
+        if result is None:
             continue
 
         kickoff = pd.to_datetime(row["kickoff_at"], utc=True, errors="coerce")
         if pd.isna(kickoff) or kickoff >= current:
             continue
 
-        home_goals, away_goals = result_map[match_id]
+        home_goals, away_goals = result
         status = _settlement(str(row["selection"]), home_goals, away_goals)
 
         quoted_odds = row.get("quoted_odds")
