@@ -267,7 +267,7 @@ async function fetchText(url, headers = {}) {
 }
 
 async function fetchDayFeed(dayOffset) {
-  const errors = [...feedErrors];
+  const errors = [];
   for (const url of feedUrls(dayOffset)) {
     try {
       const body = await fetchText(url);
@@ -577,7 +577,7 @@ async function main() {
   const fixtureRows = [];
   const currentRows = [];
   const historyRows = [];
-  const errors = [];
+  const errors = [...feedErrors];
   let oddsResponses = 0;
   let marketEntries = 0;
 
