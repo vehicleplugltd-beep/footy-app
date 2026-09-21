@@ -10,11 +10,12 @@ on:
     paths:
       - ".github/workflows/sync-live-odds.yml"
       - "web/scripts/sync-live-odds.mjs"
+      - "web/scripts/sync-free-oddsportal.mjs"
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
