@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 
 from footy_data.normalizers.fpl_core_insights import (
@@ -8,6 +9,7 @@ from footy_data.normalizers.fpl_core_insights import (
     supplement_fpl_core_team_rows_from_players,
     enrich_fpl_core_team_rows_from_players,
     normalise_fpl_core_player_priors,
+    verified_penalty_xg_value,
 )
 
 
@@ -314,3 +316,101 @@ def test_player_npxg_fails_closed_when_penalty_convention_is_inconsistent():
     assert len(rows) == 1
     assert pd.isna(rows.iloc[0]["npxg"])
     assert pd.isna(rows.iloc[0]["penalty_xg_value"])
+
+
+
+def test_season_validated_penalty_xg_can_fill_sparse_gameweek():
+    reference = pd.DataFrame([
+        {
+            "total_shots": 1,
+            "xg": 0.79,
+            "penalties_scored": 1,
+            "penalties_missed": 0,
+        },
+        {
+            "total_shots": 1,
+            "xg": 0.79,
+            "penalties_scored": 0,
+            "penalties_missed": 1,
+        },
+    ])
+    value = verified_penalty_xg_value(reference)
+    assert value == 0.79
+
+    teams = pd.DataFrame([
+        {"code": 3, "name": "Arsenal"},
+        {"code": 36, "name": "Brighton"},
+    ])
+    players = pd.DataFrame([
+        {
+            "player_code": 208706,
+            "player_id": 12,
+            "web_name": "Saka",
+            "team_code": 3,
+        },
+    ])
+    matches = pd.DataFrame([
+        {
+            "gameweek": 2,
+            "kickoff_time": "2026-08-22T14:00:00Z",
+            "home_team": 36,
+            "away_team": 3,
+            "match_id": "provider-2",
+            "tournament": "prem",
+            "player_stats_processed": True,
+        }
+    ])
+    sparse = pd.DataFrame([
+        {
+            "player_id": 12,
+            "match_id": "provider-2",
+            "minutes_played": 90,
+            "total_shots": 3,
+            "xg": 0.50,
+            "penalties_scored": 0,
+            "penalties_missed": 0,
+        },
+    ])
+    rows = normalise_fpl_core_player_match_stats(
+        sparse,
+        players,
+        teams,
+        matches,
+        season="2627",
+        penalty_xg_value=value,
+    )
+    assert len(rows) == 1
+    assert rows.iloc[0]["npxg"] == 0.50
+    assert rows.iloc[0]["penalty_xg_value"] == 0.79
+
+
+def test_penalty_xg_override_fails_outside_provider_range():
+    with pytest.raises(ValueError, match="outside the validated provider range"):
+        normalise_fpl_core_player_match_stats(
+            pd.DataFrame([{
+                "player_id": 1,
+                "match_id": "m",
+                "minutes_played": 90,
+            }]),
+            pd.DataFrame([{
+                "player_id": 1,
+                "player_code": 1,
+                "web_name": "P",
+                "team_code": 1,
+            }]),
+            pd.DataFrame([
+                {"code": 1, "name": "Arsenal"},
+                {"code": 2, "name": "Brighton"},
+            ]),
+            pd.DataFrame([{
+                "gameweek": 1,
+                "kickoff_time": "2026-08-15T14:00:00Z",
+                "home_team": 2,
+                "away_team": 1,
+                "match_id": "m",
+                "tournament": "prem",
+                "player_stats_processed": True,
+            }]),
+            season="2627",
+            penalty_xg_value=0.95,
+        )
