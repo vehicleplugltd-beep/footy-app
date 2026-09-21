@@ -773,7 +773,7 @@ export function TeamRoomDashboard({
             <p>{portfolioPlan.game_theory.explanation}</p>
           </div>
 
-          <div className="portfolio-health-grid">
+          <div className="portfolio-health-grid portfolio-health-grid-primary">
             <div>
               <span>FREE TRANSFERS</span>
               <strong>{portfolioPlan.free_transfers ?? "—"}/5</strong>
@@ -796,60 +796,63 @@ export function TeamRoomDashboard({
               <small>reliable current substitutes</small>
             </div>
             <div>
-              <span>BENCH VALUE</span>
-              <strong>£{portfolioPlan.portfolio.bench.spend.toFixed(1)}m</strong>
-              <small>
-                {Math.round(portfolioPlan.portfolio.bench.spendShare * 100)}% of squad value ·{" "}
-                {portfolioPlan.portfolio.bench.currentModelScore.toFixed(1)} model points
-              </small>
-            </div>
-            <div>
               <span>6GW XI</span>
               <strong>{portfolioPlan.portfolio.horizon.sixGwAverageBestXi.toFixed(1)}</strong>
               <small>formation-constrained model average</small>
-            </div>
-            <div>
-              <span>8GW XI</span>
-              <strong>{portfolioPlan.portfolio.horizon.eightGwAverageBestXi.toFixed(1)}</strong>
-              <small>structural horizon</small>
-            </div>
-            <div>
-              <span>DIFFERENTIALS</span>
-              <strong>{portfolioPlan.portfolio.differentialCount}</strong>
-              <small>&lt;10% official ownership</small>
-            </div>
-            <div>
-              <span>MIDFIELD ROUTE</span>
-              <strong>{portfolioPlan.portfolio.priceStructure.midfieldRoute ? "OPEN" : "BLOCKED"}</strong>
-              <small>
-                {portfolioPlan.portfolio.priceStructure.midfieldTarget ?? "No urgent target"}
-              </small>
-            </div>
-            <div>
-              <span>FORWARD ROUTE</span>
-              <strong>{portfolioPlan.portfolio.priceStructure.forwardRoute ? "OPEN" : "BLOCKED"}</strong>
-              <small>
-                {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
-              </small>
-            </div>
-            <div>
-              <span>FIELD OWNERSHIP</span>
-              <strong>{portfolioPlan.field_ownership_proxy.average_squad_ownership.toFixed(1)}%</strong>
-              <small>official ownership average · not EO</small>
-            </div>
-            <div>
-              <span>PREMIUMS</span>
-              <strong>{portfolioPlan.portfolio.premiumCount}</strong>
-              <small>£8.5m+ squad assets</small>
             </div>
           </div>
 
           <details className="portfolio-deep-dive">
             <summary>
               <span>DEEP PORTFOLIO EVIDENCE</span>
-              <strong>Price structure, underlying data & failure modes</strong>
-              <small>Open when you want the full squad-construction case.</small>
+              <strong>Structure, routes, underlying data & failure modes</strong>
+              <small>Seven secondary metrics are kept here so the decision view stays calm.</small>
             </summary>
+
+            <div className="portfolio-health-grid portfolio-health-grid-secondary">
+              <div>
+                <span>BENCH VALUE</span>
+                <strong>£{portfolioPlan.portfolio.bench.spend.toFixed(1)}m</strong>
+                <small>
+                  {Math.round(portfolioPlan.portfolio.bench.spendShare * 100)}% of squad value ·{" "}
+                  {portfolioPlan.portfolio.bench.currentModelScore.toFixed(1)} model points
+                </small>
+              </div>
+              <div>
+                <span>8GW XI</span>
+                <strong>{portfolioPlan.portfolio.horizon.eightGwAverageBestXi.toFixed(1)}</strong>
+                <small>structural horizon</small>
+              </div>
+              <div>
+                <span>DIFFERENTIALS</span>
+                <strong>{portfolioPlan.portfolio.differentialCount}</strong>
+                <small>&lt;10% official ownership</small>
+              </div>
+              <div>
+                <span>MIDFIELD ROUTE</span>
+                <strong>{portfolioPlan.portfolio.priceStructure.midfieldRoute ? "OPEN" : "BLOCKED"}</strong>
+                <small>
+                  {portfolioPlan.portfolio.priceStructure.midfieldTarget ?? "No urgent target"}
+                </small>
+              </div>
+              <div>
+                <span>FORWARD ROUTE</span>
+                <strong>{portfolioPlan.portfolio.priceStructure.forwardRoute ? "OPEN" : "BLOCKED"}</strong>
+                <small>
+                  {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
+                </small>
+              </div>
+              <div>
+                <span>FIELD OWNERSHIP</span>
+                <strong>{portfolioPlan.field_ownership_proxy.average_squad_ownership.toFixed(1)}%</strong>
+                <small>official ownership average · not EO</small>
+              </div>
+              <div>
+                <span>PREMIUMS</span>
+                <strong>{portfolioPlan.portfolio.premiumCount}</strong>
+                <small>£8.5m+ squad assets</small>
+              </div>
+            </div>
             <div className="portfolio-price-bands">
             <div>
               <span>GOALKEEPERS</span>
