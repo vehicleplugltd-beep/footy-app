@@ -11,6 +11,8 @@ import {
   PlayerIntelDrawer,
   TeamIntelDrawer,
 } from "@/components/intelligence-drawers";
+import { ResearchTargetCard } from "@/components/research/target-card";
+import { ResearchFixtureCard } from "@/components/research/fixture-card";
 
 function confidenceRank(value: ScoutPlayerProfile["decisionConfidence"]) {
   return value === "HIGH" ? 2 : value === "MEDIUM" ? 1 : 0;
@@ -18,173 +20,6 @@ function confidenceRank(value: ScoutPlayerProfile["decisionConfidence"]) {
 
 function playerProcess(profile: ScoutPlayerProfile) {
   return profile.evidence?.regressedXgiPer90 ?? profile.player.xgiPer90;
-}
-
-function TargetCard({
-  profile,
-  horizon,
-  onOpen,
-}: {
-  profile: ScoutPlayerProfile;
-  horizon: "SHORT" | "LONG";
-  onOpen: (profile: ScoutPlayerProfile) => void;
-}) {
-  const score = horizon === "SHORT" ? profile.score3 : profile.score8;
-  const reason =
-    horizon === "SHORT"
-      ? profile.reasons[0] ??
-        "Current role, process and fixtures keep the player high in the near-term model."
-      : profile.bestWindow.index > 0
-        ? `Best three-Gameweek window opens ${profile.bestWindow.startName}–${profile.bestWindow.endName}; the longer horizon is stronger than the immediate window.`
-        : profile.reasons[0] ??
-          "The player holds a strong model score across the longer horizon.";
-
-  return (
-    <article className="research-target-card">
-      <div className="research-target-head">
-        <div>
-          <span>{horizon === "SHORT" ? "NEXT 3GW" : "8GW / BEST WINDOW"}</span>
-          <h3>{profile.player.name}</h3>
-          <small>
-            {profile.player.team} · {profile.player.position} · £
-            {profile.player.price.toFixed(1)}m
-          </small>
-        </div>
-        <b className={"confidence-" + profile.decisionConfidence.toLowerCase()}>
-          {profile.decisionConfidence}
-        </b>
-      </div>
-      <p>{reason}</p>
-      <div className="research-target-metrics">
-        <div><span>{horizon === "SHORT" ? "3GW" : "8GW"}</span><strong>{score.toFixed(1)}</strong></div>
-        <div><span>Reg xGI/90</span><strong>{playerProcess(profile).toFixed(2)}</strong></div>
-        <div><span>xG/90</span><strong>{profile.evidence?.regressedXgPer90.toFixed(2) ?? profile.player.xgPer90.toFixed(2)}</strong></div>
-        <div><span>xA/90</span><strong>{profile.evidence?.regressedXaPer90.toFixed(2) ?? profile.player.xaPer90.toFixed(2)}</strong></div>
-        <div><span>EPA</span><strong>{profile.epa.epa >= 0 ? "+" : ""}{profile.epa.epa.toFixed(2)}</strong></div>
-        <div><span>xMins</span><strong>{profile.epa.expectedMinutes.toFixed(0)}</strong></div>
-        <div><span>Ownership</span><strong>{profile.player.selectedBy.toFixed(1)}%</strong></div>
-        <div><span>Set pieces</span><strong>{profile.player.setPieceRole ?? "—"}</strong></div>
-        <div><span>Risk</span><strong>{profile.riskProfile.downsideRisk}/100</strong></div>
-        <div><span>Type</span><strong>{profile.riskProfile.assetType}</strong></div>
-        <div><span>Floor</span><strong>{profile.riskProfile.floor.toFixed(1)}</strong></div>
-        <div><span>Ceiling</span><strong>{profile.riskProfile.ceiling.toFixed(1)}</strong></div>
-      </div>
-      <small className="research-risk">
-        <b>Risk:</b> {profile.risks[0] ?? "Late role, minutes or team-news changes can move the call."}
-      </small>
-      <small className="research-source-note">
-        Underlying: regressed xG/xA, expected minutes, team process, fixtures, price/value
-        and official ownership. Player NPxG and true EO are not inferred when unavailable.
-      </small>
-      <button type="button" onClick={() => onOpen(profile)}>
-        Full reasoning & underlying data →
-      </button>
-    </article>
-  );
-}
-
-function FixtureCard({
-  prediction,
-  teamById,
-  onOpenTeam,
-}: {
-  prediction: FixturePrediction;
-  teamById: Map<number, ScoutTeamProfile>;
-  onOpenTeam: (team: ScoutTeamProfile) => void;
-}) {
-  const pct = (value: number) => Math.round(value * 100);
-  const homeTeam = teamById.get(prediction.homeTeamId);
-  const awayTeam = teamById.get(prediction.awayTeamId);
-
-  return (
-    <article className="fixture-forecast-card">
-      <div className="fixture-forecast-head">
-        <button type="button" disabled={!homeTeam} onClick={() => homeTeam && onOpenTeam(homeTeam)}>
-          <strong>{prediction.homeTeam}</strong>
-          <small>{prediction.homeExpectedGoals.toFixed(2)} xG</small>
-        </button>
-        <div>
-          <span>MODEL SCORE</span>
-          <b>{prediction.mostLikelyScore}</b>
-          <small>{prediction.confidence} confidence</small>
-        </div>
-        <button type="button" disabled={!awayTeam} onClick={() => awayTeam && onOpenTeam(awayTeam)}>
-          <strong>{prediction.awayTeam}</strong>
-          <small>{prediction.awayExpectedGoals.toFixed(2)} xG</small>
-        </button>
-      </div>
-
-      <div className="fixture-probabilities" aria-label="Model outcome probabilities">
-        <div><span>Home</span><strong>{pct(prediction.homeWinProbability)}%</strong></div>
-        <div><span>Draw</span><strong>{pct(prediction.drawProbability)}%</strong></div>
-        <div><span>Away</span><strong>{pct(prediction.awayWinProbability)}%</strong></div>
-      </div>
-      <div className="fixture-clean-sheets" aria-label="Model clean sheet probabilities">
-        <span>{prediction.homeShort} xCS <b>{pct(prediction.homeCleanSheetProbability)}%</b></span>
-        <span>{prediction.awayShort} xCS <b>{pct(prediction.awayCleanSheetProbability)}%</b></span>
-      </div>
-
-      <p>{prediction.reason}</p>
-
-      <div className="fixture-evidence">
-        <span>
-          ATT {prediction.evidence.homeAttackIndex?.toFixed(2) ?? "—"} vs DEF{" "}
-          {prediction.evidence.awayDefenceIndex?.toFixed(2) ?? "—"}
-        </span>
-        <span>
-          ATT {prediction.evidence.awayAttackIndex?.toFixed(2) ?? "—"} vs DEF{" "}
-          {prediction.evidence.homeDefenceIndex?.toFixed(2) ?? "—"}
-        </span>
-        <span>
-          xG/xGA {prediction.evidence.homeXg?.toFixed(2) ?? "—"}/
-          {prediction.evidence.homeXga?.toFixed(2) ?? "—"} vs{" "}
-          {prediction.evidence.awayXg?.toFixed(2) ?? "—"}/
-          {prediction.evidence.awayXga?.toFixed(2) ?? "—"}
-        </span>
-        <span>
-          ATT trend{" "}
-          {prediction.evidence.homeAttackTrend == null
-            ? "—"
-            : (prediction.evidence.homeAttackTrend >= 0 ? "+" : "") +
-              Math.round(prediction.evidence.homeAttackTrend * 100) +
-              "%"}
-          {" / "}
-          {prediction.evidence.awayAttackTrend == null
-            ? "—"
-            : (prediction.evidence.awayAttackTrend >= 0 ? "+" : "") +
-              Math.round(prediction.evidence.awayAttackTrend * 100) +
-              "%"}
-        </span>
-        <span>
-          DEF trend{" "}
-          {prediction.evidence.homeDefenceTrend == null
-            ? "—"
-            : (prediction.evidence.homeDefenceTrend >= 0 ? "+" : "") +
-              Math.round(prediction.evidence.homeDefenceTrend * 100) +
-              "%"}
-          {" / "}
-          {prediction.evidence.awayDefenceTrend == null
-            ? "—"
-            : (prediction.evidence.awayDefenceTrend >= 0 ? "+" : "") +
-              Math.round(prediction.evidence.awayDefenceTrend * 100) +
-              "%"}
-        </span>
-        <span>
-          Baseline {prediction.evidence.homeScoringPrior.toFixed(2)} /{" "}
-          {prediction.evidence.awayScoringPrior.toFixed(2)} xG
-        </span>
-        <span>
-          Source {Math.round(prediction.evidence.sourceConfidence * 100)}%
-        </span>
-      </div>
-      <small className="fixture-forecast-risk">
-        <b>Failure mode:</b>{" "}
-        {prediction.confidence === "LOW"
-          ? "one or both teams have incomplete reconciled process evidence, so the forecast is deliberately low-confidence."
-          : "future team news, injuries, rotation and genuine process changes can move the scoring rates; Footy re-runs the forecast with fresh data."}
-      </small>
-    </article>
-  );
 }
 
 export function ResearchHub({
@@ -361,7 +196,7 @@ export function ResearchHub({
         </div>
         <div className="research-target-grid">
           {shortTerm.map((profile) => (
-            <TargetCard
+            <ResearchTargetCard
               key={profile.player.id}
               profile={profile}
               horizon="SHORT"
@@ -384,7 +219,7 @@ export function ResearchHub({
         </div>
         <div className="research-target-grid">
           {longTerm.map((profile) => (
-            <TargetCard
+            <ResearchTargetCard
               key={profile.player.id}
               profile={profile}
               horizon="LONG"
@@ -543,7 +378,7 @@ export function ResearchHub({
               </header>
               <div className="fixture-forecast-grid">
                 {predictions.map((prediction) => (
-                  <FixtureCard
+                  <ResearchFixtureCard
                     key={
                       prediction.eventId +
                       "-" +
