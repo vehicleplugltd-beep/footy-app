@@ -160,6 +160,14 @@ export function FrontOffice({
     );
   }, [data]);
 
+  const leagueOptions = team
+    ? team.miniLeagues.length
+      ? team.miniLeagues
+      : team.otherClassicLeagues
+    : [];
+  const primaryLeagues = leagueOptions.slice(0, 4);
+  const moreLeagues = leagueOptions.slice(4);
+
   return (
     <div className="hq-intelligence">
       {team ? (
@@ -210,14 +218,8 @@ export function FrontOffice({
               </small>
             </div>
 
-            <blockquote className="footy-quip compact">
-              {footyQuip("league")}
-            </blockquote>
             <div className="hq-league-list">
-              {(team.miniLeagues.length
-                ? team.miniLeagues
-                : team.otherClassicLeagues
-              ).map((league) => {
+              {primaryLeagues.map((league) => {
                 const delta =
                   league.entry_rank && league.entry_last_rank
                     ? league.entry_last_rank - league.entry_rank
@@ -226,12 +228,7 @@ export function FrontOffice({
                 return (
                   <a
                     key={league.id}
-                    href={
-                      "/team/" +
-                      team.id +
-                      "?league=" +
-                      league.id
-                    }
+                    href={"/team/" + team.id + "?league=" + league.id}
                   >
                     <div>
                       <strong>{league.name}</strong>
@@ -244,11 +241,48 @@ export function FrontOffice({
                             : ""}
                       </small>
                     </div>
-                    <b>Enter Team Room →</b>
+                    <b>Open Team Room →</b>
                   </a>
                 );
               })}
             </div>
+
+            {moreLeagues.length ? (
+              <details className="hq-more-leagues">
+                <summary>
+                  <span>MORE LEAGUES</span>
+                  <strong>{moreLeagues.length} additional battles</strong>
+                  <small>Open only when you need a different league context.</small>
+                </summary>
+                <div className="hq-league-list">
+                  {moreLeagues.map((league) => {
+                    const delta =
+                      league.entry_rank && league.entry_last_rank
+                        ? league.entry_last_rank - league.entry_rank
+                        : 0;
+                    return (
+                      <a
+                        key={league.id}
+                        href={"/team/" + team.id + "?league=" + league.id}
+                      >
+                        <div>
+                          <strong>{league.name}</strong>
+                          <small>
+                            Rank #{league.entry_rank ?? "—"}
+                            {delta > 0
+                              ? " · ↑" + delta
+                              : delta < 0
+                                ? " · ↓" + Math.abs(delta)
+                                : ""}
+                          </small>
+                        </div>
+                        <b>Open →</b>
+                      </a>
+                    );
+                  })}
+                </div>
+              </details>
+            ) : null}
           </div>
         </section>
       ) : null}
