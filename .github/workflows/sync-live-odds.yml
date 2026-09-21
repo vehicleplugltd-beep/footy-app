@@ -4,7 +4,7 @@ name: sync-live-odds
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 */4 * * *"
+    - cron: "17 * * * *"
   push:
     branches: ["main", "feature/betting-edge-workspace"]
     paths:
@@ -27,8 +27,14 @@ jobs:
         with:
           node-version: "20"
       - name: Refresh free fixture spine
+        env:
+          FIXTURES_ONLY: "1"
         run: node web/scripts/sync-live-odds.mjs
+
       - name: Collect direct keyless bookmaker prices
         run: node web/scripts/sync-free-flashscore.mjs
+
       - name: Process alerts and closing lines
+        env:
+          PRICE_OPS_ONLY: "1"
         run: node web/scripts/sync-live-odds.mjs
