@@ -348,7 +348,52 @@ async function captureUserClosingLines(capturedAt) {
     legsUpdated += 1;
   }
 
-  return { betsUpdated, legsUpdated };
+  const pendingAccas =
+    (await sb(
+      "footy_bets?select=id,decimal_odds,leg_count,bet_type,closing_odds&closing_odds=is.null&bet_type=in.(DOUBLE,TREBLE,ACCA)&limit=300",
+    )) || [];
+  let accasUpdated = 0;
+
+  for (const bet of pendingAccas) {
+    const legs =
+      (await sb(
+        `footy_bet_legs?select=closing_odds,closing_price_at&bet_id=eq.${encodeURIComponent(bet.id)}&order=leg_no.asc`,
+      )) || [];
+    if (
+      legs.length !== Number(bet.leg_count) ||
+      legs.some((leg) => !Number.isFinite(Number(leg.closing_odds)) || Number(leg.closing_odds) <= 1)
+    ) {
+      continue;
+    }
+
+    const combinedClose = legs.reduce(
+      (product, leg) => product * Number(leg.closing_odds),
+      1,
+    );
+    const taken = Number(bet.decimal_odds);
+    const latestCloseAt = legs
+      .map((leg) => leg.closing_price_at)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || capturedAt;
+
+    await patch(
+      "footy_bets",
+      `id=eq.${encodeURIComponent(bet.id)}`,
+      {
+        closing_odds: combinedClose,
+        closing_bookmaker: "Combined market close",
+        closing_price_at: latestCloseAt,
+        clv:
+          Number.isFinite(taken) && taken > 1
+            ? taken / combinedClose - 1
+            : null,
+      },
+    );
+    accasUpdated += 1;
+  }
+
+  return { betsUpdated, legsUpdated, accasUpdated };
 }
 
 async function main() {
@@ -500,6 +545,7 @@ async function main() {
     alerts_triggered: alertsTriggered,
     closing_bets_updated: closingCapture.betsUpdated,
     closing_legs_updated: closingCapture.legsUpdated,
+    closing_accas_updated: closingCapture.accasUpdated,
     matched_footy_events: new Set(
       currentRows.filter((row) => row.match_id).map((row) => row.match_id),
     ).size,
