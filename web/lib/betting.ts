@@ -107,6 +107,14 @@ export type ProcessProfile = {
   verifiedShare: number;
 };
 
+export type BookmakerQuote = {
+  bookmakerKey: string;
+  bookmakerName: string;
+  decimalOdds: number;
+  previousDecimalOdds: number | null;
+  capturedAt: string;
+};
+
 export type BettingSelection = {
   matchId: string;
   kickoffAt: string;
@@ -118,6 +126,8 @@ export type BettingSelection = {
   displaySelection: string;
   modelVersion: string;
   modelProbability: number;
+  previousModelProbability: number | null;
+  modelProbabilityDelta: number | null;
   fairOdds: number;
   minimumTakePrice: number;
   uncertaintyHaircut: number | null;
@@ -125,6 +135,7 @@ export type BettingSelection = {
   awayXg: number | null;
   williamHillPrice: LivePriceRow | null;
   bestPrice: LivePriceRow | null;
+  bookmakerQuotes: BookmakerQuote[];
   marketPrice: number | null;
   edge: number | null;
   validationStatus: ValidationRow["status"];
@@ -555,6 +566,17 @@ export async function getBettingWorkspaceData() {
   }
 
   const validationByMarket = new Map(validations.map((row) => [row.market, row]));
+  const modelHistoryByKey = new Map<string, ModelRow[]>();
+  for (const row of outputs) {
+    const key = `${row.match_id}:${row.market}:${row.selection}`;
+    const history = modelHistoryByKey.get(key) ?? [];
+    history.push(row);
+    modelHistoryByKey.set(key, history);
+  }
+  for (const history of modelHistoryByKey.values()) {
+    history.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
   const pricesByKey = new Map<string, LivePriceRow[]>();
   for (const row of liveOdds) {
     if (!row.match_id) continue;
@@ -584,10 +606,14 @@ export async function getBettingWorkspaceData() {
             row.bookmaker_key.toLowerCase() === "williamhill" ||
             row.bookmaker_name.toLowerCase().includes("william hill"),
         ) ?? null;
-      const best =
-        [...prices].sort(
-          (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
-        )[0] ?? null;
+      const sortedPrices = [...prices].sort(
+        (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
+      );
+      const best = sortedPrices[0] ?? null;
+      const historyKey = `${match.match_id}:${model.market}:${model.selection}`;
+      const modelHistory = modelHistoryByKey.get(historyKey) ?? [];
+      const previousModel =
+        modelHistory.find((row) => row.created_at < model.created_at) ?? null;
       const validation = validationByMarket.get(model.market) ?? null;
       const state = verdictFor(model, validation, williamHill, best);
 
@@ -602,6 +628,12 @@ export async function getBettingWorkspaceData() {
         displaySelection: displaySelection(match, model.selection),
         modelVersion: model.model_version,
         modelProbability: Number(model.model_probability),
+        previousModelProbability:
+          previousModel == null ? null : Number(previousModel.model_probability),
+        modelProbabilityDelta:
+          previousModel == null
+            ? null
+            : Number(model.model_probability) - Number(previousModel.model_probability),
         fairOdds: Number(model.fair_odds),
         minimumTakePrice: Number(model.minimum_take_price),
         uncertaintyHaircut:
@@ -612,6 +644,16 @@ export async function getBettingWorkspaceData() {
         awayXg: model.away_xg == null ? null : Number(model.away_xg),
         williamHillPrice: williamHill,
         bestPrice: best,
+        bookmakerQuotes: sortedPrices.slice(0, 6).map((row) => ({
+          bookmakerKey: row.bookmaker_key,
+          bookmakerName: row.bookmaker_name,
+          decimalOdds: Number(row.decimal_odds),
+          previousDecimalOdds:
+            row.previous_decimal_odds == null
+              ? null
+              : Number(row.previous_decimal_odds),
+          capturedAt: row.captured_at,
+        })),
         marketPrice: state.price,
         edge: state.edge,
         validationStatus: validation?.status ?? "RESEARCH",
