@@ -1563,3 +1563,529 @@
     font-size: 10px;
   }
 }
+
+
+/* Team Room decision cockpit — UI/UX hierarchy pass */
+#decision,
+#portfolio,
+#counterplay,
+#audit,
+#squad {
+  scroll-margin-top: 86px;
+}
+
+.team-room-section-rail {
+  position: sticky;
+  top: 8px;
+  z-index: 24;
+  display: flex;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid rgba(219, 224, 229, .9);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 8px 30px rgba(17, 24, 39, .07);
+  backdrop-filter: blur(16px);
+  scrollbar-width: none;
+}
+.team-room-section-rail::-webkit-scrollbar { display: none; }
+.team-room-section-rail a {
+  flex: 0 0 auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  padding: 0 12px;
+  color: #5e6874;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .01em;
+  text-decoration: none;
+  transition:
+    background-color .16s ease,
+    color .16s ease,
+    transform .16s ease;
+}
+.team-room-section-rail a:hover,
+.team-room-section-rail a:focus-visible {
+  background: #eef9f4;
+  color: #087b56;
+  outline: none;
+}
+.team-room-section-rail a:active { transform: scale(.98); }
+
+.team-room-command-card,
+.team-room-pressure-card,
+.portfolio-health,
+.counterplay-panel,
+.decision-quality-panel,
+.team-room-dashboard > .team-room-block {
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(17, 24, 39, .045);
+}
+
+.team-room-status-row {
+  font-size: 10px;
+  line-height: 1.35;
+}
+.team-room-block-head span,
+.team-room-scoreboard span,
+.team-room-suggestion span,
+.team-room-watch > span,
+.team-room-pressure span,
+.team-room-rivals span,
+.portfolio-health-grid span,
+.portfolio-price-bands span,
+.portfolio-evidence-grid span,
+.portfolio-missing > span,
+.counterplay-panel > .team-room-block-head span,
+.decision-quality-panel > .team-room-block-head span {
+  font-size: 9px;
+}
+.team-room-block-head h2 { font-size: 21px; }
+.team-room-block-head > small {
+  max-width: 48ch;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.team-room-suggestion {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+}
+.team-room-suggestion strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+.team-room-suggestion small {
+  font-size: 10px;
+  line-height: 1.48;
+}
+.team-room-watch p {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.team-room-primary {
+  min-height: 44px;
+  border-radius: 10px;
+  padding-inline: 16px;
+  font-size: 10px;
+}
+.team-room-pressure strong { font-size: 12px; }
+.team-room-pressure small,
+.team-room-standings span,
+.team-room-standings strong,
+.team-room-standings small {
+  font-size: 9px;
+}
+
+.portfolio-deep-dive,
+.counterplay-tool-drawer,
+.counterplay-deep-dive {
+  margin-top: 12px;
+  border: 1px solid #e1e5e9;
+  border-radius: 13px;
+  background: #fbfcfd;
+  overflow: clip;
+}
+.portfolio-deep-dive > summary,
+.counterplay-tool-drawer > summary,
+.counterplay-deep-dive > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 18px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 44px 12px 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.portfolio-deep-dive > summary::-webkit-details-marker,
+.counterplay-tool-drawer > summary::-webkit-details-marker,
+.counterplay-deep-dive > summary::-webkit-details-marker {
+  display: none;
+}
+.portfolio-deep-dive > summary::after,
+.counterplay-tool-drawer > summary::after,
+.counterplay-deep-dive > summary::after {
+  content: "＋";
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  translate: 0 -50%;
+  color: #087b56;
+  font-size: 18px;
+  font-weight: 700;
+}
+.portfolio-deep-dive[open] > summary::after,
+.counterplay-tool-drawer[open] > summary::after,
+.counterplay-deep-dive[open] > summary::after {
+  content: "−";
+}
+.portfolio-deep-dive > summary span,
+.counterplay-tool-drawer > summary span,
+.counterplay-deep-dive > summary span {
+  display: block;
+  color: #0b8b61;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .09em;
+}
+.portfolio-deep-dive > summary strong,
+.counterplay-tool-drawer > summary strong,
+.counterplay-deep-dive > summary strong {
+  display: block;
+  color: #171a1f;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.portfolio-deep-dive > summary small,
+.counterplay-tool-drawer > summary small,
+.counterplay-deep-dive > summary small {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  max-width: 330px;
+  color: #79828d;
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: right;
+}
+.portfolio-deep-dive[open] > summary,
+.counterplay-tool-drawer[open] > summary,
+.counterplay-deep-dive[open] > summary {
+  border-bottom: 1px solid #e6e9ed;
+  background: #f7faf8;
+}
+
+.portfolio-deep-dive .portfolio-price-bands,
+.portfolio-deep-dive .portfolio-evidence-grid,
+.portfolio-deep-dive .portfolio-missing {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+.portfolio-deep-dive .portfolio-price-bands { margin-top: 12px; }
+.portfolio-deep-dive .portfolio-missing { margin-bottom: 12px; }
+
+.counterplay-tool-drawer .counterplay-whatif-shell {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+.counterplay-tool-drawer .counterplay-whatif-head {
+  padding-top: 2px;
+}
+.counterplay-deep-dive .counterplay-layout {
+  margin: 12px;
+}
+.counterplay-deep-dive .counterplay-layout.secondary {
+  margin-top: 0;
+}
+.counterplay-caveats {
+  margin-top: 10px;
+}
+.counterplay-caveats > summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.team-room-mobile-dock { display: none; }
+
+@media (max-width: 700px) {
+  #decision,
+  #portfolio,
+  #counterplay,
+  #audit,
+  #squad {
+    scroll-margin-top: 70px;
+  }
+
+  .team-room-dashboard {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .team-room-section-rail {
+    top: 5px;
+    margin-inline: -1px;
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .team-room-section-rail a {
+    min-height: 38px;
+    padding-inline: 13px;
+    font-size: 11px;
+  }
+
+  .team-room-block,
+  .team-room-command-grid .team-room-block {
+    padding: 15px;
+    border-radius: 16px;
+  }
+  .team-room-block-head {
+    align-items: flex-start;
+  }
+  .team-room-block-head h2 {
+    font-size: 21px;
+    line-height: 1.12;
+  }
+  .team-room-block-head > small {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .team-room-quip {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .team-room-status-row {
+    font-size: 10px;
+    min-height: 30px;
+  }
+
+  .team-room-suggestion {
+    grid-template-columns: 1fr;
+  }
+  .team-room-suggestion > div {
+    padding: 12px 0;
+  }
+  .team-room-suggestion span,
+  .team-room-watch > span,
+  .team-room-pressure span,
+  .portfolio-health-grid span,
+  .portfolio-price-bands span,
+  .portfolio-evidence-grid span,
+  .portfolio-missing > span {
+    font-size: 9px;
+  }
+  .team-room-suggestion strong {
+    font-size: 15px;
+  }
+  .team-room-suggestion small,
+  .team-room-watch p {
+    font-size: 11px;
+  }
+  .team-room-pressure strong { font-size: 12px; }
+  .team-room-pressure small,
+  .team-room-standings span,
+  .team-room-standings strong,
+  .team-room-standings small {
+    font-size: 10px;
+  }
+
+  .portfolio-health-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 68vw);
+    grid-template-columns: none;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 1px 1px 5px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .portfolio-health-grid::-webkit-scrollbar { display: none; }
+  .portfolio-health-grid > div {
+    scroll-snap-align: start;
+    min-height: 92px;
+    padding: 12px;
+  }
+  .portfolio-health-grid strong { font-size: 18px; }
+  .portfolio-health-grid small { font-size: 10px; }
+
+  .portfolio-deep-dive > summary,
+  .counterplay-tool-drawer > summary,
+  .counterplay-deep-dive > summary {
+    grid-template-columns: 1fr;
+    min-height: 72px;
+    padding: 13px 42px 13px 13px;
+  }
+  .portfolio-deep-dive > summary span,
+  .counterplay-tool-drawer > summary span,
+  .counterplay-deep-dive > summary span {
+    font-size: 9px;
+  }
+  .portfolio-deep-dive > summary strong,
+  .counterplay-tool-drawer > summary strong,
+  .counterplay-deep-dive > summary strong {
+    font-size: 13px;
+  }
+  .portfolio-deep-dive > summary small,
+  .counterplay-tool-drawer > summary small,
+  .counterplay-deep-dive > summary small {
+    grid-column: 1;
+    grid-row: auto;
+    max-width: none;
+    font-size: 10px;
+    text-align: left;
+  }
+
+  .counterplay-posture-copy strong {
+    font-size: 14px;
+  }
+  .counterplay-posture-copy small,
+  .counterplay-posture-status,
+  .counterplay-objective,
+  .counterplay-impact p,
+  .counterplay-primary-reason p {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .counterplay-posture-toggle button {
+    min-height: 58px;
+  }
+  .counterplay-posture-toggle b { font-size: 11px; }
+  .counterplay-posture-toggle small { font-size: 9px; }
+
+  .counterplay-whatif-controls select {
+    min-height: 48px;
+    font-size: 12px;
+  }
+  .counterplay-whatif-controls label > span {
+    font-size: 9px;
+  }
+  .counterplay-whatif-actions button {
+    min-height: 46px;
+    font-size: 10px;
+  }
+  .counterplay-whatif-actions small {
+    font-size: 10px;
+  }
+
+  .counterplay-horizon-toggle button {
+    min-height: 44px;
+    min-width: 54px;
+    font-size: 11px;
+  }
+  .counterplay-horizon-summary,
+  .counterplay-hero-grid,
+  .decision-quality-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .counterplay-horizon-summary span,
+  .counterplay-hero-grid span,
+  .decision-quality-grid span {
+    font-size: 8px;
+  }
+  .counterplay-horizon-summary strong,
+  .counterplay-hero-grid strong,
+  .decision-quality-grid strong {
+    font-size: 17px;
+  }
+  .counterplay-horizon-summary small,
+  .counterplay-hero-grid small,
+  .decision-quality-grid small,
+  .decision-quality-empty p,
+  .decision-quality-caveat {
+    font-size: 10px;
+    line-height: 1.45;
+  }
+  .counterplay-path-weeks article {
+    gap: 10px;
+    padding: 11px;
+  }
+  .counterplay-path-weeks small,
+  .counterplay-path-weeks span {
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .counterplay-deep-dive .counterplay-layout {
+    margin: 10px;
+  }
+  .counterplay-scenarios p,
+  .counterplay-threats small,
+  .counterplay-exposure small,
+  .counterplay-vectors small,
+  .counterplay-vector-row p {
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .decision-quality-history article small,
+  .decision-quality-history article span {
+    font-size: 9px;
+  }
+  .decision-quality-history article strong,
+  .decision-quality-history article b {
+    font-size: 11px;
+  }
+
+  .team-room-player-row {
+    min-height: 66px;
+  }
+  .team-room-player-name strong { font-size: 12px; }
+  .team-room-player-name small,
+  .team-room-player-row small { font-size: 9px; }
+  .team-room-player-row b { font-size: 12px; }
+
+  .team-room-mobile-dock {
+    position: fixed;
+    z-index: 34;
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 4px;
+    min-height: 68px;
+    padding: 6px;
+    border: 1px solid rgba(203, 211, 218, .94);
+    border-radius: 17px;
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 14px 50px rgba(17, 24, 39, .18);
+    backdrop-filter: blur(18px);
+  }
+  .team-room-mobile-dock a {
+    min-width: 68px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-radius: 12px;
+    padding: 8px 10px;
+    color: #47515d;
+    text-decoration: none;
+  }
+  .team-room-mobile-dock a:active {
+    background: #edf8f3;
+  }
+  .team-room-mobile-dock .team-room-mobile-dock-action {
+    min-width: 0;
+    background: #111318;
+    color: #fff;
+  }
+  .team-room-mobile-dock span {
+    display: block;
+    color: #82909d;
+    font-size: 7px;
+    font-weight: 900;
+    letter-spacing: .08em;
+  }
+  .team-room-mobile-dock .team-room-mobile-dock-action span {
+    color: #9fb5aa;
+  }
+  .team-room-mobile-dock strong {
+    display: block;
+    margin-top: 3px;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .team-room-mobile-dock .team-room-mobile-dock-action strong {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-room-section-rail a {
+    transition: none;
+  }
+}

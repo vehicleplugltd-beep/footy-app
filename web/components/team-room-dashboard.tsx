@@ -907,7 +907,15 @@ export function TeamRoomDashboard({
         </span>
       </div>
 
-      <section className="team-room-command-grid">
+      <nav className="team-room-section-rail" aria-label="Team Room sections">
+        <a href="#decision">Decision</a>
+        <a href="#portfolio">Portfolio</a>
+        <a href="#counterplay">CounterPlay</a>
+        <a href="#audit">Audit</a>
+        <a href="#squad">Squad</a>
+      </nav>
+
+      <section className="team-room-command-grid" id="decision">
         <article className="team-room-block team-room-command-card">
           <div className="team-room-block-head">
             <div>
@@ -1115,7 +1123,7 @@ export function TeamRoomDashboard({
       </section>
 
       {portfolioPlan ? (
-        <section className="team-room-block portfolio-health">
+        <section className="team-room-block portfolio-health" id="portfolio">
           <div className="team-room-block-head">
             <div>
               <span>PORTFOLIO HEALTH</span>
@@ -1223,7 +1231,13 @@ export function TeamRoomDashboard({
             </div>
           </div>
 
-          <div className="portfolio-price-bands">
+          <details className="portfolio-deep-dive">
+            <summary>
+              <span>DEEP PORTFOLIO EVIDENCE</span>
+              <strong>Price structure, underlying data & failure modes</strong>
+              <small>Open when you want the full squad-construction case.</small>
+            </summary>
+            <div className="portfolio-price-bands">
             <div>
               <span>GOALKEEPERS</span>
               <strong>£{portfolioPlan.portfolio.priceStructure.bands.goalkeeperSpend.toFixed(1)}m</strong>
@@ -1291,18 +1305,19 @@ export function TeamRoomDashboard({
           </div>
 
           {portfolioPlan.missing.length ? (
-            <div className="portfolio-missing">
-              <span>NOT YET MEASURED — NOT INVENTED</span>
-              {portfolioPlan.missing.map((item, index) => (
-                <p key={"missing-" + index}>{item}</p>
-              ))}
-            </div>
-          ) : null}
+              <div className="portfolio-missing">
+                <span>NOT YET MEASURED — NOT INVENTED</span>
+                {portfolioPlan.missing.map((item, index) => (
+                  <p key={"missing-" + index}>{item}</p>
+                ))}
+              </div>
+            ) : null}
+          </details>
         </section>
       ) : null}
 
       {counterPlay ? (
-        <section className="team-room-block counterplay-panel">
+        <section className="team-room-block counterplay-panel" id="counterplay">
           <div className="team-room-block-head">
             <div>
               <span>COUNTERPLAY</span>
@@ -1363,8 +1378,21 @@ export function TeamRoomDashboard({
             </div>
           </div>
 
-          <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
-            <div className="counterplay-whatif-head">
+          <details
+            className="counterplay-tool-drawer"
+            open={counterPlay.what_if.status === "VALID"}
+          >
+            <summary>
+              <div>
+                <span>WHAT-IF LAB</span>
+                <strong>Test your own move against Footy.</strong>
+              </div>
+              <small>
+                Optional · same 10,000-run model · keeps Footy’s recommendation independent
+              </small>
+            </summary>
+            <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
+              <div className="counterplay-whatif-head">
               <div>
                 <span>WHAT-IF LAB</span>
                 <strong>Test your own move against Footy’s path.</strong>
@@ -1506,7 +1534,8 @@ export function TeamRoomDashboard({
                 </div>
               </div>
             ) : null}
-          </div>
+            </div>
+          </details>
 
           <div
             className={
@@ -1704,9 +1733,15 @@ export function TeamRoomDashboard({
             </div>
           ) : null}
 
-          <div className="counterplay-layout">
-            <section>
-              <span>SCENARIOS</span>
+          <details className="counterplay-deep-dive">
+            <summary>
+              <span>ADVANCED COUNTERPLAY</span>
+              <strong>Scenario matrix, rival threats & response vectors</strong>
+              <small>Open for the game-theory evidence behind the command plan.</small>
+            </summary>
+            <div className="counterplay-layout">
+              <section>
+                <span>SCENARIOS</span>
               <div className="counterplay-scenarios">
                 {counterPlay.scenarios.map((scenario) => (
                   <article key={scenario.id}>
@@ -1874,8 +1909,9 @@ export function TeamRoomDashboard({
               </div>
             </section>
           </div>
+          </details>
 
-          <details className="counterplay-caveats" open>
+          <details className="counterplay-caveats">
             <summary>Simulation assumptions & limitations</summary>
             {counterPlay.caveats.map((item, index) => (
               <p key={"counter-caveat-" + index}>{item}</p>
@@ -1885,7 +1921,7 @@ export function TeamRoomDashboard({
       ) : null}
 
       {decisionQuality ? (
-        <section className="team-room-block decision-quality-panel">
+        <section className="team-room-block decision-quality-panel" id="audit">
           <div className="team-room-block-head">
             <div>
               <span>DECISION QUALITY</span>
@@ -2084,7 +2120,7 @@ export function TeamRoomDashboard({
         </div>
       </section>
 
-      <section className="team-room-block">
+      <section className="team-room-block" id="squad">
         <div className="team-room-block-head">
           <div>
             <span>SQUAD</span>
@@ -2232,6 +2268,28 @@ export function TeamRoomDashboard({
           Open Preview →
         </Link>
       </section>
+
+      <aside className="team-room-mobile-dock" aria-label="Current Footy decision">
+        <a className="team-room-mobile-dock-action" href="#decision">
+          <span>NEXT ACTION</span>
+          <strong>
+            {intelligenceLoading
+              ? "Checking…"
+              : portfolioPlan?.headline ??
+                (transfer
+                  ? transfer.out.name + " → " + transfer.in.name
+                  : "Hold transfer")}
+          </strong>
+        </a>
+        <a href="#counterplay">
+          <span>POSTURE</span>
+          <strong>{activeCounterPosture}</strong>
+        </a>
+        <a href="#audit">
+          <span>CAPTAIN</span>
+          <strong>{captain?.player.name ?? "—"}</strong>
+        </a>
+      </aside>
 
       <PlayerIntelDrawer
         profile={selectedPlayer}
