@@ -71,6 +71,16 @@ function compact(value) {
   return cleanText(value).replace(/[^a-z0-9]/g, "");
 }
 
+function canonicalMarket(value) {
+  const market = cleanText(value);
+  if (
+    ["1x2", "match result", "match winner", "moneyline", "h2h", "full time result"].includes(market)
+  ) {
+    return "1X2";
+  }
+  return String(value || "").trim();
+}
+
 async function sb(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
@@ -292,7 +302,7 @@ async function captureUserClosingLines(capturedAt) {
 
     const rows =
       (await sb(
-        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(item.market)}&selection=eq.${encodeURIComponent(normalizedSelection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
+        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(canonicalMarket(item.market))}&selection=eq.${encodeURIComponent(normalizedSelection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
       )) || [];
 
     if (!rows.length) return null;
