@@ -260,10 +260,13 @@ async function captureUserClosingLines(capturedAt) {
       `footy_bet_legs?select=id,bet_id,match_id,market,selection,bookmaker,decimal_odds,closing_odds&closing_odds=is.null&match_id=not.is.null&limit=1000`,
     ),
     sb(
-      `footy_matches?select=match_id,kickoff_at&kickoff_at=gte.${encodeURIComponent(windowStart)}&kickoff_at=lte.${encodeURIComponent(capturedAt)}&limit=500`,
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team&kickoff_at=gte.${encodeURIComponent(windowStart)}&kickoff_at=lte.${encodeURIComponent(capturedAt)}&limit=500`,
     ),
   ]);
 
+  const matchById = new Map(
+    (recentMatches || []).map((row) => [String(row.match_id), row]),
+  );
   const kickoffByMatch = new Map(
     (recentMatches || []).map((row) => [String(row.match_id), row.kickoff_at]),
   );
@@ -277,9 +280,19 @@ async function captureUserClosingLines(capturedAt) {
     if (now.getTime() - kickoffMs > 36 * 60 * 60 * 1000) return null;
 
     const searchStart = new Date(kickoffMs - 8 * 60 * 60 * 1000).toISOString();
+    const match = matchById.get(String(item.match_id));
+    const rawSelection = cleanText(item.selection);
+    let normalizedSelection = rawSelection;
+    if (match && !["home", "draw", "away"].includes(rawSelection)) {
+      const candidate = canonicalTeam(item.selection);
+      if (candidate === canonicalTeam(match.home_team)) normalizedSelection = "home";
+      if (candidate === canonicalTeam(match.away_team)) normalizedSelection = "away";
+    }
+    if (!["home", "draw", "away"].includes(normalizedSelection)) return null;
+
     const rows =
       (await sb(
-        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(item.market)}&selection=eq.${encodeURIComponent(item.selection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
+        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(item.market)}&selection=eq.${encodeURIComponent(normalizedSelection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
       )) || [];
 
     if (!rows.length) return null;
