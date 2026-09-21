@@ -519,6 +519,9 @@ export function TeamRoomDashboard({
   const [whatIfCaptainId, setWhatIfCaptainId] = useState<number | null>(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [activeWorkflowPhase, setActiveWorkflowPhase] = useState<
+    "decision" | "plan" | "test" | "review"
+  >("decision");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -708,6 +711,42 @@ export function TeamRoomDashboard({
     }
   }
 
+  useEffect(() => {
+    const phaseMap = new Map<string, "decision" | "plan" | "test" | "review">([
+      ["decision", "decision"],
+      ["portfolio", "plan"],
+      ["counterplay", "plan"],
+      ["what-if", "test"],
+      ["audit", "review"],
+    ]);
+    const elements = [...phaseMap.keys()]
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => Boolean(element));
+    if (!elements.length || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => {
+            const aDistance = Math.abs(a.boundingClientRect.top - 132);
+            const bDistance = Math.abs(b.boundingClientRect.top - 132);
+            return aDistance - bDistance;
+          });
+        const closest = visible[0]?.target as HTMLElement | undefined;
+        const phase = closest?.id ? phaseMap.get(closest.id) : null;
+        if (phase) setActiveWorkflowPhase(phase);
+      },
+      {
+        rootMargin: "-112px 0px -62% 0px",
+        threshold: [0, 0.08, 0.25],
+      },
+    );
+
+    elements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [manager]);
+
   const squadRatings = useMemo(() => {
     if (!scout) return [];
 
@@ -889,7 +928,7 @@ export function TeamRoomDashboard({
 
       <blockquote className="footy-quip team-room-quip">{squadQuip}</blockquote>
 
-      <div className="team-room-status-row" aria-label="Live data status">
+      <div className="team-room-status-row" aria-label="Model and data status">
         <span className="team-room-live-pill">
           <i />
           {scout?.freshness === "LIVE_FPL" ? "LIVE FPL" : "FPL DATA"}
@@ -903,19 +942,38 @@ export function TeamRoomDashboard({
               })
             : "Loading live intelligence"}
         </span>
-        <span>
-          {scout
-            ? scout.undervalued.length + " value flags in Scout"
-            : "Scanning player value"}
-        </span>
+        {counterPlay?.volatility_calibration.status === "EMPIRICAL" ? (
+          <span className="team-room-status-proof">
+            EMPIRICAL · {counterPlay.volatility_calibration.sample_count.toLocaleString()} samples
+          </span>
+        ) : null}
+        {decisionQuality?.pending ? (
+          <a className="team-room-status-audit" href="#audit">
+            GW{decisionQuality.pending.event} AUDIT ARMED
+          </a>
+        ) : null}
       </div>
 
-      <nav className="team-room-section-rail" aria-label="Team Room workflow">
-        <a href="#decision">Now</a>
-        <a href="#counterplay">Plan</a>
-        <a href="#what-if">Test</a>
-        <a href="#audit">Review</a>
-        <a href="#squad">Squad</a>
+      <nav className="team-room-section-rail" aria-label="Team Room decision workflow">
+        {[
+          { key: "decision" as const, step: "1", label: "Decide", hint: "What now", href: "#decision" },
+          { key: "plan" as const, step: "2", label: "Plan", hint: "Path + risk", href: "#plan" },
+          { key: "test" as const, step: "3", label: "Test", hint: "What-If", href: "#what-if" },
+          { key: "review" as const, step: "4", label: "Review", hint: "Decision quality", href: "#audit" },
+        ].map((item) => (
+          <a
+            key={item.key}
+            href={item.href}
+            className={activeWorkflowPhase === item.key ? "active" : undefined}
+            aria-current={activeWorkflowPhase === item.key ? "step" : undefined}
+          >
+            <i>{item.step}</i>
+            <span>
+              <b>{item.label}</b>
+              <small>{item.hint}</small>
+            </span>
+          </a>
+        ))}
       </nav>
 
       <section className="team-room-command-grid" id="decision">
@@ -1113,6 +1171,14 @@ export function TeamRoomDashboard({
           </a>
         </article>
       </section>
+
+      <div className="team-room-phase-heading" id="plan">
+        <div>
+          <span>2 / PLAN</span>
+          <strong>Build the path, then size the risk.</strong>
+        </div>
+        <small>Portfolio structure → CounterPlay → optional What-If</small>
+      </div>
 
       {portfolioPlan ? (
         <section className="team-room-block portfolio-health" id="portfolio">
@@ -1913,6 +1979,14 @@ export function TeamRoomDashboard({
         </section>
       ) : null}
 
+      <div className="team-room-phase-heading team-room-phase-heading-review">
+        <div>
+          <span>4 / REVIEW</span>
+          <strong>Judge the decision, not just the score.</strong>
+        </div>
+        <small>Frozen expectations, regret and outcome variance</small>
+      </div>
+
       {decisionQuality ? (
         <section className="team-room-block decision-quality-panel" id="audit">
           <div className="team-room-block-head">
@@ -2234,21 +2308,12 @@ export function TeamRoomDashboard({
         </a>
       </section>
 
-      <section className="team-room-next">
-        <div>
-          <span>TEST</span>
-          <h2>Challenge the recommendation without leaving Team Room.</h2>
-          <p>
-            Use What-If to change the transfer or captain and rerun the same
-            empirical model. Footy’s recommendation stays independent.
-          </p>
-        </div>
-        <a href="#what-if">Open What-If →</a>
-      </section>
-
-      <aside className="team-room-mobile-dock" aria-label="Current Footy decision">
-        <a className="team-room-mobile-dock-action" href="#decision">
-          <span>NEXT ACTION</span>
+      <aside className="team-room-mobile-dock" aria-label="Team Room workflow">
+        <a
+          className={"team-room-mobile-dock-action " + (activeWorkflowPhase === "decision" ? "active" : "")}
+          href="#decision"
+        >
+          <span>DECIDE</span>
           <strong>
             {intelligenceLoading
               ? "Checking…"
@@ -2258,13 +2323,17 @@ export function TeamRoomDashboard({
                   : "Hold transfer")}
           </strong>
         </a>
-        <a href="#counterplay">
-          <span>POSTURE</span>
+        <a className={activeWorkflowPhase === "plan" ? "active" : ""} href="#plan">
+          <span>PLAN</span>
           <strong>{activeCounterPosture}</strong>
         </a>
-        <a href="#what-if">
+        <a className={activeWorkflowPhase === "test" ? "active" : ""} href="#what-if">
           <span>TEST</span>
           <strong>What-If</strong>
+        </a>
+        <a className={activeWorkflowPhase === "review" ? "active" : ""} href="#audit">
+          <span>REVIEW</span>
+          <strong>{decisionQuality?.pending ? "Armed" : "Audit"}</strong>
         </a>
       </aside>
 

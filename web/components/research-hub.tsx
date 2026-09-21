@@ -340,12 +340,11 @@ export function ResearchHub({
           targets, long-term targets, the full player universe, club process and
           Gameweek-by-Gameweek fixture forecasts.
         </p>
-        <nav className="research-jump">
-          <a href="#short-term">Short term</a>
-          <a href="#long-term">Long term</a>
-          <a href="#players">All players</a>
-          <a href="#clubs">All clubs</a>
-          <a href="#fixtures">Fixture forecasts</a>
+        <nav className="research-jump" aria-label="Research sections">
+          <a href="#short-term">Targets</a>
+          <a href="#players">Players</a>
+          <a href="#clubs">Clubs</a>
+          <a href="#fixtures">Fixtures</a>
         </nav>
       </header>
 
