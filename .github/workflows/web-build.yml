@@ -26,6 +26,7 @@ jobs:
           cache-dependency-path: web/package.json
       - run: npm install --no-audit --no-fund
       - run: node --check scripts/sync-live-odds.mjs
+      - run: node --check scripts/import-oddsharvester.mjs
       - run: node --check scripts/sync-free-oddsportal.mjs
       - run: node --check scripts/sync-free-flashscore.mjs
       - run: python -m py_compile scripts/fetch-sofascore.py
