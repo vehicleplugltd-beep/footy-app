@@ -188,6 +188,7 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
         teams,
         matches,
         season=args.season,
+        penalty_xg_value=args.penalty_xg_value,
     )
 
     reader = SupabaseRESTReader()
@@ -1189,6 +1190,14 @@ def main() -> None:
     fpl_core.add_argument("--league", default="ENG-Premier League")
     fpl_core.add_argument("--season", default="2627")
     fpl_core.add_argument("--min-match-rate", type=float, default=0.92)
+    fpl_core.add_argument(
+        "--penalty-xg-value",
+        type=float,
+        help=(
+            "Season-validated FPL-Core penalty xG convention. "
+            "If omitted the current batch must validate it independently."
+        ),
+    )
 
     fpl_core_priors = sub.add_parser(
         "fpl-core-priors-ingest",
