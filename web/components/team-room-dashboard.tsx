@@ -528,29 +528,8 @@ export function TeamRoomDashboard({
         ) : null}
       </div>
 
-      <section className="team-room-scoreboard">
-        <div>
-          <span>SQUAD RATING</span>
-          <strong>{squadNow ?? "—"}</strong>
-          <small>
-            {squadNow != null ? ratingBand(squadNow) + " · squad percentile model" : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>6GW RATING</span>
-          <strong>{squadFuture ?? "—"}</strong>
-          <small>
-            {squadFuture != null
-              ? ratingBand(squadFuture) + " · six-Gameweek process + fixtures"
-              : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>LEAGUE RANK</span>
-          <strong>#{leagueRank ?? "—"}</strong>
-          <small>{leagueName}</small>
-        </div>
-        <div>
+      <section className="team-room-scoreboard" aria-label="Team Room summary">
+        <div className="team-room-scoreboard-primary">
           <span>NEXT ACTION</span>
           <strong>
             {intelligenceLoading
@@ -565,6 +544,29 @@ export function TeamRoomDashboard({
                 (transfer
                   ? transfer.out.name + " → " + transfer.in.name
                   : "No move clears threshold")}
+          </small>
+        </div>
+        <div>
+          <span>LEAGUE RANK</span>
+          <strong>#{leagueRank ?? "—"}</strong>
+          <small>{leagueName}</small>
+        </div>
+        <div>
+          <span>SQUAD NOW</span>
+          <strong>{squadNow ?? "—"}</strong>
+          <small>
+            {squadNow != null
+              ? ratingBand(squadNow) + " · current squad quality"
+              : "Loading"}
+          </small>
+        </div>
+        <div>
+          <span>6GW OUTLOOK</span>
+          <strong>{squadFuture ?? "—"}</strong>
+          <small>
+            {squadFuture != null
+              ? ratingBand(squadFuture) + " · process + fixtures"
+              : "Loading"}
           </small>
         </div>
       </section>
@@ -1039,174 +1041,6 @@ export function TeamRoomDashboard({
             </div>
           </div>
 
-          <div className="team-room-phase-heading team-room-phase-heading-test">
-            <div>
-              <span>3 / TEST</span>
-              <strong>Challenge the plan without changing the recommendation.</strong>
-            </div>
-            <small>Custom transfer / captain → same model → side-by-side result</small>
-          </div>
-
-          <details
-            className="counterplay-tool-drawer"
-            id="what-if"
-            open={counterPlay.what_if.status === "VALID"}
-          >
-            <summary>
-              <div>
-                <span>WHAT-IF LAB</span>
-                <strong>Test your own move against Footy.</strong>
-              </div>
-              <small>
-                Optional · same 10,000-run model · keeps Footy’s recommendation independent
-              </small>
-            </summary>
-            <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
-              <div className="counterplay-whatif-head">
-              <div>
-                <span>WHAT-IF LAB</span>
-                <strong>Test your own move against Footy’s path.</strong>
-              </div>
-              <small>
-                Same 10,000-run model, empirical tails, rival responses and
-                {counterHorizon}GW state carry-forward.
-              </small>
-            </div>
-
-            <div className="counterplay-whatif-controls">
-              <label>
-                <span>SELL / REMOVE</span>
-                <select
-                  value={whatIfOutId ?? ""}
-                  disabled={whatIfLoading}
-                  onChange={(event) => {
-                    const value = Number(event.target.value) || null;
-                    setWhatIfOutId(value);
-                    setWhatIfInId(null);
-                    if (whatIfCaptainId === value) setWhatIfCaptainId(null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">No transfer</option>
-                  {whatIfOptions?.squad
-                    .slice()
-                    .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name))
-                    .map((player) => (
-                      <option key={player.id} value={player.id}>
-                        {player.position} · {player.name} · £{player.price.toFixed(1)}
-                      </option>
-                    ))}
-                </select>
-              </label>
-
-              <label>
-                <span>BUY / ADD</span>
-                <select
-                  value={whatIfInId ?? ""}
-                  disabled={!whatIfOutId || whatIfLoading}
-                  onChange={(event) => {
-                    setWhatIfInId(Number(event.target.value) || null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">
-                    {whatIfOutId ? "Choose legal replacement" : "Choose player out first"}
-                  </option>
-                  {whatIfReplacementOptions.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name} · {player.team} · £{player.price.toFixed(1)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span>CAPTAIN</span>
-                <select
-                  value={whatIfCaptainId ?? ""}
-                  disabled={whatIfLoading}
-                  onChange={(event) => {
-                    setWhatIfCaptainId(Number(event.target.value) || null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">Footy’s captain</option>
-                  {whatIfCaptainOptions.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name} · {player.team}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="counterplay-whatif-actions">
-              <button
-                type="button"
-                onClick={() => void runWhatIf()}
-                disabled={
-                  whatIfLoading ||
-                  (!whatIfCaptainId && !(whatIfOutId && whatIfInId))
-                }
-              >
-                {whatIfLoading ? "SIMULATING…" : "RUN WHAT-IF"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void clearWhatIf()}
-                disabled={whatIfLoading || (!whatIfOutId && !whatIfCaptainId && counterPlay.what_if.status !== "VALID")}
-              >
-                RESET
-              </button>
-              <small aria-live="polite">
-                {whatIfError ??
-                  (counterPlay.what_if.status === "VALID"
-                    ? "Custom scenario simulated. Footy’s recommendation remains independent."
-                    : counterPlay.what_if.caveat)}
-              </small>
-            </div>
-
-            {counterPlay.what_if.status === "VALID" && whatIfHorizonScenario ? (
-              <div className="counterplay-whatif-result">
-                <div>
-                  <span>YOUR PATH</span>
-                  <strong>{whatIfHorizonScenario.label}</strong>
-                  <small>
-                    {(whatIfHorizonScenario.objective_probability * 100).toFixed(1)}% objective ·{" "}
-                    {(whatIfHorizonScenario.probability_delta >= 0 ? "+" : "") +
-                      (whatIfHorizonScenario.probability_delta * 100).toFixed(1)}pp vs HOLD
-                  </small>
-                </div>
-                <div>
-                  <span>FOOTY BEST</span>
-                  <strong>
-                    {activeCounterHorizon?.recommended_scenario?.label ??
-                      counterPlay.recommended_scenario?.label ??
-                      "Hold structure"}
-                  </strong>
-                  <small>
-                    {activeCounterHorizon?.recommended_scenario
-                      ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
-                      : counterPlay.recommended_scenario
-                        ? (counterPlay.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
-                        : "No stronger path"}
-                  </small>
-                </div>
-                <div>
-                  <span>MODEL RANGE</span>
-                  <strong>
-                    {whatIfHorizonScenario.floor_5.toFixed(1)}–{whatIfHorizonScenario.ceiling_95.toFixed(1)}
-                  </strong>
-                  <small>
-                    empirical 5th–95th projected score
-                  </small>
-                </div>
-              </div>
-            ) : null}
-            </div>
-          </details>
-
           <div
             className={
               "counterplay-calibration-status " +
@@ -1590,6 +1424,165 @@ export function TeamRoomDashboard({
         </section>
       ) : null}
 
+      {counterPlay ? (
+        <>
+          <div className="team-room-phase-heading team-room-phase-heading-test">
+            <div>
+              <span>3 / TEST</span>
+              <strong>Challenge the plan without changing the recommendation.</strong>
+            </div>
+            <small>Custom transfer / captain → same model → side-by-side result</small>
+          </div>
+
+          <section className="team-room-block team-room-test-panel" id="what-if">
+            <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
+              <div className="counterplay-whatif-head">
+              <div>
+                <span>WHAT-IF LAB</span>
+                <strong>Test your own move against Footy’s path.</strong>
+              </div>
+              <small>
+                Same 10,000-run model, empirical tails, rival responses and
+                {counterHorizon}GW state carry-forward.
+              </small>
+            </div>
+
+            <div className="counterplay-whatif-controls">
+              <label>
+                <span>SELL / REMOVE</span>
+                <select
+                  value={whatIfOutId ?? ""}
+                  disabled={whatIfLoading}
+                  onChange={(event) => {
+                    const value = Number(event.target.value) || null;
+                    setWhatIfOutId(value);
+                    setWhatIfInId(null);
+                    if (whatIfCaptainId === value) setWhatIfCaptainId(null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">No transfer</option>
+                  {whatIfOptions?.squad
+                    .slice()
+                    .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name))
+                    .map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.position} · {player.name} · £{player.price.toFixed(1)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                <span>BUY / ADD</span>
+                <select
+                  value={whatIfInId ?? ""}
+                  disabled={!whatIfOutId || whatIfLoading}
+                  onChange={(event) => {
+                    setWhatIfInId(Number(event.target.value) || null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">
+                    {whatIfOutId ? "Choose legal replacement" : "Choose player out first"}
+                  </option>
+                  {whatIfReplacementOptions.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} · {player.team} · £{player.price.toFixed(1)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>CAPTAIN</span>
+                <select
+                  value={whatIfCaptainId ?? ""}
+                  disabled={whatIfLoading}
+                  onChange={(event) => {
+                    setWhatIfCaptainId(Number(event.target.value) || null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">Footy’s captain</option>
+                  {whatIfCaptainOptions.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} · {player.team}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="counterplay-whatif-actions">
+              <button
+                type="button"
+                onClick={() => void runWhatIf()}
+                disabled={
+                  whatIfLoading ||
+                  (!whatIfCaptainId && !(whatIfOutId && whatIfInId))
+                }
+              >
+                {whatIfLoading ? "SIMULATING…" : "RUN WHAT-IF"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void clearWhatIf()}
+                disabled={whatIfLoading || (!whatIfOutId && !whatIfCaptainId && counterPlay.what_if.status !== "VALID")}
+              >
+                RESET
+              </button>
+              <small aria-live="polite">
+                {whatIfError ??
+                  (counterPlay.what_if.status === "VALID"
+                    ? "Custom scenario simulated. Footy’s recommendation remains independent."
+                    : counterPlay.what_if.caveat)}
+              </small>
+            </div>
+
+            {counterPlay.what_if.status === "VALID" && whatIfHorizonScenario ? (
+              <div className="counterplay-whatif-result">
+                <div>
+                  <span>YOUR PATH</span>
+                  <strong>{whatIfHorizonScenario.label}</strong>
+                  <small>
+                    {(whatIfHorizonScenario.objective_probability * 100).toFixed(1)}% objective ·{" "}
+                    {(whatIfHorizonScenario.probability_delta >= 0 ? "+" : "") +
+                      (whatIfHorizonScenario.probability_delta * 100).toFixed(1)}pp vs HOLD
+                  </small>
+                </div>
+                <div>
+                  <span>FOOTY BEST</span>
+                  <strong>
+                    {activeCounterHorizon?.recommended_scenario?.label ??
+                      counterPlay.recommended_scenario?.label ??
+                      "Hold structure"}
+                  </strong>
+                  <small>
+                    {activeCounterHorizon?.recommended_scenario
+                      ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
+                      : counterPlay.recommended_scenario
+                        ? (counterPlay.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
+                        : "No stronger path"}
+                  </small>
+                </div>
+                <div>
+                  <span>MODEL RANGE</span>
+                  <strong>
+                    {whatIfHorizonScenario.floor_5.toFixed(1)}–{whatIfHorizonScenario.ceiling_95.toFixed(1)}
+                  </strong>
+                  <small>
+                    empirical 5th–95th projected score
+                  </small>
+                </div>
+              </div>
+            ) : null}
+            </div>
+          </section>
+        </>
+      ) : null}
+
       <div className="team-room-phase-heading team-room-phase-heading-review">
         <div>
           <span>4 / REVIEW</span>
@@ -1757,134 +1750,137 @@ export function TeamRoomDashboard({
         </section>
       ) : null}
 
-      <div className="team-room-reference-heading" id="reference">
-        <div>
-          <span>REFERENCE</span>
-          <strong>Supporting evidence, kept out of the decision flow.</strong>
-        </div>
-        <small>Open player and manager dossiers only when you need the detail.</small>
-      </div>
-
-      <section className="team-room-block" id="squad">
-        <div className="team-room-block-head">
+      <details className="team-room-reference-drawer" id="reference">
+        <summary>
           <div>
-            <span>SQUAD</span>
-            <h2>Current team + player ratings</h2>
+            <span>REFERENCE</span>
+            <strong>Squad ratings + opponent resources</strong>
           </div>
-          <small>
-            Tap any player for EPA, fixtures, risks and source detail ·{" "}
-            <Link href={researchHref + "#players"}>research every player →</Link>
-          </small>
-        </div>
+          <small>Supporting evidence kept outside the four-step decision flow.</small>
+        </summary>
+        <div className="team-room-reference-content">
+          <section className="team-room-block" id="squad">
+            <div className="team-room-block-head">
+              <div>
+                <span>SQUAD</span>
+                <h2>Current team + player ratings</h2>
+              </div>
+              <small>
+                Tap any player for EPA, fixtures, risks and source detail ·{" "}
+                <Link href={researchHref + "#players"}>research every player →</Link>
+              </small>
+            </div>
 
-        <div className="team-room-player-table">
-          {squadRatings.map(
-            ({ pick, profile, now, future }) => (
-              <button
-                type="button"
-                key={pick.id}
-                className="team-room-player-row"
-                onClick={() => {
-                  setSelectedTeam(null);
-                  setSelectedPlayer(profile);
-                }}
-                aria-label={"Open " + pick.name + " player profile"}
-              >
-                <div className="team-room-player-name">
-                  <strong>{pick.name}</strong>
-                  <small>
-                    {pick.team} · {pick.position} · £
-                    {pick.price.toFixed(1)}m
-                  </small>
-                  <em>{profile.reasons[0] ?? "Role, process and fixtures drive the rating."}</em>
-                </div>
-                <div>
-                  <span>Now</span>
-                  <b>{now}</b>
-                  <small>{ratingBand(now)}</small>
-                </div>
-                <div>
-                  <span>6GW</span>
-                  <b>{future}</b>
-                  <small>
-                    {profile.bestWindow.startName}–
-                    {profile.bestWindow.endName}
-                  </small>
-                </div>
-                <div>
-                  <span>EPA</span>
-                  <b>
-                    {profile.epa.epa >= 0 ? "+" : ""}
-                    {profile.epa.epa.toFixed(2)}
-                  </b>
-                  <small>
-                    {profile.epa.undervalued
-                      ? "Undervalued"
-                      : profile.player.selectedBy.toFixed(1) +
-                        "% owned"}
-                  </small>
-                </div>
-                <div>
-                  <span>Available</span>
-                  <b>{profile.player.availability}%</b>
-                  <small>
-                    {profile.player.news ||
-                      "No current blocker"}
-                  </small>
-                </div>
-              </button>
-            ),
-          )}
-        </div>
-      </section>
+            <div className="team-room-player-table">
+              {squadRatings.map(
+                ({ pick, profile, now, future }) => (
+                  <button
+                    type="button"
+                    key={pick.id}
+                    className="team-room-player-row"
+                    onClick={() => {
+                      setSelectedTeam(null);
+                      setSelectedPlayer(profile);
+                    }}
+                    aria-label={"Open " + pick.name + " player profile"}
+                  >
+                    <div className="team-room-player-name">
+                      <strong>{pick.name}</strong>
+                      <small>
+                        {pick.team} · {pick.position} · £
+                        {pick.price.toFixed(1)}m
+                      </small>
+                      <em>{profile.reasons[0] ?? "Role, process and fixtures drive the rating."}</em>
+                    </div>
+                    <div>
+                      <span>Now</span>
+                      <b>{now}</b>
+                      <small>{ratingBand(now)}</small>
+                    </div>
+                    <div>
+                      <span>6GW</span>
+                      <b>{future}</b>
+                      <small>
+                        {profile.bestWindow.startName}–
+                        {profile.bestWindow.endName}
+                      </small>
+                    </div>
+                    <div>
+                      <span>EPA</span>
+                      <b>
+                        {profile.epa.epa >= 0 ? "+" : ""}
+                        {profile.epa.epa.toFixed(2)}
+                      </b>
+                      <small>
+                        {profile.epa.undervalued
+                          ? "Undervalued"
+                          : profile.player.selectedBy.toFixed(1) +
+                            "% owned"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Available</span>
+                      <b>{profile.player.availability}%</b>
+                      <small>
+                        {profile.player.news ||
+                          "No current blocker"}
+                      </small>
+                    </div>
+                  </button>
+                ),
+              )}
+            </div>
+          </section>
 
-      <section className="team-room-block">
-        <div className="team-room-block-head">
-          <div>
-            <span>OPPONENT RESOURCES</span>
-            <h2>Chips, transfers and behaviour</h2>
-          </div>
-          <small>Public FPL history only · tap any manager for the full dossier</small>
-        </div>
+          <section className="team-room-block">
+            <div className="team-room-block-head">
+              <div>
+                <span>OPPONENT RESOURCES</span>
+                <h2>Chips, transfers and behaviour</h2>
+              </div>
+              <small>Public FPL history only · tap any manager for the full dossier</small>
+            </div>
 
-        <div className="team-room-rivals">
-          {resourceRows.slice(0, 6).map(
-            ({ standing, history }) => (
-              <button
-                type="button"
-                key={standing.entry_id}
-                className={
-                  standing.entry_id === teamId ? "you" : ""
-                }
-                onClick={() => setSelectedManager(standing)}
-                aria-label={"Open " + standing.entry_name + " opposition profile"}
-              >
-                <div>
-                  <strong>{standing.entry_name}</strong>
-                  <small>
-                    #{standing.rank} · {history.activity}
-                  </small>
-                </div>
-                <div>
-                  <span>FT est.</span>
-                  <b>{history.estimatedFreeTransfers}</b>
-                </div>
-                <div>
-                  <span>Hits</span>
-                  <b>-{history.totalHitCost}</b>
-                </div>
-                <div>
-                  <span>Chips left</span>
-                  <b>{history.currentHalfRemaining.length}</b>
-                </div>
-              </button>
-            ),
-          )}
+            <div className="team-room-rivals">
+              {resourceRows.slice(0, 6).map(
+                ({ standing, history }) => (
+                  <button
+                    type="button"
+                    key={standing.entry_id}
+                    className={
+                      standing.entry_id === teamId ? "you" : ""
+                    }
+                    onClick={() => setSelectedManager(standing)}
+                    aria-label={"Open " + standing.entry_name + " opposition profile"}
+                  >
+                    <div>
+                      <strong>{standing.entry_name}</strong>
+                      <small>
+                        #{standing.rank} · {history.activity}
+                      </small>
+                    </div>
+                    <div>
+                      <span>FT est.</span>
+                      <b>{history.estimatedFreeTransfers}</b>
+                    </div>
+                    <div>
+                      <span>Hits</span>
+                      <b>-{history.totalHitCost}</b>
+                    </div>
+                    <div>
+                      <span>Chips left</span>
+                      <b>{history.currentHalfRemaining.length}</b>
+                    </div>
+                  </button>
+                ),
+              )}
+            </div>
+            <a className="team-room-deep-link" href="#counterplay">
+              See how rivals change the plan →
+            </a>
+          </section>
         </div>
-        <a className="team-room-deep-link" href="#counterplay">
-          See how rivals change the plan →
-        </a>
-      </section>
+      </details>
 
       <TeamRoomMobileDock
         active={activeWorkflowPhase}
