@@ -1226,6 +1226,53 @@ def command_calibrate(args: argparse.Namespace) -> None:
     )
     insert_backtest_run(writer, result)
 
+    existing_validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
+    existing_by_market = (
+        {
+            str(row["market"]): row
+            for _, row in existing_validation.iterrows()
+        }
+        if not existing_validation.empty
+        else {}
+    )
+    validation_metrics = {
+        "1X2": one_x_two_log,
+        "TOTAL_2.5": over_log,
+        "BTTS": btts_log,
+    }
+    validation_rows = []
+    evaluated_at = datetime.now(timezone.utc).isoformat()
+    for market, model_log_loss in validation_metrics.items():
+        existing = existing_by_market.get(market)
+        status = (
+            str(existing["status"])
+            if existing is not None
+            else "RESEARCH"
+        )
+        notes = (
+            existing.get("notes")
+            if existing is not None
+            else (
+                "Research-only walk-forward calibration. "
+                "Closing-market benchmark and value backtest are required "
+                "before promotion."
+            )
+        )
+        validation_rows.append({
+            "model_version": args.model_version,
+            "league": args.league,
+            "market": market,
+            "status": status,
+            "sample_size": int(len(predictions)),
+            "model_log_loss": float(model_log_loss),
+            "notes": notes,
+            "evaluated_at": evaluated_at,
+        })
+    writer.upsert_model_market_validation(validation_rows)
+
     printable = dict(result)
     printable["calibration"] = {
         key: [
