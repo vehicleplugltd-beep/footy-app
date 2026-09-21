@@ -507,122 +507,240 @@ async function main() {
     await recordFeedStatus({
       last_error: "THE_ODDS_API_KEY is not configured",
     });
-    console.log("live odds sync skipped: THE_ODDS_API_KEY not configured");
+    console.log("football board sync skipped: THE_ODDS_API_KEY not configured");
     return;
   }
 
   const now = new Date();
   const capturedAt = now.toISOString();
-  const futureCutoff = new Date(
+  const discoveryStart = new Date(
+    now.getTime() - 6 * 60 * 60 * 1000,
+  ).toISOString();
+  const discoveryCutoff = new Date(
+    now.getTime() + 72 * 60 * 60 * 1000,
+  ).toISOString();
+  const oddsCutoff = new Date(
+    now.getTime() + 42 * 60 * 60 * 1000,
+  ).toISOString();
+  const matchCutoff = new Date(
     now.getTime() + 21 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
   const matches =
     (await sb(
-      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(capturedAt)}&kickoff_at=lte.${encodeURIComponent(futureCutoff)}&order=kickoff_at.asc`,
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(discoveryStart)}&kickoff_at=lte.${encodeURIComponent(matchCutoff)}&order=kickoff_at.asc&limit=3000`,
     )) || [];
 
+  const existingSince = new Date(
+    now.getTime() - 7 * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const existing =
     (await sb(
-      `footy_live_odds_current?select=price_key,decimal_odds,previous_decimal_odds&provider=eq.${encodeURIComponent(PROVIDER)}&sport_key=eq.${encodeURIComponent(SPORT_KEY)}`,
+      `footy_live_odds_current?select=price_key,decimal_odds,previous_decimal_odds&provider=eq.${encodeURIComponent(PROVIDER)}&captured_at=gte.${encodeURIComponent(existingSince)}&limit=20000`,
     )) || [];
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
-  const endpoint = new URL(
-    `https://api.the-odds-api.com/v4/sports/${SPORT_KEY}/odds/`,
+  const sportsResponse = await oddsApi("sports/", {});
+  const activeSoccer = new Set(
+    (sportsResponse.data || [])
+      .filter(
+        (sport) =>
+          sport.active &&
+          !sport.has_outrights &&
+          String(sport.group || "").toLowerCase().includes("soccer"),
+      )
+      .map((sport) => String(sport.key)),
   );
-  endpoint.searchParams.set("apiKey", ODDS_API_KEY);
-  endpoint.searchParams.set("regions", "uk");
-  endpoint.searchParams.set("markets", "h2h");
-  endpoint.searchParams.set("oddsFormat", "decimal");
-  endpoint.searchParams.set("dateFormat", "iso");
 
-  const response = await fetch(endpoint, {
-    headers: { Accept: "application/json" },
-  });
+  const activeCompetitions = COMPETITIONS.filter((competition) =>
+    activeSoccer.has(competition.sportKey),
+  );
 
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 500);
-    await recordFeedStatus({
-      last_error: `Odds API ${response.status}: ${detail}`,
-      credits_remaining:
-        Number(response.headers.get("x-requests-remaining")) || null,
-      credits_used: Number(response.headers.get("x-requests-used")) || null,
-      last_request_cost: Number(response.headers.get("x-requests-last")) || null,
-    });
-    throw new Error(`Odds API ${response.status}: ${detail}`);
+  const fixtureRows = [];
+  const eventsBySport = new Map();
+  const allDiscoveredEvents = [];
+  const discoveryErrors = [];
+
+  for (const competition of activeCompetitions) {
+    try {
+      const eventResponse = await oddsApi(
+        `sports/${competition.sportKey}/events`,
+        {
+          dateFormat: "iso",
+          commenceTimeFrom: discoveryStart,
+          commenceTimeTo: discoveryCutoff,
+        },
+      );
+      const events = eventResponse.data || [];
+      eventsBySport.set(competition.sportKey, events);
+
+      for (const event of events) {
+        let footyMatch = reconcileMatch(event, matches);
+        if (!footyMatch) {
+          footyMatch = {
+            match_id: syntheticMatchId(competition.sportKey, event.id),
+            kickoff_at: event.commence_time,
+            home_team: event.home_team,
+            away_team: event.away_team,
+            league: competition.league,
+          };
+          matches.push(footyMatch);
+          fixtureRows.push({
+            match_id: footyMatch.match_id,
+            league: competition.league,
+            season: seasonCodeFor(
+              event.commence_time,
+              competition.calendarYear,
+            ),
+            kickoff_at: event.commence_time,
+            home_team: event.home_team,
+            away_team: event.away_team,
+            status: "scheduled",
+            source: "the-odds-api-events",
+            retrieved_at: capturedAt,
+          });
+        }
+
+        allDiscoveredEvents.push({
+          ...event,
+          sport_key: competition.sportKey,
+          league: competition.league,
+          match_id: footyMatch.match_id,
+        });
+      }
+    } catch (error) {
+      discoveryErrors.push(
+        `${competition.sportKey}: ${String(error?.message || error)}`,
+      );
+    }
   }
 
-  const events = await response.json();
+  await upsert("footy_matches", fixtureRows, "match_id");
+
   const currentRows = [];
   const historyRows = [];
+  const oddsErrors = [];
+  let requestCost = 0;
+  let creditsRemaining = null;
+  let creditsUsed = null;
+  let sportsPriced = 0;
 
-  for (const event of events) {
-    const footyMatch = reconcileMatch(event, matches);
+  for (const competition of activeCompetitions) {
+    const discovered = eventsBySport.get(competition.sportKey) || [];
+    const hasNearTermEvent = discovered.some((event) => {
+      const kickoff = new Date(event.commence_time).getTime();
+      return (
+        Number.isFinite(kickoff) &&
+        kickoff >= new Date(discoveryStart).getTime() &&
+        kickoff <= new Date(oddsCutoff).getTime()
+      );
+    });
+    if (!hasNearTermEvent) continue;
 
-    for (const bookmaker of event.bookmakers || []) {
-      for (const market of bookmaker.markets || []) {
-        if (market.key !== "h2h") continue;
+    try {
+      const oddsResponse = await oddsApi(
+        `sports/${competition.sportKey}/odds/`,
+        {
+          regions: "uk",
+          markets: "h2h",
+          oddsFormat: "decimal",
+          dateFormat: "iso",
+          commenceTimeFrom: discoveryStart,
+          commenceTimeTo: oddsCutoff,
+        },
+      );
+      sportsPriced += 1;
+      requestCost +=
+        Number(oddsResponse.headers.get("x-requests-last")) || 0;
+      creditsRemaining =
+        Number(oddsResponse.headers.get("x-requests-remaining")) ||
+        creditsRemaining;
+      creditsUsed =
+        Number(oddsResponse.headers.get("x-requests-used")) || creditsUsed;
 
-        for (const outcome of market.outcomes || []) {
-          const selection = outcomeSelection(event, outcome.name);
-          const price = Number(outcome.price);
-          if (!selection || !Number.isFinite(price) || price <= 1) continue;
-
-          const priceKey = [
-            PROVIDER,
-            event.id,
-            bookmaker.key,
-            "1X2",
-            selection,
-          ].join("|");
-
-          const before = existingMap.get(priceKey);
-          const changed =
-            !before || Math.abs(Number(before.decimal_odds) - price) > 1e-9;
-
-          const row = {
-            price_key: priceKey,
-            provider: PROVIDER,
-            provider_event_id: event.id,
-            match_id: footyMatch?.match_id || null,
-            sport_key: SPORT_KEY,
-            home_team: footyMatch?.home_team || event.home_team,
-            away_team: footyMatch?.away_team || event.away_team,
-            commence_time: event.commence_time,
-            bookmaker_key: bookmaker.key,
-            bookmaker_name: bookmaker.title,
-            market: "1X2",
-            selection,
-            line: null,
-            decimal_odds: price,
-            previous_decimal_odds: changed
-              ? Number(before?.decimal_odds) || null
-              : Number(before?.previous_decimal_odds) || null,
-            provider_last_update:
-              market.last_update || bookmaker.last_update || null,
-            captured_at: capturedAt,
+      for (const event of oddsResponse.data || []) {
+        let footyMatch = reconcileMatch(event, matches);
+        if (!footyMatch) {
+          footyMatch = {
+            match_id: syntheticMatchId(competition.sportKey, event.id),
+            kickoff_at: event.commence_time,
+            home_team: event.home_team,
+            away_team: event.away_team,
+            league: competition.league,
           };
+        }
 
-          currentRows.push(row);
+        for (const bookmaker of event.bookmakers || []) {
+          for (const market of bookmaker.markets || []) {
+            if (market.key !== "h2h") continue;
 
-          if (changed) {
-            historyRows.push({
-              price_key: priceKey,
-              provider: PROVIDER,
-              provider_event_id: event.id,
-              match_id: footyMatch?.match_id || null,
-              bookmaker_key: bookmaker.key,
-              bookmaker_name: bookmaker.title,
-              market: "1X2",
-              selection,
-              line: null,
-              decimal_odds: price,
-              captured_at: capturedAt,
-            });
+            for (const outcome of market.outcomes || []) {
+              const selection = outcomeSelection(event, outcome.name);
+              const price = Number(outcome.price);
+              if (!selection || !Number.isFinite(price) || price <= 1) continue;
+
+              const priceKey = [
+                PROVIDER,
+                competition.sportKey,
+                event.id,
+                bookmaker.key,
+                "1X2",
+                selection,
+              ].join("|");
+
+              const before = existingMap.get(priceKey);
+              const changed =
+                !before ||
+                Math.abs(Number(before.decimal_odds) - price) > 1e-9;
+
+              const row = {
+                price_key: priceKey,
+                provider: PROVIDER,
+                provider_event_id: event.id,
+                match_id: footyMatch.match_id,
+                sport_key: competition.sportKey,
+                home_team: footyMatch.home_team || event.home_team,
+                away_team: footyMatch.away_team || event.away_team,
+                commence_time: event.commence_time,
+                bookmaker_key: bookmaker.key,
+                bookmaker_name: bookmaker.title,
+                market: "1X2",
+                selection,
+                line: null,
+                decimal_odds: price,
+                previous_decimal_odds: changed
+                  ? Number(before?.decimal_odds) || null
+                  : Number(before?.previous_decimal_odds) || null,
+                provider_last_update:
+                  market.last_update || bookmaker.last_update || null,
+                captured_at: capturedAt,
+              };
+
+              currentRows.push(row);
+
+              if (changed) {
+                historyRows.push({
+                  price_key: priceKey,
+                  provider: PROVIDER,
+                  provider_event_id: event.id,
+                  match_id: footyMatch.match_id,
+                  bookmaker_key: bookmaker.key,
+                  bookmaker_name: bookmaker.title,
+                  market: "1X2",
+                  selection,
+                  line: null,
+                  decimal_odds: price,
+                  captured_at: capturedAt,
+                });
+              }
+            }
           }
         }
       }
+    } catch (error) {
+      oddsErrors.push(
+        `${competition.sportKey}: ${String(error?.message || error)}`,
+      );
     }
   }
 
@@ -631,21 +749,36 @@ async function main() {
   const alertsTriggered = await evaluateAlerts(currentRows, capturedAt);
   const closingCapture = await captureUserClosingLines(capturedAt);
 
+  const partialErrors = [...discoveryErrors, ...oddsErrors];
+  const fatalNoCoverage =
+    activeCompetitions.length === 0 ||
+    (allDiscoveredEvents.length === 0 && partialErrors.length > 0);
+
   await recordFeedStatus({
-    last_success_at: capturedAt,
-    credits_remaining:
-      Number(response.headers.get("x-requests-remaining")) || null,
-    credits_used: Number(response.headers.get("x-requests-used")) || null,
-    last_request_cost: Number(response.headers.get("x-requests-last")) || null,
-    events_received: events.length,
+    last_success_at: fatalNoCoverage ? null : capturedAt,
+    credits_remaining: creditsRemaining,
+    credits_used: creditsUsed,
+    last_request_cost: requestCost || null,
+    events_received: allDiscoveredEvents.length,
     prices_received: currentRows.length,
-    last_error: null,
+    last_error: partialErrors.length
+      ? partialErrors.slice(0, 6).join(" | ").slice(0, 1000)
+      : null,
   });
 
+  if (fatalNoCoverage) {
+    throw new Error(
+      `No football coverage discovered. ${partialErrors.slice(0, 3).join(" | ")}`,
+    );
+  }
+
   console.log(JSON.stringify({
-    status: "ok",
+    status: partialErrors.length ? "partial" : "ok",
     provider: PROVIDER,
-    events: events.length,
+    active_competitions: activeCompetitions.length,
+    discovered_events: allDiscoveredEvents.length,
+    new_fixture_rows: fixtureRows.length,
+    sports_priced: sportsPriced,
     prices: currentRows.length,
     changed_prices: historyRows.length,
     alerts_triggered: alertsTriggered,
@@ -655,7 +788,9 @@ async function main() {
     matched_footy_events: new Set(
       currentRows.filter((row) => row.match_id).map((row) => row.match_id),
     ).size,
-    credits_remaining: response.headers.get("x-requests-remaining"),
+    request_cost: requestCost,
+    credits_remaining: creditsRemaining,
+    partial_errors: partialErrors.slice(0, 10),
   }, null, 2));
 }
 
