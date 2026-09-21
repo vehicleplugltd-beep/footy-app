@@ -66,6 +66,12 @@ MODEL_OUTPUT_FIELDS = {
     "uncertainty_haircut", "minimum_take_price",
 }
 
+MODEL_MARKET_VALIDATION_FIELDS = {
+    "model_version", "league", "market", "status", "sample_size",
+    "model_log_loss", "benchmark_log_loss", "close_roi", "clv_proxy",
+    "bookmaker_reference", "notes", "evaluated_at",
+}
+
 HISTORICAL_PREDICTION_FIELDS = {
     "match_id", "model_version",
     "model_home_xg", "model_away_xg",
@@ -309,6 +315,17 @@ class SupabaseRESTWriter:
             timeout=self.timeout,
         )
         response.raise_for_status()
+
+    def upsert_model_market_validation(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._upsert(
+            "footy_model_market_validation",
+            rows,
+            "model_version,league,market",
+            MODEL_MARKET_VALIDATION_FIELDS,
+        )
 
     def insert_model_outputs(
         self,
