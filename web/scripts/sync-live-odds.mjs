@@ -1,10 +1,18 @@
+import { execFileSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY || "";
 const PROVIDER = "the-odds-api";
 const FEED_KEY = "multi-soccer";
 const FREE_PRICE_PROVIDER = "sofascore";
-const SOFASCORE_API_URL = "https://api.sofascore.com/api/v1";
+const SOFASCORE_API_URLS = [
+  "https://api.sofascore.com/api/v1",
+  "https://www.sofascore.com/api/v1",
+];
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 const COMPETITIONS = [
   ["soccer_epl", "ENG-Premier League", false],
@@ -394,22 +402,44 @@ function sofascoreLeague(event) {
 }
 
 async function sofascore(path) {
-  const response = await fetch(`${SOFASCORE_API_URL}/${path}`, {
-    headers: {
-      Accept: "application/json,text/plain,*/*",
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140 Safari/537.36",
-      Referer: "https://www.sofascore.com/",
-      "Cache-Control": "no-cache",
-    },
-  });
-  const body = await response.text();
-  if (!response.ok) {
+  const errors = [];
+  for (const base of SOFASCORE_API_URLS) {
+    const response = await fetch(`${base}/${path}`, {
+      headers: {
+        Accept: "application/json,text/plain,*/*",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+        Referer: "https://www.sofascore.com/",
+        Origin: "https://www.sofascore.com",
+        "Cache-Control": "no-cache",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+      },
+    });
+    const body = await response.text();
+    if (response.ok) return body ? JSON.parse(body) : {};
+    errors.push(`${base}: ${response.status}`);
+  }
+
+  try {
+    const output = execFileSync(
+      "python",
+      [join(SCRIPT_DIR, "fetch-sofascore.py"), path],
+      {
+        encoding: "utf8",
+        timeout: 30000,
+        maxBuffer: 16 * 1024 * 1024,
+      },
+    );
+    return output ? JSON.parse(output) : {};
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || error);
     throw new Error(
-      `Sofascore ${response.status} for ${path}: ${body.slice(0, 300)}`,
+      `Sofascore browser fetch failed for ${path}: ${[...errors, detail].join(" | ").slice(0, 1000)}`,
     );
   }
-  return body ? JSON.parse(body) : {};
 }
 
 async function syncSofascorePrices(capturedAt) {
