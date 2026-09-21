@@ -1006,6 +1006,51 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     }, indent=2, default=str))
 
 
+def _stored_upcoming_fixtures(
+    reader: SupabaseRESTReader,
+    league: str,
+    horizon_days: int,
+) -> pd.DataFrame:
+    fixtures = reader.upcoming_matches(
+        league=league,
+        season=None,
+        horizon_days=horizon_days,
+    )
+    if fixtures.empty:
+        return fixtures
+
+    required = {
+        "match_id", "league", "season", "kickoff_at",
+        "home_team", "away_team",
+    }
+    missing = required - set(fixtures.columns)
+    if missing:
+        raise ValueError(
+            "Stored upcoming fixtures missing columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    frame = fixtures.copy()
+    frame["match_date"] = pd.to_datetime(
+        frame["kickoff_at"], errors="coerce", utc=True
+    )
+    frame = frame[frame["match_date"].notna()].copy()
+    frame["status"] = frame.get("status", "scheduled").fillna("scheduled")
+    frame["source"] = frame.get("source", "stored-fixtures").fillna(
+        "stored-fixtures"
+    )
+    frame["retrieved_at"] = frame.get(
+        "retrieved_at",
+        datetime.now(timezone.utc).isoformat(),
+    )
+    return frame[
+        [
+            "match_id", "league", "season", "match_date", "kickoff_at",
+            "home_team", "away_team", "status", "source", "retrieved_at",
+        ]
+    ].sort_values("match_date").reset_index(drop=True)
+
+
 def _load_upcoming_schedule(
     league: str,
     season: str,
@@ -1047,16 +1092,23 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical rows match the requested league/history scope.")
 
-    schedule, schedule_source = _load_upcoming_schedule(
-        args.league,
-        args.season,
-    )
-
-    fixtures = normalise_upcoming_fixtures(
-        schedule,
+    fixtures = _stored_upcoming_fixtures(
+        reader,
+        league=args.league,
         horizon_days=args.horizon_days,
-        source_name=schedule_source,
     )
+    schedule_source = "stored-fixtures"
+
+    if fixtures.empty:
+        schedule, schedule_source = _load_upcoming_schedule(
+            args.league,
+            args.season,
+        )
+        fixtures = normalise_upcoming_fixtures(
+            schedule,
+            horizon_days=args.horizon_days,
+            source_name=schedule_source,
+        )
 
     if fixtures.empty:
         print(json.dumps({
