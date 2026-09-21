@@ -30,12 +30,7 @@ export default async function TeamPage({
   } catch (error) {
     return (
       <main className="league-edge-app team-room-page">
-        <nav className="nav shell hq-nav">
-          <Link className="brand brand-link" href="/">
-            <span className="brand-mark">F</span>
-            <span>Footy</span>
-          </Link>
-        </nav>
+        <ProductNav active="hq" />
         <section className="shell team-discovery-error">
           <h1>We couldn&apos;t load this team.</h1>
           <p>
