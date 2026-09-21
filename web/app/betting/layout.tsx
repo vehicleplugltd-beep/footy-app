@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./betting.css";
+import { BettingMobileDock } from "@/components/betting-mobile-dock";
 
 export const metadata: Metadata = {
   title: "Footy Edge — Football Value Betting Analytics",
@@ -10,5 +11,10 @@ export const metadata: Metadata = {
 export default function BettingLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return children;
+  return (
+    <>
+      {children}
+      <BettingMobileDock />
+    </>
+  );
 }
