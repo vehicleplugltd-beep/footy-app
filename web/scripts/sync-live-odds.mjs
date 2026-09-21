@@ -52,6 +52,39 @@ const COMPETITION_BY_KEY = new Map(
   COMPETITIONS.map((competition) => [competition.sportKey, competition]),
 );
 
+const OPENFOOTBALL_COMPETITIONS = [
+  ["2026-27/en.1.json", "ENG-Premier League", "2627", "Europe/London"],
+  ["2026-27/en.2.json", "ENG-Championship", "2627", "Europe/London"],
+  ["2026-27/en.3.json", "ENG-League One", "2627", "Europe/London"],
+  ["2026-27/en.4.json", "ENG-League Two", "2627", "Europe/London"],
+  ["2026-27/sco.1.json", "SCO-Premiership", "2627", "Europe/London"],
+  ["2026-27/sco.2.json", "SCO-Championship", "2627", "Europe/London"],
+  ["2026-27/de.1.json", "GER-Bundesliga", "2627", "Europe/Berlin"],
+  ["2026-27/de.2.json", "GER-2. Bundesliga", "2627", "Europe/Berlin"],
+  ["2026-27/es.1.json", "ESP-La Liga", "2627", "Europe/Madrid"],
+  ["2026-27/es.2.json", "ESP-La Liga 2", "2627", "Europe/Madrid"],
+  ["2026-27/it.1.json", "ITA-Serie A", "2627", "Europe/Rome"],
+  ["2026-27/it.2.json", "ITA-Serie B", "2627", "Europe/Rome"],
+  ["2026-27/fr.1.json", "FRA-Ligue 1", "2627", "Europe/Paris"],
+  ["2026-27/fr.2.json", "FRA-Ligue 2", "2627", "Europe/Paris"],
+  ["2026-27/nl.1.json", "NED-Eredivisie", "2627", "Europe/Amsterdam"],
+  ["2026-27/nl.2.json", "NED-Eerste Divisie", "2627", "Europe/Amsterdam"],
+  ["2026-27/be.1.json", "BEL-First Division A", "2627", "Europe/Brussels"],
+  ["2026-27/pt.1.json", "POR-Primeira Liga", "2627", "Europe/Lisbon"],
+  ["2026-27/pt.2.json", "POR-Liga Portugal 2", "2627", "Europe/Lisbon"],
+  ["2026-27/tr.1.json", "TUR-Super Lig", "2627", "Europe/Istanbul"],
+  ["2026-27/gr.1.json", "GRE-Super League", "2627", "Europe/Athens"],
+  ["2026-27/at.1.json", "AUT-Bundesliga", "2627", "Europe/Vienna"],
+  ["2026-27/ch.1.json", "SUI-Super League", "2627", "Europe/Zurich"],
+  ["2026-27/dk.1.json", "DEN-Superliga", "2627", "Europe/Copenhagen"],
+  ["2026/no.1.json", "NOR-Eliteserien", "2026", "Europe/Oslo"],
+  ["2026/se.1.json", "SWE-Allsvenskan", "2026", "Europe/Stockholm"],
+  ["2026/ie.1.json", "IRL-Premier Division", "2026", "Europe/Dublin"],
+  ["2026/br.1.json", "BRA-Serie A", "2026", "America/Sao_Paulo"],
+  ["2026/ar.1.json", "ARG-Primera Division", "2026", "America/Argentina/Buenos_Aires"],
+  ["2026/mls.json", "USA-MLS", "2026", "America/New_York"],
+].map(([path, league, season, timeZone]) => ({ path, league, season, timeZone }));
+
 const ESPN_COMPETITIONS = [
   ["eng.1", "ENG-Premier League"],
   ["eng.2", "ENG-Championship"],
@@ -278,6 +311,221 @@ function londonDateKey(date) {
       .map((part) => [part.type, part.value]),
   );
   return `${values.year}${values.month}${values.day}`;
+}
+
+function timeZoneOffsetMs(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedLocalToIso(dateValue, timeValue, timeZone) {
+  if (!dateValue) return null;
+  const time = String(timeValue || "12:00");
+  const [year, month, day] = String(dateValue).split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return null;
+
+  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  let offset = timeZoneOffsetMs(guess, timeZone);
+  let actual = new Date(guess.getTime() - offset);
+  const refinedOffset = timeZoneOffsetMs(actual, timeZone);
+  if (refinedOffset !== offset) {
+    actual = new Date(guess.getTime() - refinedOffset);
+  }
+  return actual.toISOString();
+}
+
+function openFootballMatchId(league, dateValue, homeTeam, awayTeam) {
+  return [
+    "openfootball",
+    compact(league),
+    dateValue,
+    compact(homeTeam),
+    compact(awayTeam),
+  ].join(":");
+}
+
+async function fetchOpenFootballFile(path) {
+  const url =
+    `https://raw.githubusercontent.com/openfootball/football.json/master/${path}`;
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json,text/plain,*/*",
+      "User-Agent": "footy-app-fixture-sync/1.0",
+    },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(
+      `OpenFootball ${path} ${response.status}: ${(await response.text()).slice(0, 220)}`,
+    );
+  }
+  return await response.json();
+}
+
+async function syncOpenFootballFixtures(capturedAt) {
+  const londonToday = londonDateKey(new Date(capturedAt));
+  const rows = [];
+  const errors = [];
+  let filesLoaded = 0;
+
+  for (let index = 0; index < OPENFOOTBALL_COMPETITIONS.length; index += 6) {
+    const batch = OPENFOOTBALL_COMPETITIONS.slice(index, index + 6);
+    const results = await Promise.allSettled(
+      batch.map(async (competition) => ({
+        competition,
+        payload: await fetchOpenFootballFile(competition.path),
+      })),
+    );
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        errors.push(String(result.reason?.message || result.reason));
+        continue;
+      }
+      const { competition, payload } = result.value;
+      if (!payload) continue;
+      filesLoaded += 1;
+
+      for (const match of payload.matches || []) {
+        if (!match?.date || !match?.team1 || !match?.team2) continue;
+        const kickoff = zonedLocalToIso(
+          match.date,
+          match.time || "12:00",
+          competition.timeZone,
+        );
+        if (!kickoff) continue;
+
+        const londonKey = londonDateKey(new Date(kickoff));
+        if (londonKey !== londonToday) continue;
+
+        const status =
+          match.status === "postponed"
+            ? "postponed"
+            : match.score
+              ? "finished"
+              : "scheduled";
+
+        rows.push({
+          match_id: openFootballMatchId(
+            competition.league,
+            match.date,
+            match.team1,
+            match.team2,
+          ),
+          league: competition.league,
+          season: competition.season,
+          kickoff_at: kickoff,
+          home_team: match.team1,
+          away_team: match.team2,
+          status,
+          source: "openfootball-json",
+          retrieved_at: capturedAt,
+        });
+      }
+    }
+  }
+
+  if (rows.length) {
+    const dayStart = new Date(
+      new Date(capturedAt).getTime() - 30 * 60 * 60 * 1000,
+    ).toISOString();
+    const dayEnd = new Date(
+      new Date(capturedAt).getTime() + 30 * 60 * 60 * 1000,
+    ).toISOString();
+    const existing =
+      (await sb(
+        `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(dayStart)}&kickoff_at=lte.${encodeURIComponent(dayEnd)}&limit=10000`,
+      )) || [];
+
+    const inserts = [];
+    for (const row of rows) {
+      const matched = reconcileMatch(
+        {
+          home_team: row.home_team,
+          away_team: row.away_team,
+          commence_time: row.kickoff_at,
+        },
+        existing,
+      );
+      if (matched) continue;
+      inserts.push(row);
+      existing.push(row);
+    }
+    await upsert("footy_matches", inserts, "match_id");
+
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: "openfootball-fixtures",
+        sport_key: "multi-league",
+        last_attempt_at: capturedAt,
+        last_success_at: capturedAt,
+        events_received: rows.length,
+        prices_received: 0,
+        last_error: errors.length
+          ? `${errors.length} fixture file${errors.length === 1 ? "" : "s"} unavailable`
+          : null,
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+
+    return {
+      discovered: rows.length,
+      inserted: inserts.length,
+      leagues: new Set(rows.map((row) => row.league)).size,
+      filesLoaded,
+      errors: errors.length,
+    };
+  }
+
+  await upsert(
+    "footy_odds_feed_status",
+    [{
+      provider: "openfootball-fixtures",
+      sport_key: "multi-league",
+      last_attempt_at: capturedAt,
+      last_success_at: capturedAt,
+      events_received: 0,
+      prices_received: 0,
+      last_error: errors.length
+        ? `${errors.length} fixture file${errors.length === 1 ? "" : "s"} unavailable`
+        : null,
+      updated_at: capturedAt,
+    }],
+    "provider",
+  );
+
+  return {
+    discovered: 0,
+    inserted: 0,
+    leagues: 0,
+    filesLoaded,
+    errors: errors.length,
+  };
 }
 
 function titleFromSlug(value) {
@@ -810,15 +1058,21 @@ async function main() {
   const now = new Date();
   const capturedAt = now.toISOString();
 
-  let fixtureSync = { discovered: 0, inserted: 0, leagues: 0 };
+  let openFootballSync = {
+    discovered: 0,
+    inserted: 0,
+    leagues: 0,
+    filesLoaded: 0,
+    errors: 0,
+  };
   try {
-    fixtureSync = await syncEspnFixtures(capturedAt);
+    openFootballSync = await syncOpenFootballFixtures(capturedAt);
   } catch (error) {
     await upsert(
       "footy_odds_feed_status",
       [{
-        provider: "espn-fixtures",
-        sport_key: "soccer-all",
+        provider: "openfootball-fixtures",
+        sport_key: "multi-league",
         last_attempt_at: capturedAt,
         last_success_at: null,
         events_received: 0,
@@ -830,16 +1084,44 @@ async function main() {
     );
   }
 
+  let espnSync = { discovered: 0, inserted: 0, leagues: 0 };
+  try {
+    espnSync = await syncEspnFixtures(capturedAt);
+  } catch (error) {
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: "espn-fixtures",
+        sport_key: "soccer-registry",
+        last_attempt_at: capturedAt,
+        last_success_at: null,
+        events_received: 0,
+        prices_received: 0,
+        last_error: String(error?.message || error).slice(0, 1000),
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+  }
+
+  const fixtureSync = {
+    discovered: openFootballSync.discovered + espnSync.discovered,
+    inserted: openFootballSync.inserted + espnSync.inserted,
+    leagues: Math.max(openFootballSync.leagues, espnSync.leagues),
+  };
+
   if (!ODDS_API_KEY) {
     await recordFeedStatus({
       last_error: "THE_ODDS_API_KEY is not configured",
     });
     console.log(JSON.stringify({
       status: "fixtures-only",
-      fixture_provider: "espn",
+      fixture_sources: {
+        openfootball: openFootballSync,
+        espn: espnSync,
+      },
       fixtures_discovered: fixtureSync.discovered,
       fixtures_inserted: fixtureSync.inserted,
-      leagues_discovered: fixtureSync.leagues,
       odds: "skipped: THE_ODDS_API_KEY is not configured",
     }, null, 2));
     return;
@@ -1106,7 +1388,9 @@ async function main() {
   console.log(JSON.stringify({
     status: partialErrors.length ? "partial" : "ok",
     provider: PROVIDER,
-    fixture_provider: "espn",
+    fixture_providers: ["openfootball", "espn"],
+    openfootball: openFootballSync,
+    espn: espnSync,
     fixtures_discovered: fixtureSync.discovered,
     fixtures_inserted: fixtureSync.inserted,
     fixture_leagues: fixtureSync.leagues,
