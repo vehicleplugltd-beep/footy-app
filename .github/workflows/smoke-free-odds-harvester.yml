@@ -10,6 +10,9 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -25,9 +28,11 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Scrape upcoming EPL 1X2
+        id: scrape
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           timeout 10m oddsharvester upcoming \
             -s football \
             -l england-premier-league \
@@ -39,11 +44,19 @@ jobs:
             --timezone Europe/London \
             --headless \
             --stream-ndjson \
-            > /tmp/odds.ndjson
-
+            > /tmp/odds.ndjson 2>/tmp/odds.stderr
+          code=$?
+          echo "$code" >/tmp/odds.exit
+          if [ "$code" -ne 0 ]; then
+            cat /tmp/odds.stderr
+            exit "$code"
+          fi
           test -s /tmp/odds.ndjson
 
       - name: Summarize smoke output
+        if: always()
+        env:
+          SCRAPE_OUTCOME: ${{ steps.scrape.outcome }}
         run: |
           python - <<'PY'
           import json
@@ -85,4 +98,41 @@ jobs:
                   "bookmakers": len(market),
                   "best_1x2": [best_home, best_draw, best_away],
               }))
+
+          from datetime import datetime, timezone
+          from urllib.request import Request, urlopen
+          import os
+
+          now = datetime.now(timezone.utc).isoformat()
+          stderr = Path("/tmp/odds.stderr")
+          outcome = os.environ.get("SCRAPE_OUTCOME", "unknown")
+          payload = [{
+              "provider": "oddsharvester-smoke",
+              "sport_key": "football",
+              "last_attempt_at": now,
+              "last_success_at": now if outcome == "success" and rows else None,
+              "events_received": len(rows),
+              "prices_received": bookmaker_quotes * 3,
+              "last_error": None if outcome == "success" and rows else (
+                  stderr.read_text(errors="ignore")[-900:] if stderr.exists()
+                  else f"scrape outcome={outcome}"
+              ),
+              "updated_at": now,
+          }]
+
+          base = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          req = Request(
+              base + "/rest/v1/footy_odds_feed_status?on_conflict=provider",
+              data=json.dumps(payload).encode(),
+              method="POST",
+              headers={
+                  "apikey": key,
+                  "Authorization": f"Bearer {key}",
+                  "Content-Type": "application/json",
+                  "Prefer": "resolution=merge-duplicates,return=minimal",
+              },
+          )
+          with urlopen(req, timeout=30):
+              pass
           PY
