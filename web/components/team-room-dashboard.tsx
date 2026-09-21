@@ -878,6 +878,9 @@ export function TeamRoomDashboard({
             ? footyQuip("move", { player: transfer.in.name })
             : footyQuip("hold");
 
+  const researchHref =
+    "/research?team=" + teamId + "&league=" + leagueId;
+
   return (
     <div className="team-room-dashboard">
       {error ? (
@@ -907,11 +910,11 @@ export function TeamRoomDashboard({
         </span>
       </div>
 
-      <nav className="team-room-section-rail" aria-label="Team Room sections">
-        <a href="#decision">Decision</a>
-        <a href="#portfolio">Portfolio</a>
-        <a href="#counterplay">CounterPlay</a>
-        <a href="#audit">Audit</a>
+      <nav className="team-room-section-rail" aria-label="Team Room workflow">
+        <a href="#decision">Now</a>
+        <a href="#counterplay">Plan</a>
+        <a href="#what-if">Test</a>
+        <a href="#audit">Review</a>
         <a href="#squad">Squad</a>
       </nav>
 
@@ -1044,17 +1047,9 @@ export function TeamRoomDashboard({
             </div>
           ) : null}
 
-          <Link
-            className="team-room-primary"
-            href={
-              "/team/" +
-              teamId +
-              "/preview?league=" +
-              leagueId
-            }
-          >
-            Preview Footy’s plan →
-          </Link>
+          <a className="team-room-primary" href="#what-if">
+            Test Footy’s plan →
+          </a>
         </article>
 
         <article className="team-room-block team-room-pressure-card">
@@ -1113,12 +1108,9 @@ export function TeamRoomDashboard({
               </button>
             ))}
           </div>
-          <Link
-            className="team-room-deep-link"
-            href={"/league/" + leagueId + "?team=" + teamId}
-          >
-            View full league table & manager analysis →
-          </Link>
+          <a className="team-room-deep-link" href="#counterplay">
+            Use league pressure in the plan →
+          </a>
         </article>
       </section>
 
@@ -1133,7 +1125,7 @@ export function TeamRoomDashboard({
             </div>
             <small>
               Long-term squad structure, not last week’s points ·{" "}
-              <Link href="/research#long-term">open long-term research →</Link>
+              <Link href={researchHref + "#long-term"}>open long-term research →</Link>
             </small>
           </div>
 
@@ -1380,6 +1372,7 @@ export function TeamRoomDashboard({
 
           <details
             className="counterplay-tool-drawer"
+            id="what-if"
             open={counterPlay.what_if.status === "VALID"}
           >
             <summary>
@@ -1769,7 +1762,7 @@ export function TeamRoomDashboard({
                 {counterPlay.primary_threats.slice(0, 8).map((threat) => (
                   <Link
                     key={threat.rival_entry_id + "-" + threat.player.id}
-                    href={"/research?player=" + threat.player.id}
+                    href={researchHref + "&player=" + threat.player.id}
                   >
                     <div>
                       <b>{threat.player.name}</b>
@@ -1792,7 +1785,7 @@ export function TeamRoomDashboard({
                     {counterPlay.primary_threats.map((threat) => (
                       <Link
                         key={"all-" + threat.rival_entry_id + "-" + threat.player.id}
-                        href={"/research?player=" + threat.player.id}
+                        href={researchHref + "&player=" + threat.player.id}
                       >
                         <div>
                           <b>{threat.player.name}</b>
@@ -1818,7 +1811,7 @@ export function TeamRoomDashboard({
               <span>LOCAL LEAGUE EXPOSURE</span>
               <div className="counterplay-exposure">
                 {counterPlay.local_exposure.slice(0, 12).map((item) => (
-                  <Link key={item.player_id} href={"/research?player=" + item.player_id}>
+                  <Link key={item.player_id} href={researchHref + "&player=" + item.player_id}>
                     <b>{item.player?.name ?? "Player " + item.player_id}</b>
                     <small>
                       squad {item.squad_ownership.toFixed(0)}% · starters{" "}
@@ -1836,7 +1829,7 @@ export function TeamRoomDashboard({
                     {counterPlay.local_exposure.map((item) => (
                       <Link
                         key={"all-exposure-" + item.player_id}
-                        href={"/research?player=" + item.player_id}
+                        href={researchHref + "&player=" + item.player_id}
                       >
                         <b>{item.player?.name ?? "Player " + item.player_id}</b>
                         <small>
@@ -2128,7 +2121,7 @@ export function TeamRoomDashboard({
           </div>
           <small>
             Tap any player for EPA, fixtures, risks and source detail ·{" "}
-            <Link href="/research#players">research every player →</Link>
+            <Link href={researchHref + "#players"}>research every player →</Link>
           </small>
         </div>
 
@@ -2236,37 +2229,21 @@ export function TeamRoomDashboard({
             ),
           )}
         </div>
-        <Link
-          className="team-room-deep-link"
-          href={"/league/" + leagueId + "?team=" + teamId}
-        >
-          View every league manager & full standings →
-        </Link>
+        <a className="team-room-deep-link" href="#counterplay">
+          See how rivals change the plan →
+        </a>
       </section>
 
       <section className="team-room-next">
         <div>
-          <span>NEXT</span>
-          <h2>
-            Use Footy’s suggestion or build your own.
-          </h2>
+          <span>TEST</span>
+          <h2>Challenge the recommendation without leaving Team Room.</h2>
           <p>
-            Preview starts with your current squad. You can
-            follow Footy’s route, ignore it, or make your own
-            transfers while keeping the same player, fixture and
-            mini-league intelligence visible.
+            Use What-If to change the transfer or captain and rerun the same
+            empirical model. Footy’s recommendation stays independent.
           </p>
         </div>
-        <Link
-          href={
-            "/team/" +
-            teamId +
-            "/preview?league=" +
-            leagueId
-          }
-        >
-          Open Preview →
-        </Link>
+        <a href="#what-if">Open What-If →</a>
       </section>
 
       <aside className="team-room-mobile-dock" aria-label="Current Footy decision">
@@ -2285,9 +2262,9 @@ export function TeamRoomDashboard({
           <span>POSTURE</span>
           <strong>{activeCounterPosture}</strong>
         </a>
-        <a href="#audit">
-          <span>CAPTAIN</span>
-          <strong>{captain?.player.name ?? "—"}</strong>
+        <a href="#what-if">
+          <span>TEST</span>
+          <strong>What-If</strong>
         </a>
       </aside>
 

@@ -1,7 +1,7 @@
 
-import Link from "next/link";
 import { TeamConnectForm } from "@/components/team-connect-form";
 import { FrontOffice } from "@/components/front-office";
+import { ProductNav } from "@/components/product-nav";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 import { footyQuip } from "@/lib/footy-voice";
 
@@ -30,19 +30,7 @@ export default async function Home({
 
   return (
     <main className="league-edge-app footy-hq">
-      <nav className="nav shell hq-nav">
-        <Link className="brand brand-link" href="/">
-          <span className="brand-mark">F</span>
-          <span>Footy</span>
-        </Link>
-        <div className="hq-nav-right">
-          <span>FPL Assistant Manager</span>
-          <Link href="/research">Research</Link>
-          {team ? (
-            <Link href={"/review?team=" + team.id}>Review</Link>
-          ) : null}
-        </div>
-      </nav>
+      <ProductNav active="hq" />
 
       <section className="shell hq-connect">
         <div className="hq-connect-copy">
@@ -69,30 +57,30 @@ export default async function Home({
       <section className="shell hq-flow">
         <div>
           <span>HOW FOOTY FLOWS</span>
-          <h2>HQ → Research → Team Room → Preview</h2>
+          <h2>HQ → Team Room ↔ Research</h2>
           <p className="hq-flow-principle">
             Decision first. Evidence second. Model depth only when you ask for it.
           </p>
         </div>
         <div>
           <p>
-            <b>HQ</b> gives you the live player market and loads your team.
+            <b>HQ</b> connects your team and gets you into the right mini-league.
           </p>
           <p>
-            <b>Research</b> holds the complete player, club and fixture evidence.
+            <b>Team Room</b> is the command centre: decide, plan, test and review in one place.
           </p>
           <p>
-            <b>Team Room</b> combines squad quality with the mini-league battle.
+            <b>Research</b> is the evidence library when you want to inspect players, clubs or fixtures more deeply.
           </p>
           <p>
-            <b>Preview</b> lets you follow Footy’s suggestion or build your own.
+            You do not need to navigate by feature. Footy keeps the workflow inside the Team Room.
           </p>
         </div>
       </section>
 
       <footer className="shell footer minimal-footer">
         <p>Live FPL data. Underlying football process. Mini-league context.</p>
-        <p>LOAD TEAM → RESEARCH → CHOOSE LEAGUE → DECIDE → PREVIEW</p>
+        <p>LOAD TEAM → CHOOSE LEAGUE → DECIDE → TEST → REVIEW</p>
       </footer>
     </main>
   );

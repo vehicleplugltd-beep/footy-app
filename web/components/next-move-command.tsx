@@ -300,7 +300,7 @@ export function NextMoveCommand({
         </div>
         <Link
           className="next-move-secondary"
-          href={`/league/${leagueId}?team=${teamId}`}
+          href={`/team/${teamId}?league=${leagueId}#counterplay`}
         >
           Open league intelligence →
         </Link>
@@ -722,15 +722,15 @@ export function NextMoveCommand({
       <div className="minimal-command-actions">
         <Link
           className="next-move-primary"
-          href={`/team/${teamId}?league=${leagueId}#build-test`}
+          href={`/team/${teamId}?league=${leagueId}#what-if`}
         >
           Test this move
         </Link>
         <Link
           className="minimal-detail-link"
-          href={`/league/${leagueId}?team=${teamId}`}
+          href={`/team/${teamId}?league=${leagueId}#counterplay`}
         >
-          Full league detail →
+          League strategy →
         </Link>
         <small>
           {payload?.analysis?.freshness?.source === "LIVE_FPL"
