@@ -578,6 +578,40 @@ async function main() {
   const currentRows = [];
   const historyRows = [];
   const errors = [...feedErrors];
+
+  // Persist the near-term fixture spine independently of whether an odds
+  // request succeeds. The model must never depend on a bookmaker response
+  // to know that a match exists.
+  for (const event of targetEvents) {
+    let match = findMatch(event, matches);
+    if (match) continue;
+
+    match = {
+      match_id: `flashscore:${event.eventId}`,
+      kickoff_at: event.kickoffAt,
+      league: event.league,
+      home_team: event.homeTeam,
+      away_team: event.awayTeam,
+    };
+    matches.push(match);
+    fixtureRows.push({
+      match_id: match.match_id,
+      league: event.league,
+      season: seasonCode(event.kickoffAt),
+      kickoff_at: event.kickoffAt,
+      home_team: event.homeTeam,
+      away_team: event.awayTeam,
+      status:
+        event.status === "3"
+          ? "finished"
+          : event.status === "2"
+            ? "in_progress"
+            : "scheduled",
+      source: "flashscore-feed",
+      retrieved_at: capturedAt,
+    });
+  }
+
   let oddsResponses = 0;
   let marketEntries = 0;
 
@@ -601,32 +635,12 @@ async function main() {
       marketEntries += Array.isArray(oddsRoot?.odds)
         ? oddsRoot.odds.length
         : 0;
-      let match = findMatch(event, matches);
+      const match = findMatch(event, matches);
       if (!match) {
-        match = {
-          match_id: `flashscore:${event.eventId}`,
-          kickoff_at: event.kickoffAt,
-          league: event.league,
-          home_team: event.homeTeam,
-          away_team: event.awayTeam,
-        };
-        matches.push(match);
-        fixtureRows.push({
-          match_id: match.match_id,
-          league: event.league,
-          season: seasonCode(event.kickoffAt),
-          kickoff_at: event.kickoffAt,
-          home_team: event.homeTeam,
-          away_team: event.awayTeam,
-          status:
-            event.status === "3"
-              ? "finished"
-              : event.status === "2"
-                ? "in_progress"
-                : "scheduled",
-          source: "flashscore-feed",
-          retrieved_at: capturedAt,
-        });
+        errors.push(
+          `No stored fixture identity after fixture pass: ${event.homeTeam} vs ${event.awayTeam}`,
+        );
+        continue;
       }
 
       const books = bookmakerMap(oddsRoot);
