@@ -70,3 +70,80 @@ def test_upcoming_schedule_falls_back_to_understat(monkeypatch):
 
     assert source == "understat"
     assert schedule.iloc[0]["game"] == "understat-101"
+
+
+
+class _StoredReader:
+    def upcoming_matches(
+        self,
+        league: str,
+        season=None,
+        horizon_days=None,
+        now=None,
+    ):
+        assert league == "GER-Bundesliga"
+        assert season is None
+        assert horizon_days == 10
+        return pd.DataFrame([
+            {
+                "match_id": "flashscore:abc123",
+                "league": "GER-Bundesliga",
+                "season": "2627",
+                "kickoff_at": "2026-09-25T18:30:00Z",
+                "home_team": "Bayern Munich",
+                "away_team": "Borussia Dortmund",
+                "status": "scheduled",
+                "source": "flashscore-feed",
+                "retrieved_at": "2026-09-21T22:00:00Z",
+            }
+        ])
+
+
+def test_stored_upcoming_fixtures_preserve_provider_fixture_identity():
+    fixtures = cli._stored_upcoming_fixtures(
+        _StoredReader(),
+        league="GER-Bundesliga",
+        horizon_days=10,
+    )
+
+    assert len(fixtures) == 1
+    assert fixtures.iloc[0]["match_id"] == "flashscore:abc123"
+    assert fixtures.iloc[0]["season"] == "2627"
+    assert fixtures.iloc[0]["source"] == "flashscore-feed"
+    assert fixtures.iloc[0]["match_date"] == pd.Timestamp(
+        "2026-09-25T18:30:00Z"
+    )
+
+
+def test_stored_upcoming_fixture_discovery_does_not_require_provider_season():
+    class Reader:
+        def upcoming_matches(
+            self,
+            league: str,
+            season=None,
+            horizon_days=None,
+            now=None,
+        ):
+            assert season is None
+            return pd.DataFrame([
+                {
+                    "match_id": "fixture-1",
+                    "league": league,
+                    "season": "2627",
+                    "kickoff_at": "2026-09-25T18:30:00Z",
+                    "home_team": "Team A",
+                    "away_team": "Team B",
+                    "status": "scheduled",
+                    "source": "espn-scoreboard",
+                    "retrieved_at": "2026-09-21T22:00:00Z",
+                }
+            ])
+
+    fixtures = cli._stored_upcoming_fixtures(
+        Reader(),
+        league="ESP-La Liga",
+        horizon_days=10,
+    )
+
+    assert len(fixtures) == 1
+    assert fixtures.iloc[0]["season"] == "2627"
