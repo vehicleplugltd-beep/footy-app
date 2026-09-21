@@ -16,6 +16,11 @@ import {
   TeamIntelDrawer,
 } from "@/components/intelligence-drawers";
 import { footyQuip } from "@/lib/footy-voice";
+import {
+  TeamRoomMobileDock,
+  TeamRoomWorkflowRail,
+  type WorkflowPhase,
+} from "@/components/team-room/workflow-nav";
 
 type Standing = {
   entry_id: number;
@@ -519,9 +524,8 @@ export function TeamRoomDashboard({
   const [whatIfCaptainId, setWhatIfCaptainId] = useState<number | null>(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
-  const [activeWorkflowPhase, setActiveWorkflowPhase] = useState<
-    "decision" | "plan" | "test" | "review"
-  >("decision");
+  const [activeWorkflowPhase, setActiveWorkflowPhase] =
+    useState<WorkflowPhase>("decision");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -712,7 +716,7 @@ export function TeamRoomDashboard({
   }
 
   useEffect(() => {
-    const phaseMap = new Map<string, "decision" | "plan" | "test" | "review">([
+    const phaseMap = new Map<string, WorkflowPhase>([
       ["decision", "decision"],
       ["portfolio", "plan"],
       ["counterplay", "plan"],
@@ -954,27 +958,56 @@ export function TeamRoomDashboard({
         ) : null}
       </div>
 
-      <nav className="team-room-section-rail" aria-label="Team Room decision workflow">
-        {[
-          { key: "decision" as const, step: "1", label: "Decide", hint: "What now", href: "#decision" },
-          { key: "plan" as const, step: "2", label: "Plan", hint: "Path + risk", href: "#plan" },
-          { key: "test" as const, step: "3", label: "Test", hint: "What-If", href: "#what-if" },
-          { key: "review" as const, step: "4", label: "Review", hint: "Decision quality", href: "#audit" },
-        ].map((item) => (
-          <a
-            key={item.key}
-            href={item.href}
-            className={activeWorkflowPhase === item.key ? "active" : undefined}
-            aria-current={activeWorkflowPhase === item.key ? "step" : undefined}
-          >
-            <i>{item.step}</i>
-            <span>
-              <b>{item.label}</b>
-              <small>{item.hint}</small>
-            </span>
-          </a>
-        ))}
-      </nav>
+      <section className="team-room-scoreboard">
+        <div>
+          <span>SQUAD RATING</span>
+          <strong>{squadNow ?? "—"}</strong>
+          <small>
+            {squadNow != null ? ratingBand(squadNow) + " · squad percentile model" : "Loading"}
+          </small>
+        </div>
+        <div>
+          <span>6GW RATING</span>
+          <strong>{squadFuture ?? "—"}</strong>
+          <small>
+            {squadFuture != null
+              ? ratingBand(squadFuture) + " · six-Gameweek process + fixtures"
+              : "Loading"}
+          </small>
+        </div>
+        <div>
+          <span>LEAGUE RANK</span>
+          <strong>#{leagueRank ?? "—"}</strong>
+          <small>{leagueName}</small>
+        </div>
+        <div>
+          <span>NEXT ACTION</span>
+          <strong>
+            {intelligenceLoading
+              ? "CHECKING"
+              : portfolioPlan?.action.replaceAll("_", " ") ??
+                (transfer ? "MOVE" : "HOLD")}
+          </strong>
+          <small>
+            {intelligenceLoading
+              ? "Building recommendation"
+              : portfolioPlan?.headline ??
+                (transfer
+                  ? transfer.out.name + " → " + transfer.in.name
+                  : "No move clears threshold")}
+          </small>
+        </div>
+      </section>
+
+      <TeamRoomWorkflowRail active={activeWorkflowPhase} />
+
+      <div className="team-room-phase-heading team-room-phase-heading-decision">
+        <div>
+          <span>1 / DECIDE</span>
+          <strong>Start with the action, then inspect the evidence.</strong>
+        </div>
+        <small>Recommendation → league pressure → plan</small>
+      </div>
 
       <section className="team-room-command-grid" id="decision">
         <article className="team-room-block team-room-command-card">
@@ -2146,46 +2179,13 @@ export function TeamRoomDashboard({
         </section>
       ) : null}
 
-      <section className="team-room-scoreboard">
+      <div className="team-room-reference-heading" id="reference">
         <div>
-          <span>SQUAD RATING</span>
-          <strong>{squadNow ?? "—"}</strong>
-          <small>
-            {squadNow != null ? ratingBand(squadNow) + " · squad percentile model" : "Loading"}
-          </small>
+          <span>REFERENCE</span>
+          <strong>Supporting evidence, kept out of the decision flow.</strong>
         </div>
-        <div>
-          <span>6GW RATING</span>
-          <strong>{squadFuture ?? "—"}</strong>
-          <small>
-            {squadFuture != null
-              ? ratingBand(squadFuture) + " · six-Gameweek process + fixtures"
-              : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>LEAGUE RANK</span>
-          <strong>#{leagueRank ?? "—"}</strong>
-          <small>{leagueName}</small>
-        </div>
-        <div>
-          <span>NEXT ACTION</span>
-          <strong>
-            {intelligenceLoading
-              ? "CHECKING"
-              : portfolioPlan?.action.replaceAll("_", " ") ??
-                (transfer ? "MOVE" : "HOLD")}
-          </strong>
-          <small>
-            {intelligenceLoading
-              ? "Building recommendation"
-              : portfolioPlan?.headline ??
-                (transfer
-                  ? transfer.out.name + " → " + transfer.in.name
-                  : "No move clears threshold")}
-          </small>
-        </div>
-      </section>
+        <small>Open player and manager dossiers only when you need the detail.</small>
+      </div>
 
       <section className="team-room-block" id="squad">
         <div className="team-room-block-head">
@@ -2308,34 +2308,19 @@ export function TeamRoomDashboard({
         </a>
       </section>
 
-      <aside className="team-room-mobile-dock" aria-label="Team Room workflow">
-        <a
-          className={"team-room-mobile-dock-action " + (activeWorkflowPhase === "decision" ? "active" : "")}
-          href="#decision"
-        >
-          <span>DECIDE</span>
-          <strong>
-            {intelligenceLoading
-              ? "Checking…"
-              : portfolioPlan?.headline ??
-                (transfer
-                  ? transfer.out.name + " → " + transfer.in.name
-                  : "Hold transfer")}
-          </strong>
-        </a>
-        <a className={activeWorkflowPhase === "plan" ? "active" : ""} href="#plan">
-          <span>PLAN</span>
-          <strong>{activeCounterPosture}</strong>
-        </a>
-        <a className={activeWorkflowPhase === "test" ? "active" : ""} href="#what-if">
-          <span>TEST</span>
-          <strong>What-If</strong>
-        </a>
-        <a className={activeWorkflowPhase === "review" ? "active" : ""} href="#audit">
-          <span>REVIEW</span>
-          <strong>{decisionQuality?.pending ? "Armed" : "Audit"}</strong>
-        </a>
-      </aside>
+      <TeamRoomMobileDock
+        active={activeWorkflowPhase}
+        decisionLabel={
+          intelligenceLoading
+            ? "Checking…"
+            : portfolioPlan?.headline ??
+              (transfer
+                ? transfer.out.name + " → " + transfer.in.name
+                : "Hold transfer")
+        }
+        posture={activeCounterPosture}
+        reviewLabel={decisionQuality?.pending ? "Armed" : "Audit"}
+      />
 
       <PlayerIntelDrawer
         profile={selectedPlayer}
