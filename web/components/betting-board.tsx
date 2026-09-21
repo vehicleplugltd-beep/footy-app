@@ -146,7 +146,7 @@ export function BettingBoard({
       <section className="betting-section" id="singles">
         <div className="betting-section-head">
           <div>
-            <span>01 / SINGLES</span>
+            <span>03 / SINGLES</span>
             <h2>Price-qualified edges</h2>
           </div>
           <p>Model first. Price second. No price edge, no bet.</p>
@@ -190,7 +190,7 @@ export function BettingBoard({
       <section className="betting-section" id="accas">
         <div className="betting-section-head">
           <div>
-            <span>02 / ACCAS</span>
+            <span>04 / ACCAS</span>
             <h2>Doubles, trebles & beyond</h2>
           </div>
           <p>No filler legs. One independent +EV selection per match.</p>
