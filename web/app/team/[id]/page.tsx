@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { TeamPitch } from "@/components/team-pitch";
 import { TeamRoomDashboard } from "@/components/team-room-dashboard";
+import { ProductNav } from "@/components/product-nav";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 
 export default async function TeamPage({
@@ -66,39 +67,10 @@ export default async function TeamPage({
 
   return (
     <main className="league-edge-app team-room-page">
-      <nav className="nav shell hq-nav team-room-nav">
-        <Link
-          className="brand brand-link"
-          href={"/?team=" + team.id}
-        >
-          <span className="brand-mark">F</span>
-          <span>Footy</span>
-        </Link>
-        <div className="hq-nav-right">
-          <Link href={"/?team=" + team.id}>HQ</Link>
-          <Link href="/research">Research</Link>
-          <Link
-            href={
-              "/team/" +
-              team.id +
-              "/preview?league=" +
-              selectedLeague.id
-            }
-          >
-            Preview
-          </Link>
-          <Link
-            href={
-              "/review?team=" +
-              team.id +
-              "&league=" +
-              selectedLeague.id
-            }
-          >
-            Review
-          </Link>
-        </div>
-      </nav>
+      <ProductNav
+        active="team"
+        teamHref={"/team/" + team.id + "?league=" + selectedLeague.id}
+      />
 
       <header className="shell team-room-header">
         <div>
@@ -172,7 +144,7 @@ export default async function TeamPage({
 
       <footer className="shell footer minimal-footer">
         <p>Team Room combines squad quality with the league battle.</p>
-        <p>UNDERSTAND → DECIDE → PREVIEW</p>
+        <p>DECIDE → PLAN → TEST → REVIEW</p>
       </footer>
     </main>
   );
