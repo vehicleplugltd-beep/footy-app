@@ -842,7 +842,7 @@ export async function getBettingWorkspaceData() {
 
   const leagueReadiness: LeagueReadiness[] = [...new Set(
     todayGames.map((game) => game.league),
-  )].map((league) => {
+  )].map<LeagueReadiness>((league) => {
     const leagueGames = todayGames.filter((game) => game.league === league);
     const leagueSelections = selections.filter(
       (selection) =>
