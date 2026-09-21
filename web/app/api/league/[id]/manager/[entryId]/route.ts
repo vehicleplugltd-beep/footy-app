@@ -29,6 +29,7 @@ type EntrySnapshot = {
     multiplier: number;
     is_captain: boolean;
   }>;
+  active_chip?: string | null;
   entry_history: {
     bank?: number;
     event_transfers?: number;
@@ -416,7 +417,7 @@ async function decisionQualityHistory(
           actualOut.includes(option.out.id),
       );
 
-      const actualChip = normaliseChip((eventPicks as any).active_chip ?? null);
+      const actualChip = normaliseChip(eventPicks.active_chip ?? null);
       const oneGw = frozen?.counterplay?.horizons?.["1"] ?? null;
       const frozenTopPath = oneGw?.recommended ?? null;
       const frozenBaseline = oneGw?.baseline ?? null;
@@ -3663,7 +3664,6 @@ async function persistRecommendationSnapshot(
   counterPlay: ReturnType<typeof buildCounterPlay>,
   portfolioPlan: ReturnType<typeof buildPortfolioPlan>,
   resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
-  receiptSource: "USER_VIEW" | "AUTO_24H" | "AUTO_2H",
 ) {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -3671,6 +3671,7 @@ async function persistRecommendationSnapshot(
   if (!key || !next?.id || !next.deadline_time) return;
 
   const now = new Date();
+  const receiptSource = "USER_VIEW" as const;
   const preDeadline = now.getTime() < new Date(next.deadline_time).getTime();
 
   const captainOptions = leagueStrategy.captain_moves.length
@@ -3724,10 +3725,11 @@ async function persistRecommendationSnapshot(
       : null;
 
   const simplifyPathScenario = (scenario: any) => {
-    if (!scenario) return null;
+    const simplified = simplifyScenario(scenario);
+    if (!scenario || !simplified) return null;
     const firstWeek = scenario.resource_path?.weeks?.[0] ?? null;
     return {
-      ...simplifyScenario(scenario),
+      ...simplified,
       first_week: firstWeek
         ? {
             event_id: firstWeek.event_id ?? null,
@@ -3947,12 +3949,6 @@ export async function GET(
   const managerEntryId = Number(entryId.replace(/\D/g, ""));
   const url = new URL(request.url);
   const postureParam = url.searchParams.get("posture")?.toUpperCase() ?? null;
-  const receiptSourceParam =
-    url.searchParams.get("receipt_source")?.toUpperCase() ?? "USER_VIEW";
-  const receiptSource: "USER_VIEW" | "AUTO_24H" | "AUTO_2H" =
-    receiptSourceParam === "AUTO_24H" || receiptSourceParam === "AUTO_2H"
-      ? receiptSourceParam
-      : "USER_VIEW";
   const requestedPosture: CounterPosture | null =
     postureParam === "PROTECT" || postureParam === "HYBRID" || postureParam === "ATTACK"
       ? postureParam
@@ -4181,7 +4177,6 @@ export async function GET(
         counterPlay,
         portfolioPlan,
         resourceAdvice,
-        receiptSource,
       ).catch(() => null);
     }
 
