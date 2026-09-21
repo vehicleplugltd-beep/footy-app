@@ -40,6 +40,9 @@ type Bet = {
   fair_odds: number | null;
   minimum_take_price: number | null;
   closing_odds: number | null;
+  closing_bookmaker: string | null;
+  closing_price_at: string | null;
+  clv: number | null;
   status: BetStatus;
   profit: number | null;
   bet_type: BetType;
@@ -676,12 +679,46 @@ export function MyBetsWorkspace({
   const settledStake = settled.reduce((sum, bet) => sum + n(bet.stake), 0);
   const totalProfit = settled.reduce((sum, bet) => sum + n(bet.profit), 0);
   const roi = settledStake > 0 ? totalProfit / settledStake : 0;
-  const clvBets = bets.filter((bet) => n(bet.closing_odds) > 1);
+  const clvBets = bets.filter(
+    (bet) => bet.clv != null || n(bet.closing_odds) > 1,
+  );
   const avgClv = clvBets.length
     ? clvBets.reduce(
-        (sum, bet) => sum + n(bet.decimal_odds) / n(bet.closing_odds) - 1,
+        (sum, bet) =>
+          sum +
+          (bet.clv != null
+            ? n(bet.clv)
+            : n(bet.decimal_odds) / n(bet.closing_odds) - 1),
         0,
       ) / clvBets.length
+    : null;
+
+  const modelMatched = bets.filter(
+    (bet) =>
+      n(bet.model_probability) > 0 &&
+      n(bet.minimum_take_price) > 1,
+  );
+  const goodPriceBets = modelMatched.filter(
+    (bet) => n(bet.decimal_odds) >= n(bet.minimum_take_price),
+  );
+  const priceDiscipline = modelMatched.length
+    ? goodPriceBets.length / modelMatched.length
+    : null;
+  const averageEntryEv = modelMatched.length
+    ? modelMatched.reduce(
+        (sum, bet) =>
+          sum + n(bet.model_probability) * n(bet.decimal_odds) - 1,
+        0,
+      ) / modelMatched.length
+    : null;
+
+  const openBets = bets.filter((bet) => bet.status === "OPEN");
+  const openExposure = openBets.reduce((sum, bet) => sum + n(bet.stake), 0);
+  const accaExposure = openBets
+    .filter((bet) => bet.bet_type !== "SINGLE")
+    .reduce((sum, bet) => sum + n(bet.stake), 0);
+  const largestOpen = openBets.length
+    ? [...openBets].sort((a, b) => n(b.stake) - n(a.stake))[0]
     : null;
 
   if (loading) {
@@ -737,6 +774,60 @@ export function MyBetsWorkspace({
         <article><span>ROI</span><strong className={roi >= 0 ? "positive" : "negative"}>{(roi * 100).toFixed(1)}%</strong><small>settled bets</small></article>
         <article><span>Avg CLV</span><strong className={(avgClv ?? 0) >= 0 ? "positive" : "negative"}>{avgClv == null ? "—" : `${(avgClv * 100).toFixed(2)}%`}</strong><small>{clvBets.length} with close</small></article>
         <article><span>Price watches</span><strong>{priceAlerts.filter((alert) => alert.enabled).length}</strong><small>{alertEvents.filter((event) => !event.read_at).length} new alerts</small></article>
+      </section>
+
+      <section className="decision-quality-grid">
+        <article className="bet-workspace-panel decision-quality-panel">
+          <span>DECISION QUALITY</span>
+          <h2>Are you taking the right prices?</h2>
+          <div className="decision-quality-metrics">
+            <div>
+              <span>Model-matched bets</span>
+              <strong>{modelMatched.length}</strong>
+              <small>{modelMatched.length < 10 ? "early sample" : "usable sample"}</small>
+            </div>
+            <div>
+              <span>Price discipline</span>
+              <strong>{priceDiscipline == null ? "—" : `${(priceDiscipline * 100).toFixed(0)}%`}</strong>
+              <small>took Footy minimum or better</small>
+            </div>
+            <div>
+              <span>Avg entry EV</span>
+              <strong className={(averageEntryEv ?? 0) >= 0 ? "positive" : "negative"}>
+                {averageEntryEv == null ? "—" : `${averageEntryEv >= 0 ? "+" : ""}${(averageEntryEv * 100).toFixed(1)}%`}
+              </strong>
+              <small>model view at entry</small>
+            </div>
+            <div>
+              <span>Avg CLV</span>
+              <strong className={(avgClv ?? 0) >= 0 ? "positive" : "negative"}>
+                {avgClv == null ? "—" : `${avgClv >= 0 ? "+" : ""}${(avgClv * 100).toFixed(2)}%`}
+              </strong>
+              <small>{clvBets.length} closing prices captured</small>
+            </div>
+          </div>
+          <p>
+            {modelMatched.length < 10
+              ? "Footy keeps this descriptive until you have at least 10 model-matched bets; tiny samples are too noisy for a meaningful judgement."
+              : priceDiscipline != null && priceDiscipline >= 0.7
+                ? "Your recent record shows strong price discipline. Keep focusing on entry quality rather than short-term win rate."
+                : "The biggest improvement opportunity is price discipline: avoid taking selections below Footy's minimum take line."}
+          </p>
+        </article>
+
+        <article className="bet-workspace-panel exposure-panel">
+          <span>OPEN EXPOSURE</span>
+          <h2>What is currently at risk?</h2>
+          <div className="decision-quality-metrics">
+            <div><span>Open stake</span><strong>{formatMoney(openExposure)}</strong><small>{openBets.length} open tickets</small></div>
+            <div><span>Acca stake</span><strong>{formatMoney(accaExposure)}</strong><small>higher-variance exposure</small></div>
+            <div><span>Largest open</span><strong>{largestOpen ? formatMoney(n(largestOpen.stake)) : "—"}</strong><small>{largestOpen?.event_name ?? "none"}</small></div>
+          </div>
+          <p>
+            Exposure is shown separately from expected value. A positive-EV portfolio
+            can still be too concentrated in one match, market or accumulator.
+          </p>
+        </article>
       </section>
 
       <section className="bet-input-grid">
@@ -818,6 +909,16 @@ export function MyBetsWorkspace({
                     {bet.status === "OPEN" ? "OPEN" : formatMoney(n(bet.profit))}
                   </span>
                 </div>
+                {bet.closing_odds ? (
+                  <div className="ticket-close">
+                    <span>CLOSE</span>
+                    <strong>{decimalToFractional(n(bet.closing_odds))}</strong>
+                    <small>{bet.closing_bookmaker || "market close"}</small>
+                    <em className={(bet.clv ?? 0) >= 0 ? "positive" : "negative"}>
+                      CLV {bet.clv == null ? "—" : `${bet.clv >= 0 ? "+" : ""}${(bet.clv * 100).toFixed(2)}%`}
+                    </em>
+                  </div>
+                ) : null}
                 {bet.status === "OPEN" ? (
                   <div className="ticket-actions">
                     <button type="button" onClick={() => settleBet(bet, "WON")}>Won</button>
