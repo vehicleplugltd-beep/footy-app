@@ -148,6 +148,85 @@ export type AccaCandidate = {
   verdict: "BET";
 };
 
+export type DailyGamePrediction = {
+  matchId: string;
+  kickoffAt: string;
+  league: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeXg: number | null;
+  awayXg: number | null;
+  outcomes: BettingSelection[];
+  modelPick: BettingSelection | null;
+};
+
+type PublicCallRow = {
+  call_key: string;
+  source_kind: string;
+  match_id: string;
+  model_version: string;
+  market: string;
+  selection: string;
+  model_probability: number;
+  fair_odds: number;
+  minimum_take_price: number | null;
+  validation_status: string;
+  home_team: string;
+  away_team: string;
+  kickoff_at: string;
+  published_at: string;
+  quoted_bookmaker: string | null;
+  quoted_odds: number | null;
+  price_captured_at: string | null;
+  closing_odds: number | null;
+  home_goals: number | null;
+  away_goals: number | null;
+  result_status: "OPEN" | "WON" | "LOST" | "VOID";
+  unit_profit: number | null;
+  clv: number | null;
+  settled_at: string | null;
+};
+
+export type PredictionReceipt = {
+  callKey: string;
+  matchId: string;
+  modelVersion: string;
+  market: string;
+  selection: string;
+  displaySelection: string;
+  modelProbability: number;
+  fairOdds: number;
+  minimumTakePrice: number | null;
+  validationStatus: string;
+  homeTeam: string;
+  awayTeam: string;
+  kickoffAt: string;
+  publishedAt: string;
+  quotedBookmaker: string | null;
+  quotedOdds: number | null;
+  closingOdds: number | null;
+  homeGoals: number | null;
+  awayGoals: number | null;
+  resultStatus: PublicCallRow["result_status"];
+  unitProfit: number | null;
+  clv: number | null;
+  settledAt: string | null;
+};
+
+export type PredictionResultsData = {
+  receipts: PredictionReceipt[];
+  summary: {
+    predictions: number;
+    correct: number;
+    incorrect: number;
+    accuracy: number | null;
+    pricedBets: number;
+    units: number | null;
+    roi: number | null;
+    averageClv: number | null;
+  };
+};
+
 function config() {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -224,6 +303,51 @@ function displaySelection(match: MatchRow, selection: string) {
   if (selection === "away") return match.away_team;
   if (selection === "draw") return "Draw";
   return selection.replaceAll("_", " ");
+}
+
+function londonDateKey(value: string | Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(typeof value === "string" ? new Date(value) : value);
+}
+
+function buildDailyGames(
+  matches: MatchRow[],
+  selections: BettingSelection[],
+  nowDate: Date,
+): DailyGamePrediction[] {
+  const today = londonDateKey(nowDate);
+  const byMatch = new Map<string, BettingSelection[]>();
+  for (const selection of selections) {
+    if (londonDateKey(selection.kickoffAt) !== today) continue;
+    const rows = byMatch.get(selection.matchId) ?? [];
+    rows.push(selection);
+    byMatch.set(selection.matchId, rows);
+  }
+
+  return matches
+    .filter((match) => londonDateKey(match.kickoff_at) === today)
+    .map((match) => {
+      const outcomes = [...(byMatch.get(match.match_id) ?? [])].sort(
+        (a, b) => b.modelProbability - a.modelProbability,
+      );
+      const modelPick = outcomes[0] ?? null;
+      return {
+        matchId: match.match_id,
+        kickoffAt: match.kickoff_at,
+        league: match.league,
+        homeTeam: match.home_team,
+        awayTeam: match.away_team,
+        homeXg: modelPick?.homeXg ?? null,
+        awayXg: modelPick?.awayXg ?? null,
+        outcomes,
+        modelPick,
+      };
+    })
+    .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
 }
 
 function verdictFor(
@@ -376,12 +500,13 @@ export async function getBettingWorkspaceData() {
   const nowDate = new Date();
   const now = nowDate.toISOString();
   const horizon = new Date(nowDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const scopeStart = new Date(nowDate.getTime() - 18 * 60 * 60 * 1000).toISOString();
   const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
-  const [matches, outputs, validations, liveOdds, feedRows, recentMatches] =
+  const [scopeMatches, outputs, validations, liveOdds, feedRows, recentMatches] =
     await Promise.all([
       rest<MatchRow>(
-        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=100`,
+        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=140`,
       ),
       rest<ModelRow>(
         `footy_model_outputs?select=match_id,model_version,home_xg,away_xg,market,selection,model_probability,fair_odds,uncertainty_haircut,minimum_take_price,created_at&model_version=eq.${MODEL_VERSION}&order=created_at.desc&limit=2000`,
@@ -439,17 +564,17 @@ export async function getBettingWorkspaceData() {
     pricesByKey.set(key, list);
   }
 
-  const futureIds = new Set(matches.map((match) => match.match_id));
+  const scopedIds = new Set(scopeMatches.map((match) => match.match_id));
   const modelsByMatch = new Map<string, ModelRow[]>();
   for (const row of latestRows(outputs)) {
-    if (!futureIds.has(row.match_id)) continue;
+    if (!scopedIds.has(row.match_id)) continue;
     const list = modelsByMatch.get(row.match_id) ?? [];
     list.push(row);
     modelsByMatch.set(row.match_id, list);
   }
 
   const selections: BettingSelection[] = [];
-  for (const match of matches) {
+  for (const match of scopeMatches) {
     for (const model of modelsByMatch.get(match.match_id) ?? []) {
       const key = `${match.match_id}:${model.market}:${model.selection}`;
       const prices = pricesByKey.get(key) ?? [];
@@ -499,20 +624,28 @@ export async function getBettingWorkspaceData() {
     }
   }
 
+  const futureMatches = scopeMatches.filter(
+    (match) => new Date(match.kickoff_at).getTime() > nowDate.getTime(),
+  );
+  const futureSelections = selections.filter(
+    (selection) => new Date(selection.kickoffAt).getTime() > nowDate.getTime(),
+  );
+  const todayGames = buildDailyGames(scopeMatches, selections, nowDate);
   const latestModelAt =
     outputs.map((row) => row.created_at).sort().at(-1) ?? null;
   const latestFixtureAt =
-    matches.map((row) => row.kickoff_at).sort().at(-1) ??
+    futureMatches.map((row) => row.kickoff_at).sort().at(-1) ??
     recentMatches.map((row) => row.kickoff_at).sort().at(-1) ??
     null;
   const feed = feedRows[0] ?? null;
-  const accas = buildAccas(selections);
+  const accas = buildAccas(futureSelections);
 
   return {
     configured: Boolean(config()),
     modelVersion: MODEL_VERSION,
-    matches,
-    selections: selections.sort((a, b) => {
+    matches: futureMatches,
+    todayGames,
+    selections: futureSelections.sort((a, b) => {
       const verdictOrder = { BET: 0, WATCH: 1, PASS: 2, FADE: 3 };
       return (
         verdictOrder[a.verdict] - verdictOrder[b.verdict] ||
@@ -527,12 +660,84 @@ export async function getBettingWorkspaceData() {
     latestFixtureAt,
     livePrices: liveOdds.length,
     dataState:
-      matches.length === 0
+      futureMatches.length === 0
         ? "NO_UPCOMING_FIXTURES"
-        : selections.length === 0
+        : futureSelections.length === 0
           ? "NO_CURRENT_MODEL"
           : liveOdds.length === 0
             ? "NO_FRESH_PRICES"
             : "LIVE",
   } as const;
+}
+
+
+export async function getPredictionResultsData(
+  limit = 60,
+): Promise<PredictionResultsData> {
+  const rows = await rest<PublicCallRow>(
+    `footy_public_calls?select=call_key,source_kind,match_id,model_version,market,selection,model_probability,fair_odds,minimum_take_price,validation_status,home_team,away_team,kickoff_at,published_at,quoted_bookmaker,quoted_odds,price_captured_at,closing_odds,home_goals,away_goals,result_status,unit_profit,clv,settled_at&result_status=neq.OPEN&order=kickoff_at.desc&limit=${Math.max(1, Math.min(limit, 200))}`,
+  );
+
+  const receipts = rows.map((row): PredictionReceipt => ({
+    callKey: row.call_key,
+    matchId: row.match_id,
+    modelVersion: row.model_version,
+    market: row.market,
+    selection: row.selection,
+    displaySelection:
+      row.selection === "home"
+        ? row.home_team
+        : row.selection === "away"
+          ? row.away_team
+          : row.selection === "draw"
+            ? "Draw"
+            : row.selection.replaceAll("_", " "),
+    modelProbability: Number(row.model_probability),
+    fairOdds: Number(row.fair_odds),
+    minimumTakePrice:
+      row.minimum_take_price == null ? null : Number(row.minimum_take_price),
+    validationStatus: row.validation_status,
+    homeTeam: row.home_team,
+    awayTeam: row.away_team,
+    kickoffAt: row.kickoff_at,
+    publishedAt: row.published_at,
+    quotedBookmaker: row.quoted_bookmaker,
+    quotedOdds: row.quoted_odds == null ? null : Number(row.quoted_odds),
+    closingOdds: row.closing_odds == null ? null : Number(row.closing_odds),
+    homeGoals: row.home_goals == null ? null : Number(row.home_goals),
+    awayGoals: row.away_goals == null ? null : Number(row.away_goals),
+    resultStatus: row.result_status,
+    unitProfit: row.unit_profit == null ? null : Number(row.unit_profit),
+    clv: row.clv == null ? null : Number(row.clv),
+    settledAt: row.settled_at,
+  }));
+
+  const graded = receipts.filter(
+    (row) => row.resultStatus === "WON" || row.resultStatus === "LOST",
+  );
+  const correct = graded.filter((row) => row.resultStatus === "WON").length;
+  const priced = receipts.filter(
+    (row) => row.quotedOdds != null && row.unitProfit != null,
+  );
+  const units = priced.length
+    ? priced.reduce((sum, row) => sum + Number(row.unitProfit), 0)
+    : null;
+  const clvRows = priced.filter((row) => row.clv != null);
+  const averageClv = clvRows.length
+    ? clvRows.reduce((sum, row) => sum + Number(row.clv), 0) / clvRows.length
+    : null;
+
+  return {
+    receipts,
+    summary: {
+      predictions: graded.length,
+      correct,
+      incorrect: graded.length - correct,
+      accuracy: graded.length ? correct / graded.length : null,
+      pricedBets: priced.length,
+      units,
+      roi: priced.length && units != null ? units / priced.length : null,
+      averageClv,
+    },
+  };
 }
