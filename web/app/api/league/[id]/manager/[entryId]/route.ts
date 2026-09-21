@@ -1815,6 +1815,245 @@ function buildCounterPlay(
     return { xi, captain };
   };
 
+  const chipSquadScore = (
+    squad: RankedPlayer[],
+    eventIndex: number,
+    chip: "Wildcard" | "Free Hit",
+  ) => {
+    const offsets =
+      chip === "Free Hit"
+        ? [0]
+        : [0, 1, 2, 3, 4].filter(
+            (offset) => horizonEvents[eventIndex + offset],
+          );
+    const weights = [1, 0.84, 0.69, 0.56, 0.45];
+    let total = 0;
+    for (const offset of offsets) {
+      const event = horizonEvents[eventIndex + offset];
+      if (!event) continue;
+      const plan = planFromSquad(squad, event.scores, null);
+      const xiScore = expectedPlanScore(
+        squad,
+        plan.xi,
+        plan.captain,
+        event.scores,
+        null,
+      );
+      const bench = squad.filter(
+        (player) => !plan.xi.some((starter) => starter.id === player.id),
+      );
+      const benchDepth = bench.reduce(
+        (sum, player) => sum + (event.scores.get(player.id)?.score ?? 0),
+        0,
+      );
+      const depthWeight = chip === "Wildcard" ? 0.10 : 0.02;
+      total += (xiScore + benchDepth * depthWeight) * weights[offset];
+    }
+    return total;
+  };
+
+  const optimizeChipSquad = (
+    currentSquad: RankedPlayer[],
+    bank: number,
+    eventIndex: number,
+    chip: "Wildcard" | "Free Hit",
+  ) => {
+    const budget =
+      currentSquad.reduce((sum, player) => sum + player.price, 0) +
+      Math.max(0, bank);
+    const required: Record<string, number> = {
+      GKP: 2,
+      DEF: 5,
+      MID: 5,
+      FWD: 3,
+    };
+    const slotWeights: Record<string, number[]> = {
+      GKP: [1, 0.18],
+      DEF: [1, 1, 1, 0.72, 0.30],
+      MID: [1, 1, 1, 0.90, 0.30],
+      FWD: [1, 1, 0.72],
+    };
+    const poolByPosition = new Map<string, RankedPlayer[]>();
+    for (const position of Object.keys(required)) {
+      const candidates = [...playerPool.values()]
+        .filter(
+          (player) =>
+            player.position === position &&
+            player.price > 0 &&
+            player.availability >= 75 &&
+            horizonEvents[eventIndex]?.scores.has(player.id),
+        )
+        .sort((a, b) => {
+          const scoreA =
+            chip === "Free Hit"
+              ? eventScore(eventIndex, a.id)
+              : [0, 1, 2, 3, 4].reduce(
+                  (sum, offset) =>
+                    sum +
+                    (horizonEvents[eventIndex + offset]
+                      ? eventScore(eventIndex + offset, a.id) *
+                        [1, 0.84, 0.69, 0.56, 0.45][offset]
+                      : 0),
+                  0,
+                );
+          const scoreB =
+            chip === "Free Hit"
+              ? eventScore(eventIndex, b.id)
+              : [0, 1, 2, 3, 4].reduce(
+                  (sum, offset) =>
+                    sum +
+                    (horizonEvents[eventIndex + offset]
+                      ? eventScore(eventIndex + offset, b.id) *
+                        [1, 0.84, 0.69, 0.56, 0.45][offset]
+                      : 0),
+                  0,
+                );
+          return scoreB - scoreA || a.price - b.price;
+        })
+        .slice(0, position === "GKP" ? 10 : 18);
+      poolByPosition.set(position, candidates);
+    }
+
+    if (
+      [...Object.entries(required)].some(
+        ([position, count]) =>
+          (poolByPosition.get(position)?.length ?? 0) < count,
+      )
+    ) {
+      return null;
+    }
+
+    const slots = Object.entries(required).flatMap(([position, count]) =>
+      Array.from({ length: count }, (_, index) => ({
+        position,
+        index,
+      })),
+    );
+    const cheapestByPosition = new Map(
+      [...poolByPosition.entries()].map(([position, players]) => [
+        position,
+        [...players].sort((a, b) => a.price - b.price),
+      ]),
+    );
+    const minRemainingCost = (slotIndex: number) => {
+      const need = new Map<string, number>();
+      for (const slot of slots.slice(slotIndex)) {
+        need.set(slot.position, (need.get(slot.position) ?? 0) + 1);
+      }
+      let cost = 0;
+      for (const [position, count] of need) {
+        const cheapest = cheapestByPosition.get(position) ?? [];
+        for (let index = 0; index < count; index += 1) {
+          cost += cheapest[index]?.price ?? 1000;
+        }
+      }
+      return cost;
+    };
+    const playerProxy = (player: RankedPlayer) =>
+      chip === "Free Hit"
+        ? eventScore(eventIndex, player.id)
+        : [0, 1, 2, 3, 4].reduce(
+            (sum, offset) =>
+              sum +
+              (horizonEvents[eventIndex + offset]
+                ? eventScore(eventIndex + offset, player.id) *
+                  [1, 0.84, 0.69, 0.56, 0.45][offset]
+                : 0),
+            0,
+          );
+
+    type BeamState = {
+      players: RankedPlayer[];
+      spent: number;
+      proxy: number;
+      clubs: Map<string, number>;
+    };
+    let beam: BeamState[] = [
+      { players: [], spent: 0, proxy: 0, clubs: new Map() },
+    ];
+
+    for (let slotIndex = 0; slotIndex < slots.length; slotIndex += 1) {
+      const slot = slots[slotIndex];
+      const candidates = poolByPosition.get(slot.position) ?? [];
+      const next: BeamState[] = [];
+      for (const state of beam) {
+        for (const player of candidates) {
+          if (state.players.some((owned) => owned.id === player.id)) continue;
+          if ((state.clubs.get(player.team) ?? 0) >= 3) continue;
+          const spent = state.spent + player.price;
+          if (
+            spent +
+              minRemainingCost(slotIndex + 1) >
+            budget + 0.001
+          ) continue;
+          const clubs = new Map(state.clubs);
+          clubs.set(player.team, (clubs.get(player.team) ?? 0) + 1);
+          next.push({
+            players: [...state.players, player],
+            spent,
+            proxy:
+              state.proxy +
+              playerProxy(player) *
+                (slotWeights[slot.position]?.[slot.index] ?? 0.3),
+            clubs,
+          });
+        }
+      }
+      beam = next
+        .sort(
+          (a, b) =>
+            b.proxy - a.proxy ||
+            a.spent - b.spent,
+        )
+        .slice(0, 1400);
+      if (!beam.length) return null;
+    }
+
+    let best:
+      | {
+          squad: RankedPlayer[];
+          bank: number;
+          score: number;
+        }
+      | null = null;
+    for (const state of beam) {
+      if (state.players.length !== 15) continue;
+      const score = chipSquadScore(state.players, eventIndex, chip);
+      if (!best || score > best.score) {
+        best = {
+          squad: state.players,
+          bank: Math.max(0, budget - state.spent),
+          score,
+        };
+      }
+    }
+    return best;
+  };
+
+  const chipTransferDiff = (
+    before: RankedPlayer[],
+    after: RankedPlayer[],
+    eventIndex: number,
+  ) => {
+    const afterIds = new Set(after.map((player) => player.id));
+    const beforeIds = new Set(before.map((player) => player.id));
+    const removed = before.filter((player) => !afterIds.has(player.id));
+    const added = after.filter((player) => !beforeIds.has(player.id));
+    const transfers: PathTransfer[] = [];
+    for (const position of ["GKP", "DEF", "MID", "FWD"]) {
+      const outs = removed.filter((player) => player.position === position);
+      const ins = added.filter((player) => player.position === position);
+      for (let index = 0; index < Math.min(outs.length, ins.length); index += 1) {
+        transfers.push({
+          out: outs[index],
+          in: ins[index],
+          gain: weightedTransferGain(outs[index], ins[index], eventIndex),
+        });
+      }
+    }
+    return transfers;
+  };
+
   const managerChipForWeek = (
     chips: Set<string>,
     eventName: string,
@@ -1827,10 +2066,12 @@ function buildCounterPlay(
     );
     if (!signal) return null;
     const label = chipLabel(signal.chip);
-    // TC and BB can be represented faithfully from a fixed 15-man path.
-    // Wildcard/Free Hit need a full one-week squad optimiser, so they remain
-    // in the carried resource state until that optimiser is available.
-    return label === "Triple Captain" || label === "Bench Boost" ? label : null;
+    return label === "Triple Captain" ||
+      label === "Bench Boost" ||
+      label === "Wildcard" ||
+      label === "Free Hit"
+      ? label
+      : null;
   };
 
   const rivalChipForWeek = (
@@ -1920,9 +2161,47 @@ function buildCounterPlay(
       const event = horizonEvents[eventIndex];
       const freeBefore = freeTransfers;
       const bankBefore = bank;
+      const permanentSquadBefore = [...squad];
+      const permanentBankBefore = bank;
       let transfers: PathTransfer[] = [];
+      let chip: string | null = isManager
+        ? managerChipForWeek(chips, event.name)
+        : null;
+      let scoringSquad = squad;
+      let optimizedChip:
+        | ReturnType<typeof optimizeChipSquad>
+        | null = null;
 
       if (
+        chip === "Wildcard" ||
+        chip === "Free Hit"
+      ) {
+        optimizedChip = optimizeChipSquad(
+          squad,
+          bank,
+          eventIndex,
+          chip,
+        );
+        if (!optimizedChip) chip = null;
+      }
+
+      if (chip === "Wildcard" && optimizedChip) {
+        transfers = chipTransferDiff(
+          squad,
+          optimizedChip.squad,
+          eventIndex,
+        );
+        squad = [...optimizedChip.squad];
+        bank = optimizedChip.bank;
+        scoringSquad = squad;
+      } else if (chip === "Free Hit" && optimizedChip) {
+        transfers = chipTransferDiff(
+          squad,
+          optimizedChip.squad,
+          eventIndex,
+        );
+        scoringSquad = [...optimizedChip.squad];
+      } else if (
         eventIndex === 0 &&
         firstTransfer &&
         transferIsLegal(squad, bank, firstTransfer.out, firstTransfer.in)
@@ -1936,6 +2215,7 @@ function buildCounterPlay(
         const applied = applyTransfer(squad, bank, transfer);
         squad = applied.squad;
         bank = applied.bank;
+        scoringSquad = squad;
         transfers = [transfer];
       } else if (eventIndex > 0) {
         const selected = selectFutureTransfers(
@@ -1948,44 +2228,61 @@ function buildCounterPlay(
         );
         squad = selected.squad;
         bank = selected.bank;
+        scoringSquad = squad;
         transfers = selected.transfers;
       }
 
-      const hitCost = Math.max(0, transfers.length - freeBefore) * 4;
-      freeTransfers = Math.min(
-        5,
-        Math.max(0, freeBefore - transfers.length) + 1,
-      );
+      let hitCost = 0;
+      if (chip === "Wildcard" || chip === "Free Hit") {
+        // 2026/27 FPL keeps banked transfers through WC/FH. The Gameweek's
+        // newly received FT is consumed by activating the chip, so the banked
+        // total carried to the next deadline remains unchanged.
+        freeTransfers = freeBefore;
+      } else {
+        hitCost = Math.max(0, transfers.length - freeBefore) * 4;
+        freeTransfers = Math.min(
+          5,
+          Math.max(0, freeBefore - transfers.length) + 1,
+        );
+      }
 
-      const plan = planFromSquad(
-        squad,
+      let plan = planFromSquad(
+        scoringSquad,
         event.scores,
         eventIndex === 0 ? preferredCaptainId : null,
       );
-      const chip = isManager
-        ? managerChipForWeek(chips, event.name)
-        : rivalChipForWeek(
-            chips,
-            squad,
-            plan.xi,
-            plan.captain,
-            event,
-            history?.activity ?? null,
-          );
+      if (!isManager) {
+        chip = rivalChipForWeek(
+          chips,
+          scoringSquad,
+          plan.xi,
+          plan.captain,
+          event,
+          history?.activity ?? null,
+        );
+      }
       if (chip) removeChip(chips, chip);
+
       const meanScore =
         expectedPlanScore(
-          squad,
+          scoringSquad,
           plan.xi,
           plan.captain,
           event.scores,
           chip,
         ) - hitCost;
 
+      if (chip === "Free Hit") {
+        // Free Hit is a one-Gameweek temporary squad. Restore permanent state
+        // for the following deadline, including the public-data bank estimate.
+        squad = permanentSquadBefore;
+        bank = permanentBankBefore;
+      }
+
       weeks.push({
         event_id: event.eventId,
         event_name: event.name,
-        squad: [...squad],
+        squad: [...scoringSquad],
         xi: plan.xi,
         captain: plan.captain,
         chip,
@@ -2586,7 +2883,7 @@ function buildCounterPlay(
       "The 1GW/3GW/5GW path is stateful: each deadline carries forward the squad, free-transfer bank, approximate cash balance, hit cost, captaincy and supported chip use before re-evaluating the next football-qualified transfer.",
       "Future manager and rival transfers are model-selected response paths from a bounded football-qualified pool. They are planning weights, not claims about what any manager will do.",
       "Path cash uses current listed prices because exact historical purchase/selling-price profit is not available in the public league snapshot; bank-sensitive moves should therefore be treated as approximate until selling-price state is added.",
-      "Triple Captain and Bench Boost can be represented from the carried 15-man squad. Wildcard and Free Hit remain in the resource state and are not auto-deployed until a full one-deadline squad optimiser is wired into CounterPlay.",
+      "Triple Captain and Bench Boost use the carried squad. Strong Wildcard/Free Hit signals now invoke a legal 15-man one-deadline optimiser; Free Hit reverts the squad afterward and both chips preserve banked transfers under current 2026/27 rules. Chip budgets still use public listed prices because exact manager selling prices are unavailable.",
     ],
   };
 }
