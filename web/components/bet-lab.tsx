@@ -56,6 +56,25 @@ function edgeLabel(edge: number | null) {
   return `${edge >= 0 ? "+" : ""}${(edge * 100).toFixed(1)}%`;
 }
 
+function canonical(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b(versus|vs|v)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function canonicalMarket(value: string) {
+  const market = canonical(value);
+  if (
+    ["1x2", "match result", "match winner", "moneyline", "h2h", "full time result"].includes(market)
+  ) {
+    return "1x2";
+  }
+  return market;
+}
+
 export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
   const [stake, setStake] = useState("10");
   const [odds, setOdds] = useState("6/4");
@@ -65,6 +84,7 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
   const [closingOdds, setClosingOdds] = useState("");
   const [modelMarketId, setModelMarketId] = useState(modelMarkets[0]?.id ?? "");
   const [offeredOdds, setOfferedOdds] = useState("");
+  const [slipText, setSlipText] = useState("");
   const [legs, setLegs] = useState<Leg[]>([
     { id: 1, odds: "4/5", probability: "58" },
     { id: 2, odds: "11/10", probability: "50" },
@@ -240,6 +260,95 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
     };
   }, [modelMarkets, modelMarketId, offeredOdds]);
 
+  const slipAnalysis = useMemo(() => {
+    const rawLines = slipText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+
+    const rows = rawLines.map((line, index) => {
+      const fields = line.split(/\s*\|\s*|\s*,\s*/);
+      const [eventName = "", market = "", selection = "", rawOdds = ""] = fields;
+      const decimalOdds = fractionalToDecimal(rawOdds);
+      const match =
+        modelMarkets.find(
+          (item) =>
+            canonical(item.eventName) === canonical(eventName) &&
+            canonicalMarket(item.market) === canonicalMarket(market) &&
+            canonical(item.selection) === canonical(selection),
+        ) ?? null;
+
+      const edge =
+        match && decimalOdds && decimalOdds > 1
+          ? match.modelProbability * decimalOdds - 1
+          : null;
+      const clears =
+        Boolean(match) &&
+        Boolean(decimalOdds) &&
+        Number(decimalOdds) >= Number(match?.minimumTakePrice);
+
+      return {
+        index,
+        line,
+        eventName,
+        market,
+        selection,
+        decimalOdds,
+        match,
+        edge,
+        clears,
+        status: !match
+          ? "UNMATCHED"
+          : !decimalOdds
+            ? "BAD ODDS"
+            : clears
+              ? match.validationStatus === "APPROVED"
+                ? "BET"
+                : "WATCH"
+              : "PASS",
+      };
+    });
+
+    const matched = rows.filter(
+      (row): row is typeof row & { match: ModelMarket; decimalOdds: number } =>
+        row.match !== null && row.decimalOdds !== null,
+    );
+    const combinedOdds = matched.length
+      ? matched.reduce((product, row) => product * row.decimalOdds, 1)
+      : null;
+    const rawProbability = matched.length
+      ? matched.reduce((product, row) => product * row.match.modelProbability, 1)
+      : null;
+    const combinedProbability =
+      rawProbability == null
+        ? null
+        : rawProbability * Math.pow(0.985, Math.max(0, matched.length - 1));
+    const fairOdds =
+      combinedProbability && combinedProbability > 0
+        ? 1 / combinedProbability
+        : null;
+    const combinedEdge =
+      combinedProbability != null && combinedOdds != null
+        ? combinedProbability * combinedOdds - 1
+        : null;
+    const weakest = matched.length
+      ? [...matched].sort((a, b) => (a.edge ?? 999) - (b.edge ?? 999))[0]
+      : null;
+
+    return {
+      rows,
+      matchedCount: matched.length,
+      unmatchedCount: rows.length - matched.length,
+      failingCount: matched.filter((row) => !row.clears).length,
+      combinedOdds,
+      combinedProbability,
+      fairOdds,
+      combinedEdge,
+      weakest,
+    };
+  }, [slipText, modelMarkets]);
+
   function updateLeg(id: number, field: "odds" | "probability", value: string) {
     setLegs((current) =>
       current.map((leg) => (leg.id === id ? { ...leg, [field]: value } : leg)),
@@ -402,6 +511,84 @@ export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
             A 60% outcome is not automatically value. At 4/6 it may be a PASS;
             at EVS it may be attractive. Bet Checker lets users test the exact
             price in front of them rather than treating a pick as universally good.
+          </p>
+        </article>
+      </section>
+
+      <section className="lab-grid slip-analyzer-grid">
+        <article className="lab-panel lab-panel-primary">
+          <span>SLIP ANALYZER</span>
+          <h2>Paste a full bet slip and let Footy challenge every leg.</h2>
+          <p>
+            Use one leg per line: <code>Event | Market | Selection | Odds</code>.
+            Footy matches current model markets, checks the exact price and exposes
+            weak or unmatched legs before you place the multiple.
+          </p>
+          <textarea
+            className="slip-analyzer-input"
+            value={slipText}
+            onChange={(event) => setSlipText(event.target.value)}
+            rows={7}
+            placeholder={"Arsenal vs Chelsea | 1X2 | Arsenal | 10/11\nLiverpool vs Everton | Match Result | Liverpool | 4/5"}
+          />
+
+          {slipAnalysis.rows.length ? (
+            <>
+              <div className="slip-analysis-summary">
+                <div><span>Legs</span><strong>{slipAnalysis.rows.length}</strong></div>
+                <div><span>Matched</span><strong>{slipAnalysis.matchedCount}</strong></div>
+                <div><span>Below take</span><strong>{slipAnalysis.failingCount}</strong></div>
+                <div><span>Combined odds</span><strong>{oddsLabel(slipAnalysis.combinedOdds)}</strong></div>
+                <div><span>Model probability</span><strong>{pct(slipAnalysis.combinedProbability, 2)}</strong></div>
+                <div><span>Combined EV</span><strong className={(slipAnalysis.combinedEdge ?? -1) >= 0 ? "positive" : "negative"}>{edgeLabel(slipAnalysis.combinedEdge)}</strong></div>
+              </div>
+
+              <div className="slip-analysis-list">
+                {slipAnalysis.rows.map((row) => (
+                  <article key={`${row.index}:${row.line}`}>
+                    <b>{row.index + 1}</b>
+                    <div>
+                      <strong>{row.selection || "Selection missing"}</strong>
+                      <small>{row.eventName || "Event missing"} · {row.market || "Market missing"}</small>
+                    </div>
+                    <p>
+                      <span>{row.match ? `Take ${minimumTakeToFractional(row.match.minimumTakePrice)}+` : "No model match"}</span>
+                      <strong>{row.decimalOdds ? decimalToFractional(row.decimalOdds) : "Bad odds"}</strong>
+                    </p>
+                    <em className={row.status === "BET" || row.status === "WATCH" ? "positive" : "negative"}>
+                      {row.status}
+                    </em>
+                  </article>
+                ))}
+              </div>
+
+              <div className="slip-doctor">
+                <span>FOOTY DIAGNOSIS</span>
+                <strong>
+                  {slipAnalysis.unmatchedCount > 0
+                    ? `${slipAnalysis.unmatchedCount} leg${slipAnalysis.unmatchedCount === 1 ? "" : "s"} could not be matched to a current Footy market.`
+                    : slipAnalysis.failingCount > 0
+                      ? `${slipAnalysis.failingCount} matched leg${slipAnalysis.failingCount === 1 ? "" : "s"} fail the minimum take price. Weakest matched leg is ${slipAnalysis.weakest?.selection ?? "—"} at ${edgeLabel(slipAnalysis.weakest?.edge ?? null)}.`
+                      : `Every matched leg clears its raw take line. Weakest leg is ${slipAnalysis.weakest?.selection ?? "—"} at ${edgeLabel(slipAnalysis.weakest?.edge ?? null)}; correlation and uncertainty still need to be respected.`}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <div className="my-bets-empty">Paste two or more slip lines to start the diagnosis.</div>
+          )}
+        </article>
+
+        <article className="lab-panel">
+          <span>FORMAT HELP</span>
+          <h2>Fast enough to use at the bookmaker screen.</h2>
+          <p>
+            Example: <code>Arsenal vs Chelsea | 1X2 | Arsenal | 10/11</code>.
+            Common names such as Match Result, Moneyline and 1X2 are reconciled.
+            Fractional and decimal prices are both accepted.
+          </p>
+          <p>
+            A matched leg is still not automatically a recommendation. Footy keeps
+            model validation and the uncertainty-adjusted take threshold separate.
           </p>
         </article>
       </section>
