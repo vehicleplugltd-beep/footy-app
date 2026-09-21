@@ -22,6 +22,26 @@ async function sb(path) {
   return response.json();
 }
 
+async function patch(table, filter, body) {
+  const response = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${filter}`,
+    {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Supabase PATCH ${response.status}: ${await response.text()}`,
+    );
+  }
+}
+
 async function bootstrap() {
   try {
     const response = await fetch(`${FPL_BASE}/bootstrap-static/`, {
@@ -48,14 +68,14 @@ function receiptStage(hoursToDeadline) {
   return null;
 }
 
-async function freezeReceipt(leagueId, entryId, source) {
+async function freezeReceipt(leagueId, entryId, eventId, source) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
   try {
     const url = new URL(
       `${APP_URL}/api/league/${leagueId}/manager/${entryId}`,
     );
-    url.searchParams.set("receipt_source", source);
+    const startedAt = new Date(Date.now() - 5000).toISOString();
     const response = await fetch(url, {
       headers: { "User-Agent": "FootyDecisionAudit/1.0" },
       signal: controller.signal,
@@ -66,7 +86,34 @@ async function freezeReceipt(leagueId, entryId, source) {
         `Footy API ${response.status} league=${leagueId} entry=${entryId}: ${body.slice(0, 250)}`,
       );
     }
-    return { league_id: leagueId, entry_id: entryId, status: "frozen" };
+
+    const receipts = await sb(
+      `footy_fpl_recommendation_snapshots?select=id,decision_receipt,generated_at&league_id=eq.${leagueId}&entry_id=eq.${entryId}&event=eq.${eventId}&model_version=eq.league-edge-v5-decision-quality&generated_at=gte.${encodeURIComponent(startedAt)}&order=generated_at.desc&limit=1`,
+    );
+    const receipt = receipts?.[0];
+    if (!receipt?.id) {
+      throw new Error(
+        `Decision receipt not found after API freeze league=${leagueId} entry=${entryId}`,
+      );
+    }
+    await patch(
+      "footy_fpl_recommendation_snapshots",
+      `id=eq.${receipt.id}`,
+      {
+        receipt_source: source,
+        decision_receipt: {
+          ...(receipt.decision_receipt || {}),
+          receipt_source: source,
+        },
+      },
+    );
+
+    return {
+      league_id: leagueId,
+      entry_id: entryId,
+      receipt_id: receipt.id,
+      status: "frozen",
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -152,7 +199,7 @@ async function main() {
   }
 
   const results = await mapLimit(jobs, 3, (job) =>
-    freezeReceipt(job.league_id, job.entry_id, source),
+    freezeReceipt(job.league_id, job.entry_id, next.id, source),
   );
   const frozen = results.filter((row) => row.status === "frozen").length;
   const errors = results.filter((row) => row.status === "error");
