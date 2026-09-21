@@ -350,16 +350,22 @@ export function MyBetsWorkspace() {
 
     for (const [ticketRef, legs] of groups) {
       const legPrices = legs.map((row) => price(row.odds || row.decimal_odds));
+      const validLegPrices = legPrices.filter(
+        (value): value is number => value !== null,
+      );
       if (
         legs.some((row) => !(row.event || row.event_name) || !row.market || !row.selection) ||
-        legPrices.some((value) => !value)
+        validLegPrices.length !== legPrices.length
       ) {
         rejected += legs.length;
         continue;
       }
 
       const type = inferredBetType(legs.length, legs[0].bet_type || "");
-      const combinedOdds = legPrices.reduce((product, value) => product * Number(value), 1);
+      const combinedOdds = validLegPrices.reduce(
+        (product, value) => product * value,
+        1,
+      );
       const events = [...new Set(legs.map((row) => row.event || row.event_name))];
       const status = allowedStatus(legs[0].status || "OPEN");
       const parent = {
@@ -406,7 +412,7 @@ export function MyBetsWorkspace() {
           market: row.market,
           selection: row.selection,
           bookmaker: row.bookmaker || legs[0].bookmaker || null,
-          decimal_odds: Number(legPrices[index]),
+          decimal_odds: validLegPrices[index],
         })),
       );
 
