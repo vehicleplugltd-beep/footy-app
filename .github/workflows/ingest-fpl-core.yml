@@ -74,10 +74,43 @@ jobs:
           print(f"Using GW{gw}")
           PY
 
+      - name: Derive season penalty xG convention
+        id: penalty
+        shell: bash
+        run: |
+          CURRENT_GW="${{ steps.gw.outputs.gameweek }}"
+          python - <<'PY'
+          import os
+          import pandas as pd
+          from footy_data.sources.fpl_core_insights import FPLCoreInsightsSource
+          from footy_data.normalizers.fpl_core_insights import verified_penalty_xg_value
+
+          current_gw = int(os.environ["CURRENT_GW"])
+          source = FPLCoreInsightsSource()
+          frames = []
+          for gw in range(1, current_gw + 1):
+              frame = source.player_match_stats(gw)
+              if not frame.empty:
+                  frames.append(frame)
+          if not frames:
+              raise SystemExit("No FPL-Core player-match rows available.")
+          value = verified_penalty_xg_value(pd.concat(frames, ignore_index=True))
+          if value is None:
+              raise SystemExit(
+                  "Season-to-date FPL-Core penalty xG convention could not be validated."
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a") as handle:
+              handle.write(f"value={value:.4f}\n")
+          print(f"Validated FPL-Core penalty xG: {value:.4f}")
+          PY
+        env:
+          CURRENT_GW: ${{ steps.gw.outputs.gameweek }}
+
       - name: Verify then ingest enrichment
         shell: bash
         run: |
           CURRENT_GW="${{ steps.gw.outputs.gameweek }}"
+          PENALTY_XG="${{ steps.penalty.outputs.value }}"
 
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             echo "Backfilling verified enrichment through GW${CURRENT_GW}"
@@ -87,12 +120,14 @@ jobs:
                 --gameweek "$GW" \
                 --league "ENG-Premier League" \
                 --season "2627" \
-                --min-match-rate 0.92
+                --min-match-rate 0.92 \
+                --penalty-xg-value "$PENALTY_XG"
             done
           else
             footy-data fpl-core-ingest \
               --gameweek "$CURRENT_GW" \
               --league "ENG-Premier League" \
               --season "2627" \
-              --min-match-rate 0.92
+              --min-match-rate 0.92 \
+              --penalty-xg-value "$PENALTY_XG"
           fi
