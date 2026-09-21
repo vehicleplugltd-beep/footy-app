@@ -203,8 +203,18 @@ class SupabaseRESTWriter:
             response = requests.patch(
                 f"{self.url}/rest/v1/footy_player_match_metrics",
                 params={
-                    "provider_match_id": f"eq.{provider_match_id}",
-                    "source": f"eq.{source}",
+                    # PostgREST filter values containing reserved characters
+                    # (some cup provider ids contain "/") must be quoted.
+                    "provider_match_id": (
+                        'eq."' +
+                        provider_match_id.replace("\\", "\\\\").replace('"', '\\"') +
+                        '"'
+                    ),
+                    "source": (
+                        'eq."' +
+                        source.replace("\\", "\\\\").replace('"', '\\"') +
+                        '"'
+                    ),
                 },
                 headers={
                     "apikey": self.key,
