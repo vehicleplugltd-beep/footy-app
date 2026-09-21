@@ -56,89 +56,150 @@ function OutcomeRow({ outcome }: { outcome: BettingSelection }) {
 }
 
 export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
+  const groups = new Map<string, DailyGamePrediction[]>();
+  for (const game of games) {
+    const rows = groups.get(game.league) ?? [];
+    rows.push(game);
+    groups.set(game.league, rows);
+  }
+
+  const grouped = [...groups.entries()]
+    .map(([league, rows]) => ({
+      league,
+      games: rows.sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt)),
+      modelled: rows.filter((game) => game.outcomes.length > 0).length,
+    }))
+    .sort(
+      (a, b) =>
+        b.modelled - a.modelled ||
+        b.games.length - a.games.length ||
+        a.league.localeCompare(b.league),
+    );
+
+  const modelledCount = games.filter((game) => game.outcomes.length > 0).length;
+
   return (
     <section className="betting-section daily-board" id="today">
       <div className="betting-section-head">
         <div>
           <span>01 / TODAY&apos;S GAMES</span>
-          <h2>Prediction first. Price decision second.</h2>
+          <h2>{games.length} fixtures across {grouped.length} competitions</h2>
         </div>
-        <p>All modelled games are shown — including PASS and WATCH.</p>
+        <p>
+          {modelledCount} modelled · {games.length - modelledCount} coverage-only.
+          Fixture discovery never implies a betting recommendation.
+        </p>
       </div>
 
       {games.length ? (
-        <div className="daily-game-grid">
-          {games.map((game) => {
-            const oneXTwo = game.outcomes
-              .filter((row) => row.market === "1X2")
-              .sort((a, b) => b.modelProbability - a.modelProbability);
-            const modelPick = oneXTwo[0] ?? game.modelPick;
-            const move = modelPick ? movement(modelPick) : null;
-
-            return (
-              <article className="daily-game-card" key={game.matchId}>
-                <header>
-                  <div>
-                    <span>{game.league} · {displayTime(game.kickoffAt)}</span>
-                    <h3>{game.homeTeam} <i>vs</i> {game.awayTeam}</h3>
-                  </div>
-                  <div className="daily-model-lean">
-                    <small>MODEL LEAN</small>
-                    <strong>{modelPick?.displaySelection ?? "Awaiting model"}</strong>
-                    <b>{modelPick ? pct(modelPick.modelProbability) : "—"}</b>
-                  </div>
-                </header>
-
-                <div className="daily-xg-strip">
-                  <span>Expected scoring</span>
-                  <strong>
-                    {game.homeXg == null || game.awayXg == null
-                      ? "Model xG pending"
-                      : `${game.homeTeam} ${game.homeXg.toFixed(2)} — ${game.awayXg.toFixed(2)} ${game.awayTeam}`}
-                  </strong>
+        <div className="league-board-list">
+          {grouped.map((group, groupIndex) => (
+            <details
+              className="league-board"
+              key={group.league}
+              open={groupIndex < 5 || group.modelled > 0}
+            >
+              <summary>
+                <div>
+                  <strong>{group.league}</strong>
+                  <small>{group.games.length} fixture{group.games.length === 1 ? "" : "s"}</small>
                 </div>
+                <span>
+                  {group.modelled
+                    ? `${group.modelled} modelled`
+                    : "coverage only"}
+                </span>
+              </summary>
 
-                {oneXTwo.length ? (
-                  <div className="daily-outcomes">
-                    {oneXTwo.map((outcome) => (
-                      <OutcomeRow
-                        key={`${outcome.matchId}:${outcome.market}:${outcome.selection}`}
-                        outcome={outcome}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="daily-pending">
-                    Fixture is on the board, but a current 1X2 model run has not been published.
-                  </div>
-                )}
+              <div className="league-board-games">
+                {group.games.map((game) => {
+                  const oneXTwo = game.outcomes
+                    .filter((row) => row.market === "1X2")
+                    .sort((a, b) => b.modelProbability - a.modelProbability);
+                  const modelPick = oneXTwo[0] ?? game.modelPick;
+                  const move = modelPick ? movement(modelPick) : null;
 
-                <footer className="price-coach">
-                  <div>
-                    <span>PRICE COACH</span>
-                    <strong>{priceCoach(modelPick)}</strong>
-                    {move ? <small>{move}</small> : null}
-                  </div>
-                  {modelPick ? (
-                    <WatchPriceButton
-                      matchId={modelPick.matchId}
-                      eventName={`${modelPick.homeTeam} vs ${modelPick.awayTeam}`}
-                      market={modelPick.market}
-                      selection={modelPick.selection}
-                      targetOdds={modelPick.minimumTakePrice}
-                    />
-                  ) : null}
-                </footer>
-              </article>
-            );
-          })}
+                  if (!game.outcomes.length) {
+                    return (
+                      <article className="coverage-fixture-row" key={game.matchId}>
+                        <time>{displayTime(game.kickoffAt)}</time>
+                        <div>
+                          <strong>{game.homeTeam}</strong>
+                          <span>vs</span>
+                          <strong>{game.awayTeam}</strong>
+                        </div>
+                        <em>MODEL PENDING</em>
+                      </article>
+                    );
+                  }
+
+                  return (
+                    <article className="daily-game-card" key={game.matchId}>
+                      <header>
+                        <div>
+                          <span>{displayTime(game.kickoffAt)}</span>
+                          <h3>{game.homeTeam} <i>vs</i> {game.awayTeam}</h3>
+                        </div>
+                        <div className="daily-model-lean">
+                          <small>MODEL LEAN</small>
+                          <strong>{modelPick?.displaySelection ?? "Awaiting model"}</strong>
+                          <b>{modelPick ? pct(modelPick.modelProbability) : "—"}</b>
+                        </div>
+                      </header>
+
+                      <div className="daily-xg-strip">
+                        <span>Expected scoring</span>
+                        <strong>
+                          {game.homeXg == null || game.awayXg == null
+                            ? "Model xG pending"
+                            : `${game.homeTeam} ${game.homeXg.toFixed(2)} — ${game.awayXg.toFixed(2)} ${game.awayTeam}`}
+                        </strong>
+                      </div>
+
+                      {oneXTwo.length ? (
+                        <div className="daily-outcomes">
+                          {oneXTwo.map((outcome) => (
+                            <OutcomeRow
+                              key={`${outcome.matchId}:${outcome.market}:${outcome.selection}`}
+                              outcome={outcome}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="daily-pending">
+                          Fixture is on the board, but a current 1X2 model run has not been published.
+                        </div>
+                      )}
+
+                      <footer className="price-coach">
+                        <div>
+                          <span>PRICE COACH</span>
+                          <strong>{priceCoach(modelPick)}</strong>
+                          {move ? <small>{move}</small> : null}
+                        </div>
+                        {modelPick ? (
+                          <WatchPriceButton
+                            matchId={modelPick.matchId}
+                            eventName={`${modelPick.homeTeam} vs ${modelPick.awayTeam}`}
+                            market={modelPick.market}
+                            selection={modelPick.selection}
+                            targetOdds={modelPick.minimumTakePrice}
+                          />
+                        ) : null}
+                      </footer>
+                    </article>
+                  );
+                })}
+              </div>
+            </details>
+          ))}
         </div>
       ) : (
         <div className="betting-empty">
-          <strong>No modelled games on today&apos;s board.</strong>
+          <strong>No football fixtures were discovered for today.</strong>
           <p>
-            Footy still keeps the daily surface visible. As fixture coverage expands,
-            every analysed match will appear here whether or not it produces a bet.
+            Footy checks both stored fixtures and the live global discovery feed.
+            We do not invent a slate when those sources are unavailable.
           </p>
         </div>
       )}
