@@ -720,7 +720,7 @@ def insert_value_backtest_run(
     row: Mapping[str, Any],
 ) -> None:
     allowed = {
-        "model_version", "bookmaker", "price_kind", "source", "market",
+        "model_version", "league", "bookmaker", "price_kind", "source", "market",
         "target_ev", "bets", "strike_rate", "average_odds", "roi",
         "average_raw_ev", "average_probability_edge",
         "average_market_overround", "by_selection", "by_edge_bucket",
