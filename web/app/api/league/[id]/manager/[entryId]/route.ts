@@ -2222,7 +2222,7 @@ function buildCounterPlay(
           ) / Math.log(vectors.length);
     const evidenceCoverage =
       (history ? 0.45 : 0) +
-      (snapshot ? 0.2 : 0) +
+      (snapshotByEntry.has(rival.standing.entry_id) ? 0.2 : 0) +
       (history?.freeTransferConfidence === "HIGH" ? 0.15 : 0.08) +
       (localExposure.size > 0 ? 0.2 : 0);
     const responseConfidence = Math.max(
