@@ -938,6 +938,54 @@ function reconcileMatch(event, matches) {
   return candidates[0]?.match || null;
 }
 
+async function reconcileUnmatchedPrices(capturedAt) {
+  const start = new Date(
+    new Date(capturedAt).getTime() - 36 * 60 * 60 * 1000,
+  ).toISOString();
+  const end = new Date(
+    new Date(capturedAt).getTime() + 14 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const [rows, matches] = await Promise.all([
+    sb(
+      `footy_live_odds_current?select=price_key,provider,provider_event_id,match_id,home_team,away_team,commence_time&match_id=is.null&commence_time=gte.${encodeURIComponent(start)}&commence_time=lte.${encodeURIComponent(end)}&limit=5000`,
+    ),
+    sb(
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=5000`,
+    ),
+  ]);
+
+  let linked = 0;
+  for (const row of rows || []) {
+    const match = reconcileMatch(
+      {
+        home_team: row.home_team,
+        away_team: row.away_team,
+        commence_time: row.commence_time,
+      },
+      matches || [],
+    );
+    if (!match) continue;
+
+    await patch(
+      "footy_live_odds_current",
+      `price_key=eq.${encodeURIComponent(row.price_key)}`,
+      { match_id: match.match_id },
+    );
+    await patch(
+      "footy_live_odds_history",
+      [
+        `provider=eq.${encodeURIComponent(row.provider)}`,
+        `provider_event_id=eq.${encodeURIComponent(row.provider_event_id)}`,
+        "match_id=is.null",
+      ].join("&"),
+      { match_id: match.match_id },
+    );
+    linked += 1;
+  }
+  return linked;
+}
+
 function outcomeSelection(event, outcomeName) {
   if (cleanText(outcomeName) === "draw") return "draw";
   const outcome = canonicalTeam(outcomeName);
@@ -1437,6 +1485,8 @@ async function main() {
     }
   }
 
+  const reconciledPriceRows = await reconcileUnmatchedPrices(capturedAt);
+
   const freshCutoff = new Date(
     new Date(capturedAt).getTime() - 2 * 60 * 60 * 1000,
   ).toISOString();
@@ -1470,6 +1520,7 @@ async function main() {
       closing_bets_updated: freeClosingCapture.betsUpdated,
       closing_legs_updated: freeClosingCapture.legsUpdated,
       closing_accas_updated: freeClosingCapture.accasUpdated,
+      reconciled_price_rows: reconciledPriceRows,
       paid_odds: "optional: THE_ODDS_API_KEY is not configured",
     }, null, 2));
     return;
@@ -1745,6 +1796,7 @@ async function main() {
     free_price_events: freePriceSync.events,
     free_prices: freePriceSync.prices,
     free_changed_prices: freePriceSync.changedPrices,
+    reconciled_price_rows: reconciledPriceRows,
     fixture_leagues: fixtureSync.leagues,
     active_competitions: activeCompetitions.length,
     discovered_events: allDiscoveredEvents.length,
