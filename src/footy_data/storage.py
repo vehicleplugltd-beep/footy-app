@@ -520,28 +520,43 @@ class SupabaseRESTReader:
         self,
         league: str,
         season: str | None = None,
+        horizon_days: int | None = None,
+        now: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         columns = (
-            "match_id,league,season,match_date,kickoff_at,"
+            "match_id,league,season,kickoff_at,"
             "home_team,away_team,status,source,retrieved_at"
         )
         rows = pd.DataFrame(self._get_all("footy_matches", columns))
         if rows.empty:
             return rows
+
         rows["kickoff_at"] = pd.to_datetime(
             rows["kickoff_at"], errors="coerce", utc=True
         )
-        rows["match_date"] = pd.to_datetime(
-            rows["match_date"], errors="coerce", utc=True
-        )
-        rows = rows[
+        current = now or pd.Timestamp.now(tz="UTC")
+        if current.tzinfo is None:
+            current = current.tz_localize("UTC")
+        else:
+            current = current.tz_convert("UTC")
+
+        mask = (
             (rows["league"].astype(str) == str(league))
-            & (rows["kickoff_at"] > pd.Timestamp.now(tz="UTC"))
-        ].copy()
+            & rows["kickoff_at"].notna()
+            & (rows["kickoff_at"] > current)
+        )
+        rows = rows[mask].copy()
+
         if season is not None:
             rows = rows[
                 rows["season"].astype(str) == str(season)
             ].copy()
+
+        if horizon_days is not None:
+            end = current + pd.Timedelta(days=int(horizon_days))
+            rows = rows[rows["kickoff_at"] <= end].copy()
+
+        rows["match_date"] = rows["kickoff_at"]
         return rows.sort_values("kickoff_at").reset_index(drop=True)
 
     def historical_match_team_metrics(
