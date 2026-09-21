@@ -8,6 +8,7 @@ const ODDS_API_KEY = process.env.THE_ODDS_API_KEY || "";
 const PROVIDER = "the-odds-api";
 const FEED_KEY = "multi-soccer";
 const FREE_PRICE_PROVIDER = "sofascore";
+const ENABLE_SOFASCORE_FREE = process.env.ENABLE_SOFASCORE_FREE === "1";
 const SOFASCORE_API_URLS = [
   "https://api.sofascore.com/api/v1",
   "https://www.sofascore.com/api/v1",
@@ -1414,30 +1415,36 @@ async function main() {
     rows: [],
   };
   let freePriceError = null;
-  try {
-    freePriceSync = await syncSofascorePrices(capturedAt);
-  } catch (error) {
-    freePriceError = String(error?.message || error);
-    await upsert(
-      "footy_odds_feed_status",
-      [{
-        provider: FREE_PRICE_PROVIDER,
-        sport_key: "football",
-        last_attempt_at: capturedAt,
-        last_success_at: null,
-        events_received: 0,
-        prices_received: 0,
-        last_error: freePriceError.slice(0, 1000),
-        updated_at: capturedAt,
-      }],
-      "provider",
-    );
+  if (ENABLE_SOFASCORE_FREE) {
+    try {
+      freePriceSync = await syncSofascorePrices(capturedAt);
+    } catch (error) {
+      freePriceError = String(error?.message || error);
+      await upsert(
+        "footy_odds_feed_status",
+        [{
+          provider: FREE_PRICE_PROVIDER,
+          sport_key: "football",
+          last_attempt_at: capturedAt,
+          last_success_at: null,
+          events_received: 0,
+          prices_received: 0,
+          last_error: freePriceError.slice(0, 1000),
+          updated_at: capturedAt,
+        }],
+        "provider",
+      );
+    }
   }
 
-  const freeAlertsTriggered = await evaluateAlerts(
-    freePriceSync.rows,
-    capturedAt,
-  );
+  const freshCutoff = new Date(
+    new Date(capturedAt).getTime() - 2 * 60 * 60 * 1000,
+  ).toISOString();
+  const freshRows =
+    (await sb(
+      `footy_live_odds_current?select=price_key,provider,provider_event_id,match_id,sport_key,home_team,away_team,commence_time,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,provider_last_update,captured_at&captured_at=gte.${encodeURIComponent(freshCutoff)}&limit=20000`,
+    )) || [];
+  const freeAlertsTriggered = await evaluateAlerts(freshRows, capturedAt);
   const freeClosingCapture = await captureUserClosingLines(capturedAt);
 
   if (!ODDS_API_KEY) {
