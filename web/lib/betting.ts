@@ -28,6 +28,7 @@ type ModelRow = {
 
 type ValidationRow = {
   model_version: string;
+  league: string;
   market: string;
   status: "APPROVED" | "WATCH" | "RESEARCH" | "PASS";
   sample_size: number;
@@ -631,7 +632,7 @@ export async function getBettingWorkspaceData() {
   const nowDate = new Date();
   const now = nowDate.toISOString();
   const horizon = new Date(nowDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  const scopeStart = new Date(nowDate.getTime() - 18 * 60 * 60 * 1000).toISOString();
+  const scopeStart = new Date(nowDate.getTime() - 30 * 60 * 60 * 1000).toISOString();
   const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
   const [dbScopeMatches, outputs, validations, liveOdds, feedRows, recentMatches, discoveredMatches] =
@@ -643,7 +644,7 @@ export async function getBettingWorkspaceData() {
         `footy_model_outputs?select=match_id,model_version,home_xg,away_xg,market,selection,model_probability,fair_odds,uncertainty_haircut,minimum_take_price,created_at&model_version=eq.${MODEL_VERSION}&order=created_at.desc&limit=2000`,
       ),
       rest<ValidationRow>(
-        `footy_model_market_validation?select=model_version,market,status,sample_size,model_log_loss,benchmark_log_loss,close_roi,clv_proxy,bookmaker_reference,notes,evaluated_at&model_version=eq.${MODEL_VERSION}`,
+        `footy_model_market_validation?select=model_version,league,market,status,sample_size,model_log_loss,benchmark_log_loss,close_roi,clv_proxy,bookmaker_reference,notes,evaluated_at&model_version=eq.${MODEL_VERSION}`,
       ),
       rest<LivePriceRow>(
         `footy_live_odds_current?select=match_id,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,captured_at&captured_at=gte.${encodeURIComponent(priceCutoff)}&limit=5000`,
@@ -693,7 +694,9 @@ export async function getBettingWorkspaceData() {
     if (profile) profiles.set(team, profile);
   }
 
-  const validationByMarket = new Map(validations.map((row) => [row.market, row]));
+  const validationByMarket = new Map(
+    validations.map((row) => [`${row.league}:${row.market}`, row]),
+  );
   const modelHistoryByKey = new Map<string, ModelRow[]>();
   for (const row of outputs) {
     const key = `${row.match_id}:${row.market}:${row.selection}`;
@@ -742,7 +745,8 @@ export async function getBettingWorkspaceData() {
       const modelHistory = modelHistoryByKey.get(historyKey) ?? [];
       const previousModel =
         modelHistory.find((row) => row.created_at < model.created_at) ?? null;
-      const validation = validationByMarket.get(model.market) ?? null;
+      const validation =
+        validationByMarket.get(`${match.league}:${model.market}`) ?? null;
       const state = verdictFor(model, validation, williamHill, best);
 
       selections.push({
