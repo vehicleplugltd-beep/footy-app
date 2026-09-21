@@ -1,0 +1,32 @@
+name: Freeze Decision Quality receipts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "27 * * * *"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/freeze-decision-quality.yml"
+      - "web/scripts/freeze-decision-receipts.mjs"
+      - "web/app/api/league/[id]/manager/[entryId]/route.ts"
+
+concurrency:
+  group: freeze-decision-quality
+  cancel-in-progress: false
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FOOTY_APP_URL: https://web-taupe-eight-46.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Freeze eligible pre-deadline model receipts
+        run: node web/scripts/freeze-decision-receipts.mjs
