@@ -770,3 +770,182 @@
     font-size: 7.5px;
   }
 }
+
+
+/* Team Room v2 — calm command hierarchy + consistent disclosure */
+.team-room-status-row {
+  min-height: 30px;
+  margin-top: 2px;
+  margin-bottom: 7px;
+}
+.team-room-status-time {
+  color: #7d8792;
+}
+.team-room-status-proof.fallback {
+  border-color: #eadfca;
+  background: #fffaf0;
+  color: #8b631a;
+}
+
+.portfolio-health-grid-primary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.portfolio-health-grid-primary > div:first-child {
+  border-color: #d2e9de;
+  background: #f7fcf9;
+}
+.portfolio-health-grid-secondary {
+  margin: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.portfolio-health-grid-secondary > div {
+  min-height: 86px;
+  background: #fff;
+}
+
+.decision-quality-history-disclosure {
+  margin-top: 12px;
+  border: 1px solid #e4e1ec;
+  border-radius: 13px;
+  background: #fcfbff;
+  overflow: clip;
+}
+.decision-quality-history-disclosure > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 18px;
+  min-height: 62px;
+  align-items: center;
+  padding: 11px 44px 11px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.decision-quality-history-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.decision-quality-history-disclosure > summary::after {
+  content: "＋";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  translate: 0 -50%;
+  color: #7757b5;
+  font-size: 18px;
+  font-weight: 700;
+}
+.decision-quality-history-disclosure[open] > summary::after {
+  content: "−";
+}
+.decision-quality-history-disclosure > summary span,
+.decision-quality-history-disclosure > summary strong,
+.decision-quality-history-disclosure > summary small {
+  display: block;
+}
+.decision-quality-history-disclosure > summary span {
+  color: #7757b5;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .09em;
+}
+.decision-quality-history-disclosure > summary strong {
+  margin-top: 3px;
+  color: #2d3340;
+  font-size: 12px;
+}
+.decision-quality-history-disclosure > summary small {
+  max-width: 360px;
+  color: #808896;
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: right;
+}
+.decision-quality-history-disclosure[open] > summary {
+  border-bottom: 1px solid #e7e3ef;
+  background: #faf8fe;
+}
+.decision-quality-history-disclosure .decision-quality-history {
+  margin: 0;
+  padding: 10px;
+}
+
+.team-room-command-card .team-room-primary {
+  width: max-content;
+  min-width: 180px;
+}
+.team-room-deep-link,
+.team-room-primary {
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .portfolio-health-grid-primary {
+    grid-template-columns: repeat(4, minmax(132px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .portfolio-health-grid-primary::-webkit-scrollbar {
+    display: none;
+  }
+  .portfolio-health-grid-primary > div {
+    scroll-snap-align: start;
+  }
+  .portfolio-health-grid-secondary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .team-room-status-row {
+    min-height: 28px;
+    margin-top: 1px;
+    margin-bottom: 6px;
+  }
+  .team-room-status-time {
+    order: 4;
+    flex-basis: 100%;
+    padding-left: 2px;
+    font-size: 8px !important;
+  }
+
+  .portfolio-health-grid-primary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    gap: 6px;
+  }
+  .portfolio-health-grid-primary > div {
+    min-height: 88px;
+  }
+  .portfolio-health-grid-secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 9px;
+    gap: 6px;
+  }
+  .portfolio-health-grid-secondary > div {
+    min-height: 82px;
+  }
+
+  .decision-quality-history-disclosure > summary {
+    grid-template-columns: 1fr;
+    min-height: 68px;
+    padding: 12px 42px 12px 13px;
+  }
+  .decision-quality-history-disclosure > summary small {
+    max-width: none;
+    font-size: 10px;
+    text-align: left;
+  }
+
+  .team-room-command-card .team-room-primary {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 430px) {
+  .portfolio-health-grid-primary,
+  .portfolio-health-grid-secondary {
+    grid-template-columns: 1fr 1fr;
+  }
+}
