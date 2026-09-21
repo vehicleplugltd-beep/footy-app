@@ -745,7 +745,7 @@ export function TeamRoomDashboard({
 
     elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [portfolioPlan, counterPlay, decisionQuality]);
+  }, [manager]);
 
   const squadRatings = useMemo(() => {
     if (!scout) return [];
