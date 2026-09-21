@@ -414,3 +414,51 @@ def test_penalty_xg_override_fails_outside_provider_range():
             season="2627",
             penalty_xg_value=0.95,
         )
+
+
+
+def test_unprocessed_provider_match_is_not_normalised_as_verified_input():
+    teams = pd.DataFrame([
+        {"code": 9, "name": "Coventry"},
+        {"code": 36, "name": "Brighton"},
+    ])
+    players = pd.DataFrame([
+        {
+            "player_code": 168144,
+            "player_id": 184,
+            "web_name": "Grimes",
+            "team_code": 9,
+        },
+    ])
+    matches = pd.DataFrame([
+        {
+            "gameweek": 4,
+            "kickoff_time": "2026-09-13T13:00:00Z",
+            "home_team": 9,
+            "away_team": 36,
+            "match_id": "provider-unprocessed",
+            "tournament": "prem",
+            "player_stats_processed": False,
+        }
+    ])
+    player_stats = pd.DataFrame([
+        {
+            "player_id": 184,
+            "match_id": "provider-unprocessed",
+            "minutes_played": 90,
+            "total_shots": 1,
+            "xg": 0.05,
+            "penalties_scored": 0,
+            "penalties_missed": 0,
+        }
+    ])
+
+    rows = normalise_fpl_core_player_match_stats(
+        player_stats,
+        players,
+        teams,
+        matches,
+        season="2627",
+        penalty_xg_value=0.79,
+    )
+    assert rows.empty

@@ -178,6 +178,18 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
     players = source.players(args.gameweek)
     player_match_stats = source.player_match_stats(args.gameweek)
 
+    unprocessed_player_match_ids = (
+        matches.loc[
+            matches["player_stats_processed"].astype(str).str.lower() != "true",
+            "match_id",
+        ]
+        .dropna()
+        .astype(str)
+        .tolist()
+        if "player_stats_processed" in matches.columns
+        else []
+    )
+
     normalized = normalise_fpl_core_matches(matches, teams)
     if normalized.empty:
         raise RuntimeError("FPL-Core-Insights returned no finished Premier League rows.")
@@ -266,6 +278,11 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
     )
 
     writer = SupabaseRESTWriter()
+    quarantined_player_rows = writer.quarantine_player_match_metrics(
+        unprocessed_player_match_ids,
+        source="fpl-core-insights",
+        reason="QUARANTINED_PROVIDER_PLAYER_STATS_UNPROCESSED",
+    )
     writer.insert_data_quality_run(
         source="fpl-core-insights",
         league=args.league,
@@ -280,6 +297,8 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
                 else 0
             ),
             "player_match_rate": player_match_rate,
+            "quarantined_player_rows": quarantined_player_rows,
+            "unprocessed_provider_matches": unprocessed_player_match_ids,
             "competitions": (
                 sorted(player_metrics["competition"].dropna().astype(str).unique().tolist())
                 if not player_metrics.empty
@@ -333,6 +352,7 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
             else 0
         ),
         "player_match_rate": player_match_rate,
+        "quarantined_player_rows": quarantined_player_rows,
         "verification": report.as_dict(),
     }, indent=2, default=str))
 
