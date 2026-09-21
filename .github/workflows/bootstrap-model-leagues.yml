@@ -1,12 +1,8 @@
 name: bootstrap-model-leagues
-# One-off feature bootstrap; push trigger will be removed after verification.
+# Manual bootstrap only. Keep research backfills isolated from normal feature pushes.
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["feature/betting-edge-workspace"]
-    paths:
-      - ".github/workflows/bootstrap-model-leagues.yml"
 
 jobs:
   bootstrap:
