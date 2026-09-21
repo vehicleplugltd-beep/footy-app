@@ -893,3 +893,94 @@
   .acca-builder-row { grid-template-columns: 24px 1fr; }
   .acca-builder-row button { grid-column: 2; width: 100%; }
 }
+
+
+/* One-click price watches */
+.price-coach {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.price-coach > div:first-child { min-width: 0; }
+.watch-price-wrap { display: grid; gap: 4px; flex: 0 0 auto; }
+.watch-price-button {
+  min-height: 36px;
+  border: 1px solid rgba(113,244,160,.38);
+  border-radius: 9px;
+  padding: 0 11px;
+  background: rgba(113,244,160,.09);
+  color: var(--edge-green);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.watch-price-button:hover { background: rgba(113,244,160,.14); }
+.watch-price-button:disabled { opacity: .65; cursor: default; }
+.watch-price-wrap > small { color: var(--edge-red); font-size: 8px; max-width: 180px; }
+
+.price-watch-panel { margin-bottom: 14px; }
+.triggered-alerts,
+.price-watch-list { display: grid; gap: 7px; }
+.triggered-alerts { margin-bottom: 12px; }
+.triggered-alerts article,
+.price-watch-list article {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #1f3b2c;
+  border-radius: 10px;
+  background: #07140e;
+}
+.triggered-alerts article {
+  grid-template-columns: 1fr auto;
+  border-color: rgba(113,244,160,.28);
+  background: rgba(113,244,160,.045);
+}
+.price-watch-list article {
+  grid-template-columns: minmax(190px,1.4fr) .65fr .8fr auto;
+}
+.triggered-alerts span,
+.triggered-alerts strong,
+.triggered-alerts small,
+.price-watch-list span,
+.price-watch-list strong,
+.price-watch-list small { display: block; }
+.triggered-alerts span,
+.watch-live {
+  color: var(--edge-green) !important;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.watch-paused { color: var(--edge-muted) !important; font-size: 8px; font-weight: 900; }
+.triggered-alerts strong,
+.price-watch-list strong { margin: 3px 0; }
+.triggered-alerts small,
+.price-watch-list small,
+.price-watch-list > article > div:not(:first-child) > span {
+  color: var(--edge-muted);
+  font-size: 8px;
+}
+.triggered-alerts button,
+.price-watch-actions button {
+  border: 1px solid #315b44;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #0c2117;
+  color: #d7e7dd;
+  cursor: pointer;
+  font-size: 8px;
+}
+.price-watch-actions { display: flex; gap: 5px; justify-content: end; }
+
+@media (max-width: 760px) {
+  .price-coach { align-items: stretch; flex-direction: column; }
+  .watch-price-button { width: 100%; }
+  .price-watch-list article { grid-template-columns: 1fr 1fr; }
+  .price-watch-list article > div:first-child,
+  .price-watch-actions { grid-column: 1 / -1; }
+  .price-watch-actions { justify-content: start; }
+}
