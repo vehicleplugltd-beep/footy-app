@@ -209,6 +209,18 @@ type ManagerResponse = {
         ceiling_95: number;
         resource_path: CounterPathResource;
       } | null;
+      what_if_scenario: {
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        resource_path: CounterPathResource;
+      } | null;
       scenarios: Array<{
         id: string;
         label: string;
@@ -255,6 +267,60 @@ type ManagerResponse = {
       ceiling_95: number;
       reason: string;
     }>;
+    what_if: {
+      status: "IDLE" | "INVALID" | "VALID";
+      error: string | null;
+      selection: {
+        out_id: number | null;
+        in_id: number | null;
+        captain_id: number | null;
+      } | null;
+      options: {
+        bank: number;
+        squad: Array<{
+          id: number;
+          name: string;
+          team: string;
+          position: string;
+          price: number;
+          score: number;
+        }>;
+        replacement_pool: Array<{
+          id: number;
+          name: string;
+          team: string;
+          position: string;
+          price: number;
+          score: number;
+          selected_by: number;
+        }>;
+      };
+      next_gameweek: {
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        reason: string;
+      } | null;
+      horizons: Partial<Record<"1" | "3" | "5", {
+        id: string;
+        label: string;
+        style: "HOLD" | "BLOCK" | "ATTACK" | "BALANCED";
+        objective_probability: number;
+        probability_delta: number;
+        mean_score: number;
+        volatility: number;
+        floor_5: number;
+        ceiling_95: number;
+        resource_path: CounterPathResource;
+      } | null>>;
+      caveat: string;
+    };
     local_exposure: Array<{
       player_id: number;
       squad_ownership: number;
@@ -422,6 +488,11 @@ export function TeamRoomDashboard({
   const [counterPosture, setCounterPosture] = useState<CounterPosture | null>(null);
   const [counterPostureLoading, setCounterPostureLoading] = useState(false);
   const [counterPostureError, setCounterPostureError] = useState<string | null>(null);
+  const [whatIfOutId, setWhatIfOutId] = useState<number | null>(null);
+  const [whatIfInId, setWhatIfInId] = useState<number | null>(null);
+  const [whatIfCaptainId, setWhatIfCaptainId] = useState<number | null>(null);
+  const [whatIfLoading, setWhatIfLoading] = useState(false);
+  const [whatIfError, setWhatIfError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -497,13 +568,24 @@ export function TeamRoomDashboard({
     setCounterPostureLoading(true);
     setCounterPostureError(null);
     try {
+      const query = new URLSearchParams({
+        staff: "1",
+        posture: posture.toLowerCase(),
+      });
+      if (counterPlay?.what_if.status === "VALID") {
+        if (whatIfOutId) query.set("whatif_out", String(whatIfOutId));
+        if (whatIfInId) query.set("whatif_in", String(whatIfInId));
+        if (whatIfCaptainId) {
+          query.set("whatif_captain", String(whatIfCaptainId));
+        }
+      }
       const response = await fetch(
         "/api/league/" +
           leagueId +
           "/manager/" +
           teamId +
-          "?staff=1&posture=" +
-          posture.toLowerCase(),
+          "?" +
+          query.toString(),
         { cache: "no-store" },
       );
       const body = (await response.json()) as ManagerResponse & { error?: string };
@@ -520,6 +602,83 @@ export function TeamRoomDashboard({
       );
     } finally {
       setCounterPostureLoading(false);
+    }
+  }
+
+  async function runWhatIf() {
+    if (whatIfLoading) return;
+    setWhatIfLoading(true);
+    setWhatIfError(null);
+    try {
+      const query = new URLSearchParams({
+        staff: "1",
+        posture: activeCounterPosture.toLowerCase(),
+      });
+      if (whatIfOutId) query.set("whatif_out", String(whatIfOutId));
+      if (whatIfInId) query.set("whatif_in", String(whatIfInId));
+      if (whatIfCaptainId) {
+        query.set("whatif_captain", String(whatIfCaptainId));
+      }
+      const response = await fetch(
+        "/api/league/" +
+          leagueId +
+          "/manager/" +
+          teamId +
+          "?" +
+          query.toString(),
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ManagerResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error || "What-If simulation could not run.");
+      }
+      setManager(body);
+      if (body.counterplay?.what_if.status === "INVALID") {
+        setWhatIfError(
+          body.counterplay.what_if.error ||
+            "That What-If combination is not legal.",
+        );
+      }
+    } catch (err) {
+      setWhatIfError(
+        err instanceof Error ? err.message : "What-If simulation could not run.",
+      );
+    } finally {
+      setWhatIfLoading(false);
+    }
+  }
+
+  async function clearWhatIf() {
+    setWhatIfOutId(null);
+    setWhatIfInId(null);
+    setWhatIfCaptainId(null);
+    setWhatIfError(null);
+    setWhatIfLoading(true);
+    try {
+      const query = new URLSearchParams({
+        staff: "1",
+        posture: activeCounterPosture.toLowerCase(),
+      });
+      const response = await fetch(
+        "/api/league/" +
+          leagueId +
+          "/manager/" +
+          teamId +
+          "?" +
+          query.toString(),
+        { cache: "no-store" },
+      );
+      const body = (await response.json()) as ManagerResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error || "CounterPlay could not reset What-If.");
+      }
+      setManager(body);
+    } catch (err) {
+      setWhatIfError(
+        err instanceof Error ? err.message : "CounterPlay could not reset What-If.",
+      );
+    } finally {
+      setWhatIfLoading(false);
     }
   }
 
@@ -595,6 +754,48 @@ export function TeamRoomDashboard({
     counterPlay?.horizon_results?.["3"] ??
     counterPlay?.horizon_results?.["1"] ??
     counterPlay?.horizon_results?.["5"] ??
+    null;
+  const whatIfOptions = counterPlay?.what_if.options ?? null;
+  const selectedWhatIfOut =
+    whatIfOptions?.squad.find((player) => player.id === whatIfOutId) ?? null;
+  const selectedWhatIfIn =
+    whatIfOptions?.replacement_pool.find((player) => player.id === whatIfInId) ??
+    null;
+  const whatIfReplacementOptions = selectedWhatIfOut && whatIfOptions
+    ? whatIfOptions.replacement_pool.filter((candidate) => {
+        if (candidate.position !== selectedWhatIfOut.position) return false;
+        if (
+          candidate.price >
+          selectedWhatIfOut.price + whatIfOptions.bank + 0.001
+        ) return false;
+        const sameClubAfterRemoval = whatIfOptions.squad.filter(
+          (player) =>
+            player.id !== selectedWhatIfOut.id &&
+            player.team === candidate.team,
+        ).length;
+        return sameClubAfterRemoval < 3;
+      })
+    : [];
+  const whatIfCaptainOptions = whatIfOptions
+    ? whatIfOptions.squad
+        .filter((player) => player.id !== whatIfOutId)
+        .concat(
+          selectedWhatIfIn
+            ? [{
+                id: selectedWhatIfIn.id,
+                name: selectedWhatIfIn.name,
+                team: selectedWhatIfIn.team,
+                position: selectedWhatIfIn.position,
+                price: selectedWhatIfIn.price,
+                score: selectedWhatIfIn.score,
+              }]
+            : [],
+        )
+        .sort((a, b) => b.score - a.score)
+    : [];
+  const whatIfHorizonScenario =
+    counterPlay?.what_if.horizons?.[counterHorizonKey] ??
+    counterPlay?.what_if.next_gameweek ??
     null;
   const decisionQuality = manager?.decision_quality ?? null;
   const transfer =
@@ -1134,6 +1335,151 @@ export function TeamRoomDashboard({
                     ? "Using your selected posture."
                     : "Using Footy’s inferred posture."}
             </div>
+          </div>
+
+          <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
+            <div className="counterplay-whatif-head">
+              <div>
+                <span>WHAT-IF LAB</span>
+                <strong>Test your own move against Footy’s path.</strong>
+              </div>
+              <small>
+                Same 10,000-run model, empirical tails, rival responses and
+                {counterHorizon}GW state carry-forward.
+              </small>
+            </div>
+
+            <div className="counterplay-whatif-controls">
+              <label>
+                <span>SELL / REMOVE</span>
+                <select
+                  value={whatIfOutId ?? ""}
+                  disabled={whatIfLoading}
+                  onChange={(event) => {
+                    const value = Number(event.target.value) || null;
+                    setWhatIfOutId(value);
+                    setWhatIfInId(null);
+                    if (whatIfCaptainId === value) setWhatIfCaptainId(null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">No transfer</option>
+                  {whatIfOptions?.squad
+                    .slice()
+                    .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name))
+                    .map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.position} · {player.name} · £{player.price.toFixed(1)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                <span>BUY / ADD</span>
+                <select
+                  value={whatIfInId ?? ""}
+                  disabled={!whatIfOutId || whatIfLoading}
+                  onChange={(event) => {
+                    setWhatIfInId(Number(event.target.value) || null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">
+                    {whatIfOutId ? "Choose legal replacement" : "Choose player out first"}
+                  </option>
+                  {whatIfReplacementOptions.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} · {player.team} · £{player.price.toFixed(1)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>CAPTAIN</span>
+                <select
+                  value={whatIfCaptainId ?? ""}
+                  disabled={whatIfLoading}
+                  onChange={(event) => {
+                    setWhatIfCaptainId(Number(event.target.value) || null);
+                    setWhatIfError(null);
+                  }}
+                >
+                  <option value="">Footy’s captain</option>
+                  {whatIfCaptainOptions.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} · {player.team}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="counterplay-whatif-actions">
+              <button
+                type="button"
+                onClick={() => void runWhatIf()}
+                disabled={
+                  whatIfLoading ||
+                  (!whatIfCaptainId && !(whatIfOutId && whatIfInId))
+                }
+              >
+                {whatIfLoading ? "SIMULATING…" : "RUN WHAT-IF"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void clearWhatIf()}
+                disabled={whatIfLoading || (!whatIfOutId && !whatIfCaptainId && counterPlay.what_if.status !== "VALID")}
+              >
+                RESET
+              </button>
+              <small aria-live="polite">
+                {whatIfError ??
+                  (counterPlay.what_if.status === "VALID"
+                    ? "Custom scenario simulated. Footy’s recommendation remains independent."
+                    : counterPlay.what_if.caveat)}
+              </small>
+            </div>
+
+            {counterPlay.what_if.status === "VALID" && whatIfHorizonScenario ? (
+              <div className="counterplay-whatif-result">
+                <div>
+                  <span>YOUR PATH</span>
+                  <strong>{whatIfHorizonScenario.label}</strong>
+                  <small>
+                    {(whatIfHorizonScenario.objective_probability * 100).toFixed(1)}% objective ·{" "}
+                    {(whatIfHorizonScenario.probability_delta >= 0 ? "+" : "") +
+                      (whatIfHorizonScenario.probability_delta * 100).toFixed(1)}pp vs HOLD
+                  </small>
+                </div>
+                <div>
+                  <span>FOOTY BEST</span>
+                  <strong>
+                    {activeCounterHorizon?.recommended_scenario?.label ??
+                      counterPlay.recommended_scenario?.label ??
+                      "Hold structure"}
+                  </strong>
+                  <small>
+                    {activeCounterHorizon?.recommended_scenario
+                      ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
+                      : counterPlay.recommended_scenario
+                        ? (counterPlay.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
+                        : "No stronger path"}
+                  </small>
+                </div>
+                <div>
+                  <span>MODEL RANGE</span>
+                  <strong>
+                    {whatIfHorizonScenario.floor_5.toFixed(1)}–{whatIfHorizonScenario.ceiling_95.toFixed(1)}
+                  </strong>
+                  <small>
+                    empirical 5th–95th projected score
+                  </small>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div
