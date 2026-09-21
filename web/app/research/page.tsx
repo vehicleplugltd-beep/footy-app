@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ResearchHub } from "@/components/research-hub";
+import { ProductNav } from "@/components/product-nav";
 
 export default async function ResearchPage({
   searchParams,
@@ -13,16 +13,7 @@ export default async function ResearchPage({
 
   return (
     <main className="league-edge-app research-page">
-      <nav className="nav shell hq-nav">
-        <Link className="brand brand-link" href="/">
-          <span className="brand-mark">F</span>
-          <span>Footy</span>
-        </Link>
-        <div className="hq-nav-right">
-          <Link href="/">HQ</Link>
-          <span>Research</span>
-        </div>
-      </nav>
+      <ProductNav active="research" />
       <div className="shell">
         <ResearchHub
           initialPlayerId={
