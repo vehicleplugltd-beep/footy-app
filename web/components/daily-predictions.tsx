@@ -17,29 +17,29 @@ function displayTime(value: string) {
 }
 
 function movement(selection: BettingSelection) {
-  const current = selection.williamHillPrice?.decimal_odds;
-  const previous = selection.williamHillPrice?.previous_decimal_odds;
+  const current = selection.bestPrice?.decimal_odds;
+  const previous = selection.bestPrice?.previous_decimal_odds;
   if (!current || !previous || current === previous) return null;
   const direction = current > previous ? "drifted" : "shortened";
-  return `WH ${direction} ${decimalToFractional(previous)} → ${decimalToFractional(current)}`;
+  return `Best price ${direction} ${decimalToFractional(previous)} → ${decimalToFractional(current)}`;
 }
 
 function priceCoach(selection: BettingSelection | null) {
   if (!selection) return "No model price is available yet.";
-  const current = selection.williamHillPrice?.decimal_odds ?? null;
+  const current = selection.bestPrice?.decimal_odds ?? null;
   const take = selection.minimumTakePrice;
 
   if (!current) {
-    return `Take ${minimumTakeToFractional(take)} or bigger. Current William Hill price is not verified.`;
+    return `Take ${minimumTakeToFractional(take)} or bigger. No fresh verified market price is available.`;
   }
   if (current >= take) {
     return `Price clears the line: ${decimalToFractional(current)} is acceptable versus ${minimumTakeToFractional(take)}+.`;
   }
-  return `Do not chase. Wait for ${minimumTakeToFractional(take)} or bigger; William Hill is ${decimalToFractional(current)}.`;
+  return `Do not chase. Wait for ${minimumTakeToFractional(take)} or bigger; best verified is ${decimalToFractional(current)}.`;
 }
 
 function OutcomeRow({ outcome }: { outcome: BettingSelection }) {
-  const current = outcome.williamHillPrice?.decimal_odds ?? null;
+  const current = outcome.bestPrice?.decimal_odds ?? null;
   return (
     <div className="daily-outcome-row">
       <div>
@@ -49,7 +49,7 @@ function OutcomeRow({ outcome }: { outcome: BettingSelection }) {
       <p><span>Model</span><b>{pct(outcome.modelProbability)}</b></p>
       <p><span>Fair</span><b>{decimalToFractional(outcome.fairOdds)}</b><small>{outcome.fairOdds.toFixed(2)}</small></p>
       <p className="daily-take"><span>Accept</span><b>{minimumTakeToFractional(outcome.minimumTakePrice)}+</b><small>{outcome.minimumTakePrice.toFixed(2)}+</small></p>
-      <p><span>WH</span><b>{current ? decimalToFractional(current) : "—"}</b><small>{current ? current.toFixed(2) : "not verified"}</small></p>
+      <p><span>Best</span><b>{current ? decimalToFractional(current) : "—"}</b><small>{current ? outcome.bestPrice?.bookmaker_name ?? current.toFixed(2) : "not verified"}</small></p>
       <em className={`edge-verdict edge-verdict-${outcome.verdict.toLowerCase()}`}>{outcome.verdict}</em>
     </div>
   );
