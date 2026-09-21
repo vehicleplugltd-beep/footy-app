@@ -1042,3 +1042,27 @@
   .lab-input-grid-two,
   .bet-checker-output { grid-template-columns: 1fr; }
 }
+
+
+/* User bet price grading */
+.user-price-grade {
+  margin-top: 7px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid #294738;
+  background: #0a1a12;
+}
+.user-price-grade span,
+.user-price-grade strong { display: block; }
+.user-price-grade span { font-size: 8px; color: var(--edge-muted); }
+.user-price-grade strong { margin-top: 3px; font-size: 9px; }
+.user-price-good {
+  border-color: rgba(113,244,160,.28);
+  background: rgba(113,244,160,.045);
+}
+.user-price-good strong { color: var(--edge-green); }
+.user-price-short {
+  border-color: rgba(255,132,132,.24);
+  background: rgba(255,132,132,.035);
+}
+.user-price-short strong { color: var(--edge-red); }
