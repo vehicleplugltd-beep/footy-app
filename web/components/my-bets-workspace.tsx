@@ -44,6 +44,33 @@ type Feedback = {
   created_at: string;
 };
 
+type PriceAlert = {
+  id: string;
+  match_id: string | null;
+  event_name: string;
+  market: string;
+  selection: string;
+  bookmaker: string | null;
+  target_odds: number;
+  enabled: boolean;
+  last_observed_odds: number | null;
+  last_checked_at: string | null;
+  last_triggered_at: string | null;
+};
+
+type AlertEvent = {
+  id: string;
+  alert_id: string;
+  event_name: string;
+  market: string;
+  selection: string;
+  bookmaker: string;
+  target_odds: number;
+  observed_odds: number;
+  triggered_at: string;
+  read_at: string | null;
+};
+
 type CsvRow = Record<string, string>;
 
 function n(value: unknown) {
@@ -151,6 +178,8 @@ export function MyBetsWorkspace() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [bets, setBets] = useState<Bet[]>([]);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
+  const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [ageAgree, setAgeAgree] = useState(false);
@@ -167,6 +196,8 @@ export function MyBetsWorkspace() {
       setProfile(null);
       setBets([]);
       setFeedback([]);
+      setPriceAlerts([]);
+      setAlertEvents([]);
       setLoading(false);
       return;
     }
@@ -174,7 +205,7 @@ export function MyBetsWorkspace() {
     setUserId(user.id);
     setEmail(user.email ?? "");
 
-    const [profileRes, betsRes, feedbackRes] = await Promise.all([
+    const [profileRes, betsRes, feedbackRes, alertsRes, alertEventsRes] = await Promise.all([
       supabase
         .from("footy_profiles")
         .select("user_id,age_confirmed_at,terms_accepted_at")
@@ -192,11 +223,25 @@ export function MyBetsWorkspace() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(100),
+      supabase
+        .from("footy_price_alerts")
+        .select("id,match_id,event_name,market,selection,bookmaker,target_odds,enabled,last_observed_odds,last_checked_at,last_triggered_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("footy_alert_events")
+        .select("id,alert_id,event_name,market,selection,bookmaker,target_odds,observed_odds,triggered_at,read_at")
+        .eq("user_id", user.id)
+        .order("triggered_at", { ascending: false })
+        .limit(100),
     ]);
 
     setProfile((profileRes.data as Profile | null) ?? null);
     setBets((betsRes.data ?? []) as Bet[]);
     setFeedback((feedbackRes.data ?? []) as Feedback[]);
+    setPriceAlerts((alertsRes.data ?? []) as PriceAlert[]);
+    setAlertEvents((alertEventsRes.data ?? []) as AlertEvent[]);
     setLoading(false);
   }
 
@@ -456,6 +501,39 @@ export function MyBetsWorkspace() {
     await refresh();
   }
 
+  async function togglePriceAlert(alert: PriceAlert) {
+    const { error } = await supabase
+      .from("footy_price_alerts")
+      .update({
+        enabled: !alert.enabled,
+        was_above_target: false,
+      })
+      .eq("id", alert.id);
+
+    setMessage(error ? error.message : alert.enabled ? "Price watch paused." : "Price watch resumed.");
+    await refresh();
+  }
+
+  async function deletePriceAlert(alert: PriceAlert) {
+    const { error } = await supabase
+      .from("footy_price_alerts")
+      .delete()
+      .eq("id", alert.id);
+
+    setMessage(error ? error.message : "Price watch removed.");
+    await refresh();
+  }
+
+  async function markAlertEventRead(eventId: string) {
+    const { error } = await supabase
+      .from("footy_alert_events")
+      .update({ read_at: new Date().toISOString() })
+      .eq("id", eventId);
+
+    if (error) setMessage(error.message);
+    await refresh();
+  }
+
   async function sendFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!userId) return;
@@ -550,7 +628,7 @@ export function MyBetsWorkspace() {
         <article><span>Settled P/L</span><strong className={totalProfit >= 0 ? "positive" : "negative"}>{formatMoney(totalProfit)}</strong><small>{formatMoney(settledStake)} staked</small></article>
         <article><span>ROI</span><strong className={roi >= 0 ? "positive" : "negative"}>{(roi * 100).toFixed(1)}%</strong><small>settled bets</small></article>
         <article><span>Avg CLV</span><strong className={(avgClv ?? 0) >= 0 ? "positive" : "negative"}>{avgClv == null ? "—" : `${(avgClv * 100).toFixed(2)}%`}</strong><small>{clvBets.length} with close</small></article>
-        <article><span>Feedback</span><strong>{feedback.length}</strong><small>model-quality notes</small></article>
+        <article><span>Price watches</span><strong>{priceAlerts.filter((alert) => alert.enabled).length}</strong><small>{alertEvents.filter((event) => !event.read_at).length} new alerts</small></article>
       </section>
 
       <section className="bet-input-grid">
@@ -627,6 +705,64 @@ export function MyBetsWorkspace() {
           </div>
         ) : (
           <div className="my-bets-empty">No bets uploaded or entered yet.</div>
+        )}
+      </section>
+
+      <section className="bet-workspace-panel price-watch-panel">
+        <div className="workspace-panel-head">
+          <div><span>PRICE WATCHES</span><h2>Wait for the number you actually want.</h2></div>
+          <small>{priceAlerts.filter((alert) => alert.enabled).length} active</small>
+        </div>
+
+        {alertEvents.some((event) => !event.read_at) ? (
+          <div className="triggered-alerts">
+            {alertEvents.filter((event) => !event.read_at).map((event) => (
+              <article key={event.id}>
+                <div>
+                  <span>PRICE HIT</span>
+                  <strong>{event.event_name} · {event.selection}</strong>
+                  <small>
+                    {event.bookmaker} reached {decimalToFractional(n(event.observed_odds))} · target {decimalToFractional(n(event.target_odds))}+
+                  </small>
+                </div>
+                <button type="button" onClick={() => markAlertEventRead(event.id)}>Mark read</button>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {priceAlerts.length ? (
+          <div className="price-watch-list">
+            {priceAlerts.map((alert) => (
+              <article key={alert.id}>
+                <div>
+                  <span className={alert.enabled ? "watch-live" : "watch-paused"}>
+                    {alert.enabled ? "WATCHING" : "PAUSED"}
+                  </span>
+                  <strong>{alert.event_name}</strong>
+                  <small>{alert.market} · {alert.selection}</small>
+                </div>
+                <div>
+                  <span>Take from</span>
+                  <strong>{decimalToFractional(n(alert.target_odds))}+</strong>
+                  <small>{n(alert.target_odds).toFixed(2)}+</small>
+                </div>
+                <div>
+                  <span>Last seen</span>
+                  <strong>{alert.last_observed_odds ? decimalToFractional(n(alert.last_observed_odds)) : "—"}</strong>
+                  <small>{alert.last_checked_at ? new Date(alert.last_checked_at).toLocaleString("en-GB") : "not checked yet"}</small>
+                </div>
+                <div className="price-watch-actions">
+                  <button type="button" onClick={() => togglePriceAlert(alert)}>{alert.enabled ? "Pause" : "Resume"}</button>
+                  <button type="button" onClick={() => deletePriceAlert(alert)}>Remove</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="my-bets-empty">
+            No price watches yet. Use “Watch” on Today&apos;s Games and Footy will remember the minimum price for you.
+          </div>
         )}
       </section>
 
