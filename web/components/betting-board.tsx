@@ -19,8 +19,8 @@ function processLine(profile: ProcessProfile | null, side: "attack" | "defence")
 
 function MatchSelectionCard({ selection }: { selection: BettingSelection }) {
   const edge = selection.edge == null ? null : selection.edge * 100;
-  const price = selection.williamHillPrice?.decimal_odds ?? null;
   const best = selection.bestPrice?.decimal_odds ?? null;
+  const bestBookmaker = selection.bestPrice?.bookmaker_name ?? null;
 
   return (
     <article className={`edge-card edge-card-${selection.verdict.toLowerCase()}`}>
@@ -53,8 +53,8 @@ function MatchSelectionCard({ selection }: { selection: BettingSelection }) {
         <div><span>Model</span><strong>{pct(selection.modelProbability)}</strong></div>
         <div><span>Fair</span><strong>{decimalToFractional(selection.fairOdds)}</strong></div>
         <div><span>Min take</span><strong>{minimumTakeToFractional(selection.minimumTakePrice)}+</strong></div>
-        <div><span>William Hill</span><strong>{price ? decimalToFractional(price) : "Not verified"}</strong></div>
-        <div><span>Best market</span><strong>{best ? decimalToFractional(best) : "—"}</strong></div>
+        <div><span>Best verified</span><strong>{best ? decimalToFractional(best) : "Not verified"}</strong></div>
+        <div><span>Source</span><strong>{bestBookmaker ?? "—"}</strong></div>
         <div><span>EV</span><strong>{edge == null ? "—" : `${edge >= 0 ? "+" : ""}${edge.toFixed(1)}%`}</strong></div>
       </div>
 
@@ -102,7 +102,7 @@ function AccaCard({ acca }: { acca: AccaCandidate }) {
       <header>
         <div>
           <span>{acca.label.toUpperCase()}</span>
-          <strong>{decimalToFractional(acca.williamHillOdds)}</strong>
+          <strong>{decimalToFractional(acca.combinedOdds)}</strong>
         </div>
         <em>BET</em>
       </header>
@@ -112,7 +112,7 @@ function AccaCard({ acca }: { acca: AccaCandidate }) {
             <span>{index + 1}</span>
             <p>
               <strong>{leg.displaySelection}</strong>
-              <small>{leg.homeTeam} vs {leg.awayTeam} · {decimalToFractional(Number(leg.williamHillPrice?.decimal_odds))}</small>
+              <small>{leg.homeTeam} vs {leg.awayTeam} · {decimalToFractional(Number(leg.bestPrice?.decimal_odds))}</small>
             </p>
           </div>
         ))}
@@ -166,8 +166,8 @@ export function BettingBoard({
             <strong>No BET-rated singles right now.</strong>
             <p>
               Footy will not manufacture a selection. A market appears here only
-              when the model is current, the market is approved, William Hill is
-              verified and the price clears the uncertainty-adjusted take level.
+              when the model is current, the market is approved, a fresh price is
+              verified and the best available price clears the uncertainty-adjusted take level.
             </p>
           </div>
         )}
@@ -206,7 +206,7 @@ export function BettingBoard({
             <p>
               That is a valid model output. Footy only creates a double, treble or
               larger acca when every leg is independently BET-rated and the
-              combined William Hill price still clears an additional uncertainty
+              combined best verified prices still clear an additional uncertainty
               margin.
             </p>
           </div>
