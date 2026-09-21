@@ -1704,3 +1704,116 @@
   .slip-analysis-list p,
   .slip-analysis-list em { grid-column: 2; text-align: left; }
 }
+
+
+/* Multi-league daily board */
+.today-coverage-count {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: var(--edge-muted);
+}
+.today-coverage-count strong {
+  color: var(--edge-text);
+  font-size: 18px;
+}
+.today-coverage-count span {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.league-board-list {
+  display: grid;
+  gap: 10px;
+}
+.league-board {
+  overflow: hidden;
+  border: 1px solid #203d2e;
+  border-radius: 15px;
+  background: rgba(8,23,15,.76);
+}
+.league-board > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  padding: 13px 15px;
+  list-style: none;
+}
+.league-board > summary::-webkit-details-marker { display: none; }
+.league-board > summary > div strong,
+.league-board > summary > div small { display: block; }
+.league-board > summary > div strong { font-size: 13px; }
+.league-board > summary > div small {
+  margin-top: 2px;
+  color: var(--edge-muted);
+  font-size: 8px;
+}
+.league-board > summary > span {
+  border: 1px solid #2b4f3b;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--edge-muted);
+  font-size: 8px;
+  font-weight: 850;
+}
+.league-board[open] > summary {
+  border-bottom: 1px solid #1b3528;
+}
+.league-board-games {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+.coverage-fixture-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid #1b3528;
+  border-radius: 10px;
+  background: #07140e;
+}
+.coverage-fixture-row time {
+  color: var(--edge-green);
+  font-size: 10px;
+  font-weight: 900;
+}
+.coverage-fixture-row > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.coverage-fixture-row > div strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.coverage-fixture-row > div span {
+  flex: 0 0 auto;
+  color: var(--edge-muted);
+  font-size: 8px;
+}
+.coverage-fixture-row em {
+  color: var(--edge-muted);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+@media (max-width: 650px) {
+  .coverage-fixture-row {
+    grid-template-columns: 46px minmax(0,1fr);
+  }
+  .coverage-fixture-row em {
+    grid-column: 2;
+  }
+  .league-board > summary {
+    padding: 12px;
+  }
+}
