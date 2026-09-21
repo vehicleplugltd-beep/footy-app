@@ -126,8 +126,19 @@ export function DecisionFeed({
       </div>
 
       {todayGames.length ? (
+        <>
+        <div className="today-coverage-count">
+          <strong>{todayGames.length}</strong>
+          <span>fixtures discovered today · showing the first 12 here</span>
+        </div>
         <div className="today-match-strip" aria-label="Today's matches">
-          {todayGames.map((game) => (
+          {[...todayGames]
+            .sort((a, b) =>
+              Number(b.outcomes.length > 0) - Number(a.outcomes.length > 0) ||
+              a.kickoffAt.localeCompare(b.kickoffAt)
+            )
+            .slice(0, 12)
+            .map((game) => (
             <article key={game.matchId}>
               <span>
                 {new Date(game.kickoffAt).toLocaleTimeString("en-GB", {
@@ -152,6 +163,7 @@ export function DecisionFeed({
             </article>
           ))}
         </div>
+        </>
       ) : null}
 
       <div className="decision-mode-tabs" role="tablist" aria-label="Bet mode">
