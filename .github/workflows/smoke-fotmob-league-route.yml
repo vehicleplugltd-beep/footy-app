@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Discover stable FotMob league identifiers
+      - name: Inspect FotMob Championship season payload
         run: |
           python - <<'PY'
           import json
@@ -30,74 +30,72 @@ jobs:
               "Referer": "https://www.fotmob.com/",
           }
 
-          def get(path, params):
-              url = "https://www.fotmob.com" + path + "?" + urllib.parse.urlencode(params)
+          def get(params):
+              url = (
+                  "https://www.fotmob.com/api/data/leagues?"
+                  + urllib.parse.urlencode(params)
+              )
               req = urllib.request.Request(url, headers=HEADERS)
               with urllib.request.urlopen(req, timeout=25) as response:
                   return json.load(response)
 
-          daily = get(
-              "/api/data/matches",
-              {
-                  "date": "20260919",
-                  "timezone": "Europe/London",
-                  "ccode3": "GBR",
-              },
-          )
+          attempts = [
+              {"id": 48, "ccode3": "ENG"},
+              {"id": 48, "ccode3": "ENG", "season": "2025/2026"},
+              {"id": 48, "ccode3": "ENG", "season": "2026/2027"},
+          ]
 
-          for league in daily.get("leagues", []):
-              if (
-                  league.get("name") == "Championship"
-                  and league.get("ccode") == "ENG"
-              ):
-                  meta = {
-                      key: value
-                      for key, value in league.items()
-                      if key != "matches"
+          for params in attempts:
+              payload = get(params)
+              fixtures = payload.get("fixtures")
+              available = payload.get("allAvailableSeasons")
+              seasons = payload.get("seasons")
+
+              if isinstance(fixtures, dict):
+                  fixture_summary = {
+                      "keys": list(fixtures.keys()),
+                      "sample": {},
                   }
-                  print("FOOTY_FOTMOB_LEAGUE_META=" + json.dumps(meta, default=str))
-
-                  for candidate_key in (
-                      "id", "primaryId", "parentLeagueId",
-                      "leagueId", "uniqueTournamentId"
-                  ):
-                      candidate = league.get(candidate_key)
-                      if not candidate:
-                          continue
-                      try:
-                          payload = get(
-                              "/api/data/leagues",
-                              {
-                                  "id": candidate,
-                                  "ccode3": "ENG",
-                                  "season": "2026/2027",
+                  for key, value in fixtures.items():
+                      if isinstance(value, list):
+                          fixture_summary["sample"][key] = {
+                              "count": len(value),
+                              "first": value[:2],
+                              "last": value[-2:],
+                          }
+                      elif isinstance(value, dict):
+                          fixture_summary["sample"][key] = {
+                              "keys": list(value.keys()),
+                              "preview": {
+                                  k: (
+                                      len(v) if isinstance(v, list) else v
+                                  )
+                                  for k, v in list(value.items())[:6]
                               },
-                          )
-                          print(
-                              "FOOTY_FOTMOB_LEAGUE_ROUTE="
-                              + json.dumps({
-                                  "candidate_key": candidate_key,
-                                  "candidate": candidate,
-                                  "keys": list(payload.keys()),
-                                  "name": payload.get("details", {}).get("name"),
-                                  "seasons": payload.get("seasons"),
-                                  "matches": len(
-                                      (
-                                          payload.get("matches", {})
-                                          if isinstance(payload.get("matches"), dict)
-                                          else {}
-                                      ).get("allMatches", [])
-                                  ),
-                              }, default=str)
-                          )
-                      except Exception as exc:
-                          print(
-                              "FOOTY_FOTMOB_LEAGUE_ROUTE_ERROR="
-                              + json.dumps({
-                                  "candidate_key": candidate_key,
-                                  "candidate": candidate,
-                                  "error": str(exc),
-                              })
-                          )
-                  break
+                          }
+                      else:
+                          fixture_summary["sample"][key] = value
+              else:
+                  fixture_summary = {
+                      "type": type(fixtures).__name__,
+                      "value": fixtures,
+                  }
+
+              print(
+                  "FOOTY_FOTMOB_SEASON_PAYLOAD="
+                  + json.dumps(
+                      {
+                          "params": params,
+                          "details": payload.get("details"),
+                          "available": available,
+                          "seasons_preview": (
+                              seasons[:5]
+                              if isinstance(seasons, list)
+                              else seasons
+                          ),
+                          "fixtures": fixture_summary,
+                      },
+                      default=str,
+                  )
+              )
           PY
