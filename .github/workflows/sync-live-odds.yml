@@ -11,11 +11,12 @@ on:
       - ".github/workflows/sync-live-odds.yml"
       - "web/scripts/sync-live-odds.mjs"
       - "web/scripts/sync-free-oddsportal.mjs"
+      - "web/scripts/sync-free-flashscore.mjs"
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -25,15 +26,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install free bookmaker collector
-        working-directory: web
-        run: npm install --no-save odds-portal-scraper@2.10.6
-      - name: Install browser runtime
-        working-directory: web
-        run: npx playwright install --with-deps chromium
       - name: Refresh free fixture spine
         run: node web/scripts/sync-live-odds.mjs
-      - name: Collect capped free bookmaker prices
-        run: node web/scripts/sync-free-oddsportal.mjs
+      - name: Collect direct keyless bookmaker prices
+        run: node web/scripts/sync-free-flashscore.mjs
       - name: Process alerts and closing lines
         run: node web/scripts/sync-live-odds.mjs
