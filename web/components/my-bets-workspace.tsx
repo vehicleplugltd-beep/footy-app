@@ -193,6 +193,16 @@ function canonicalText(value: string) {
     .replace(/\s+/g, " ");
 }
 
+function canonicalMarket(value: string) {
+  const market = canonicalText(value);
+  if (
+    ["1x2", "match result", "match winner", "moneyline", "h2h", "full time result"].includes(market)
+  ) {
+    return "1x2";
+  }
+  return market;
+}
+
 function findModelMarket(
   modelMarkets: ModelMarket[],
   eventName: string,
@@ -200,14 +210,14 @@ function findModelMarket(
   selection: string,
 ) {
   const eventKey = canonicalText(eventName);
-  const marketKey = canonicalText(market);
+  const marketKey = canonicalMarket(market);
   const selectionKey = canonicalText(selection);
 
   return (
     modelMarkets.find(
       (item) =>
         canonicalText(item.eventName) === eventKey &&
-        canonicalText(item.market) === marketKey &&
+        canonicalMarket(item.market) === marketKey &&
         canonicalText(item.selection) === selectionKey,
     ) ?? null
   );
