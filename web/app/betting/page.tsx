@@ -84,11 +84,12 @@ export default async function BettingPage() {
       <div className="shell">
         {data.dataState !== "LIVE" ? (
           <div className="betting-data-warning">
-            <strong>No stale selections are promoted as live bets.</strong>
+            <strong>Fixture coverage and betting qualification are separate.</strong>
             <p>
-              The database currently needs a fresh forward fixture/model/odds run.
-              Historical model data remains available for calibration, but Footy
-              will not reuse yesterday&apos;s prices as today&apos;s edge.
+              Footy can show the global daily slate even when some competitions
+              do not yet have a current model or verified bookmaker price. Those
+              games stay labelled as coverage-only; stale model outputs are never
+              promoted as live bets.
             </p>
           </div>
         ) : null}
