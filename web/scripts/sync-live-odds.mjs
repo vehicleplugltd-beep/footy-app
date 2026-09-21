@@ -52,6 +52,43 @@ const COMPETITION_BY_KEY = new Map(
   COMPETITIONS.map((competition) => [competition.sportKey, competition]),
 );
 
+const ESPN_COMPETITIONS = [
+  ["eng.1", "ENG-Premier League"],
+  ["eng.2", "ENG-Championship"],
+  ["eng.3", "ENG-League One"],
+  ["eng.4", "ENG-League Two"],
+  ["sco.1", "SCO-Premiership"],
+  ["sco.2", "SCO-Championship"],
+  ["sco.3", "SCO-League One"],
+  ["sco.4", "SCO-League Two"],
+  ["esp.1", "ESP-La Liga"],
+  ["esp.2", "ESP-La Liga 2"],
+  ["ger.1", "GER-Bundesliga"],
+  ["ger.2", "GER-2. Bundesliga"],
+  ["ita.1", "ITA-Serie A"],
+  ["ita.2", "ITA-Serie B"],
+  ["fra.1", "FRA-Ligue 1"],
+  ["fra.2", "FRA-Ligue 2"],
+  ["ned.1", "NED-Eredivisie"],
+  ["ned.2", "NED-Eerste Divisie"],
+  ["por.1", "POR-Primeira Liga"],
+  ["bel.1", "BEL-First Division A"],
+  ["aut.1", "AUT-Bundesliga"],
+  ["gre.1", "GRE-Super League"],
+  ["tur.1", "TUR-Super Lig"],
+  ["den.1", "DEN-Superliga"],
+  ["nor.1", "NOR-Eliteserien"],
+  ["swe.1", "SWE-Allsvenskan"],
+  ["irl.1", "IRL-Premier Division"],
+  ["uefa.champions", "UEFA-Champions League"],
+  ["uefa.europa", "UEFA-Europa League"],
+  ["uefa.europa.conf", "UEFA-Conference League"],
+  ["usa.1", "USA-MLS"],
+  ["bra.1", "BRA-Serie A"],
+  ["arg.1", "ARG-Primera Division"],
+  ["mex.1", "MEX-Liga MX"],
+].map(([slug, league]) => ({ slug, league }));
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase server credentials");
 }
@@ -320,7 +357,7 @@ function espnFixture(event) {
   };
 }
 
-async function fetchEspnScoreboard(dateKey) {
+async function fetchEspnScoreboard(competition, dateRange) {
   const hosts = [
     "https://site.api.espn.com",
     "https://site.web.api.espn.com",
@@ -328,61 +365,88 @@ async function fetchEspnScoreboard(dateKey) {
   let lastError = null;
 
   for (const host of hosts) {
-    for (const includeLimit of [true, false]) {
-      const endpoint = new URL(
-        `${host}/apis/site/v2/sports/soccer/all/scoreboard`,
-      );
-      endpoint.searchParams.set("dates", dateKey);
-      if (includeLimit) endpoint.searchParams.set("limit", "500");
+    const endpoint = new URL(
+      `${host}/apis/site/v2/sports/soccer/${competition.slug}/scoreboard`,
+    );
+    endpoint.searchParams.set("dates", dateRange);
+    endpoint.searchParams.set("limit", "500");
 
-      try {
-        const response = await fetch(endpoint, {
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok) {
-          lastError = new Error(
-            `ESPN fixtures ${response.status}: ${(await response.text()).slice(0, 300)}`,
-          );
-          continue;
-        }
-        return await response.json();
-      } catch (error) {
-        lastError = error;
+    try {
+      const response = await fetch(endpoint, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        lastError = new Error(
+          `ESPN ${competition.slug} ${response.status}: ${(await response.text()).slice(0, 220)}`,
+        );
+        continue;
       }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
     }
   }
 
-  throw lastError || new Error(`ESPN fixtures unavailable for ${dateKey}`);
+  throw lastError || new Error(`ESPN ${competition.slug} unavailable`);
 }
 
 async function syncEspnFixtures(capturedAt) {
   const anchor = new Date(capturedAt);
-  const dayStart = new Date(Date.UTC(
+  const rangeStart = new Date(Date.UTC(
     anchor.getUTCFullYear(),
     anchor.getUTCMonth(),
     anchor.getUTCDate() - 1,
   ));
-  const dateKeys = Array.from({ length: 5 }, (_, index) => {
-    const date = new Date(dayStart.getTime() + index * 24 * 60 * 60 * 1000);
-    return yyyymmdd(date);
-  });
+  const rangeEnd = new Date(rangeStart.getTime() + 4 * 24 * 60 * 60 * 1000);
+  const dateRange = `${yyyymmdd(rangeStart)}-${yyyymmdd(rangeEnd)}`;
 
-  const payloads = await Promise.all(
-    dateKeys.map((dateKey) => fetchEspnScoreboard(dateKey)),
-  );
   const eventMap = new Map();
-  for (const payload of payloads) {
-    for (const event of payload.events || []) {
-      if (event?.id) eventMap.set(String(event.id), event);
+  const errors = [];
+
+  for (let index = 0; index < ESPN_COMPETITIONS.length; index += 6) {
+    const batch = ESPN_COMPETITIONS.slice(index, index + 6);
+    const results = await Promise.allSettled(
+      batch.map(async (competition) => ({
+        competition,
+        payload: await fetchEspnScoreboard(competition, dateRange),
+      })),
+    );
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        errors.push(String(result.reason?.message || result.reason));
+        continue;
+      }
+      const { competition, payload } = result.value;
+      for (const event of payload.events || []) {
+        if (!event?.id) continue;
+        eventMap.set(`${competition.slug}:${event.id}`, {
+          event,
+          league: competition.league,
+        });
+      }
     }
   }
 
   const parsed = [...eventMap.values()]
-    .map(espnFixture)
+    .map(({ event, league }) => {
+      const item = espnFixture(event);
+      if (!item) return null;
+      item.row.league = league;
+      return item;
+    })
     .filter(Boolean);
 
   if (!parsed.length) {
-    return { discovered: 0, inserted: 0, leagues: 0 };
+    if (errors.length === ESPN_COMPETITIONS.length) {
+      throw new Error(errors.slice(0, 4).join(" | "));
+    }
+    return {
+      discovered: 0,
+      inserted: 0,
+      leagues: 0,
+      errors: errors.length,
+    };
   }
 
   const kickoffTimes = parsed
@@ -412,12 +476,14 @@ async function syncEspnFixtures(capturedAt) {
     "footy_odds_feed_status",
     [{
       provider: "espn-fixtures",
-      sport_key: "soccer-all",
+      sport_key: "soccer-registry",
       last_attempt_at: capturedAt,
       last_success_at: capturedAt,
       events_received: parsed.length,
       prices_received: 0,
-      last_error: null,
+      last_error: errors.length
+        ? `${errors.length} competition feed${errors.length === 1 ? "" : "s"} unavailable`
+        : null,
       updated_at: capturedAt,
     }],
     "provider",
@@ -427,6 +493,7 @@ async function syncEspnFixtures(capturedAt) {
     discovered: parsed.length,
     inserted: inserts.length,
     leagues: new Set(parsed.map((item) => item.row.league)).size,
+    errors: errors.length,
   };
 }
 
