@@ -1,5 +1,6 @@
 import type { DailyGamePrediction, BettingSelection } from "@/lib/betting";
 import { decimalToFractional, minimumTakeToFractional } from "@/lib/odds";
+import { WatchPriceButton } from "@/components/watch-price-button";
 
 function pct(value: number | null | undefined) {
   return value == null || !Number.isFinite(value)
@@ -113,9 +114,20 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
                 )}
 
                 <footer className="price-coach">
-                  <span>PRICE COACH</span>
-                  <strong>{priceCoach(modelPick)}</strong>
-                  {move ? <small>{move}</small> : null}
+                  <div>
+                    <span>PRICE COACH</span>
+                    <strong>{priceCoach(modelPick)}</strong>
+                    {move ? <small>{move}</small> : null}
+                  </div>
+                  {modelPick ? (
+                    <WatchPriceButton
+                      matchId={modelPick.matchId}
+                      eventName={`${modelPick.homeTeam} vs ${modelPick.awayTeam}`}
+                      market={modelPick.market}
+                      selection={modelPick.selection}
+                      targetOdds={modelPick.minimumTakePrice}
+                    />
+                  ) : null}
                 </footer>
               </article>
             );
