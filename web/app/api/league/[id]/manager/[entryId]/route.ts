@@ -1875,42 +1875,46 @@ function buildCounterPlay(
     };
     const poolByPosition = new Map<string, RankedPlayer[]>();
     for (const position of Object.keys(required)) {
-      const candidates = [...playerPool.values()]
-        .filter(
-          (player) =>
-            player.position === position &&
-            player.price > 0 &&
-            player.availability >= 75 &&
-            horizonEvents[eventIndex]?.scores.has(player.id),
+      const eligible = [...playerPool.values()].filter(
+        (player) =>
+          player.position === position &&
+          player.price > 0 &&
+          player.availability >= 75 &&
+          horizonEvents[eventIndex]?.scores.has(player.id),
+      );
+      const horizonValue = (player: RankedPlayer) =>
+        chip === "Free Hit"
+          ? eventScore(eventIndex, player.id)
+          : [0, 1, 2, 3, 4].reduce(
+              (sum, offset) =>
+                sum +
+                (horizonEvents[eventIndex + offset]
+                  ? eventScore(eventIndex + offset, player.id) *
+                    [1, 0.84, 0.69, 0.56, 0.45][offset]
+                  : 0),
+              0,
+            );
+      const performanceLeaders = [...eligible]
+        .sort(
+          (a, b) =>
+            horizonValue(b) - horizonValue(a) ||
+            b.valueScore - a.valueScore ||
+            a.price - b.price,
         )
-        .sort((a, b) => {
-          const scoreA =
-            chip === "Free Hit"
-              ? eventScore(eventIndex, a.id)
-              : [0, 1, 2, 3, 4].reduce(
-                  (sum, offset) =>
-                    sum +
-                    (horizonEvents[eventIndex + offset]
-                      ? eventScore(eventIndex + offset, a.id) *
-                        [1, 0.84, 0.69, 0.56, 0.45][offset]
-                      : 0),
-                  0,
-                );
-          const scoreB =
-            chip === "Free Hit"
-              ? eventScore(eventIndex, b.id)
-              : [0, 1, 2, 3, 4].reduce(
-                  (sum, offset) =>
-                    sum +
-                    (horizonEvents[eventIndex + offset]
-                      ? eventScore(eventIndex + offset, b.id) *
-                        [1, 0.84, 0.69, 0.56, 0.45][offset]
-                      : 0),
-                  0,
-                );
-          return scoreB - scoreA || a.price - b.price;
-        })
         .slice(0, position === "GKP" ? 10 : 18);
+      const budgetOptions = [...eligible]
+        .sort(
+          (a, b) =>
+            a.price - b.price ||
+            horizonValue(b) - horizonValue(a) ||
+            b.valueScore - a.valueScore,
+        )
+        .slice(0, position === "GKP" ? 6 : 10);
+      const candidateMap = new Map<number, RankedPlayer>();
+      for (const player of [...performanceLeaders, ...budgetOptions]) {
+        candidateMap.set(player.id, player);
+      }
+      const candidates = [...candidateMap.values()];
       poolByPosition.set(position, candidates);
     }
 

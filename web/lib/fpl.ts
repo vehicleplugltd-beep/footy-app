@@ -2615,8 +2615,8 @@ export async function getLeagueManagerEdgeAnalysis(
     (rows) => new Map(rows.map((player) => [player.id, player.assistantScore])),
   );
   const counterPlayTransferPool = ["GKP", "DEF", "MID", "FWD"].flatMap(
-    (position) =>
-      ranked
+    (position) => {
+      const scored = ranked
         .filter(
           (player) =>
             player.position === position &&
@@ -2632,14 +2632,44 @@ export async function getLeagueManagerEdgeAnalysis(
             0,
           );
           return { player, weightedHorizon };
-        })
+        });
+
+      const horizonLeaders = [...scored]
         .sort(
           (a, b) =>
             b.weightedHorizon - a.weightedHorizon ||
             b.player.valueScore - a.player.valueScore,
         )
-        .slice(0, position === "GKP" ? 10 : 16)
-        .map((item) => item.player),
+        .slice(0, position === "GKP" ? 10 : 16);
+      const valueLeaders = [...scored]
+        .sort(
+          (a, b) =>
+            b.player.valueScore - a.player.valueScore ||
+            b.weightedHorizon - a.weightedHorizon,
+        )
+        .slice(0, position === "GKP" ? 6 : 8);
+      const budgetDepth = [...scored]
+        .sort(
+          (a, b) =>
+            a.player.price - b.player.price ||
+            b.weightedHorizon - a.weightedHorizon ||
+            b.player.valueScore - a.player.valueScore,
+        )
+        .slice(0, position === "GKP" ? 6 : 10);
+
+      const unique = new Map<number, (typeof scored)[number]>();
+      for (const item of [...horizonLeaders, ...valueLeaders, ...budgetDepth]) {
+        unique.set(item.player.id, item);
+      }
+      return [...unique.values()]
+        .sort(
+          (a, b) =>
+            b.weightedHorizon - a.weightedHorizon ||
+            b.player.valueScore - a.player.valueScore,
+        )
+        .slice(0, position === "GKP" ? 14 : 24)
+        .map((item) => item.player);
+    },
   );
 
   const relevantPlayerIds = new Set([
