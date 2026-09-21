@@ -5,9 +5,38 @@ const PROVIDER = "flashscore-free";
 const MODEL_VERSION = "v7-r16-p50-v20";
 
 const FEED_URLS = [
+  "https://2.flashscore.ninja/2/x/feed/f_1_0_2_en_1",
   "https://local-global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
   "https://global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
 ];
+
+const PRICE_LEAGUES = new Set([
+  "ENG-Premier League",
+  "ENG-Championship",
+  "ENG-League One",
+  "ENG-League Two",
+  "SCO-Premiership",
+  "ESP-La Liga",
+  "ESP-La Liga 2",
+  "GER-Bundesliga",
+  "GER-2. Bundesliga",
+  "ITA-Serie A",
+  "ITA-Serie B",
+  "FRA-Ligue 1",
+  "FRA-Ligue 2",
+  "NED-Eredivisie",
+  "POR-Primeira Liga",
+  "BEL-First Division A",
+  "TUR-Super Lig",
+  "GRE-Super League",
+  "UEFA-Champions League",
+  "UEFA-Europa League",
+  "UEFA-Conference League",
+  "USA-MLS",
+  "BRA-Serie A",
+  "ARG-Primera Division",
+  "MEX-Liga MX",
+]);
 const ODDS_URLS = [
   "https://global.ds.lsapp.eu/odds/pq_graphql",
   "https://2.ds.lsapp.eu/pq_graphql",
@@ -497,11 +526,16 @@ async function main() {
     )) || [];
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
-  const targetEvents = events.filter((event) => modelLeagues.has(event.league));
+  const targetEvents = events.filter(
+    (event) =>
+      modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league),
+  );
   const fixtureRows = [];
   const currentRows = [];
   const historyRows = [];
   const errors = [];
+  let oddsResponses = 0;
+  let marketEntries = 0;
 
   for (let index = 0; index < targetEvents.length; index += 4) {
     const batch = targetEvents.slice(index, index + 4);
@@ -519,6 +553,10 @@ async function main() {
       }
 
       const { event, oddsRoot } = result.value;
+      oddsResponses += 1;
+      marketEntries += Array.isArray(oddsRoot?.odds)
+        ? oddsRoot.odds.length
+        : 0;
       let match = findMatch(event, matches);
       if (!match) {
         match = {
@@ -623,10 +661,23 @@ async function main() {
       events_received: events.length,
       prices_received: currentRows.length,
       last_error: errors.length
-        ? errors.slice(0, 6).join(" | ").slice(0, 1000)
+        ? [
+            `events=${events.length}`,
+            `targets=${targetEvents.length}`,
+            `oddsResponses=${oddsResponses}`,
+            `marketEntries=${marketEntries}`,
+            ...errors.slice(0, 4),
+          ].join(" | ").slice(0, 1000)
         : currentRows.length
           ? null
-          : "Feed worked but no model-league prices were returned",
+          : [
+              "Feed worked but no supported-league prices were returned",
+              `events=${events.length}`,
+              `targets=${targetEvents.length}`,
+              `oddsResponses=${oddsResponses}`,
+              `marketEntries=${marketEntries}`,
+              `sampleLeagues=${[...new Set(events.map((event) => event.league))].slice(0, 12).join(",")}`,
+            ].join(" | ").slice(0, 1000),
       updated_at: capturedAt,
     }],
     "provider",
@@ -639,7 +690,9 @@ async function main() {
         provider: PROVIDER,
         feed: feedUrl,
         events_discovered: events.length,
-        model_league_events: targetEvents.length,
+        priced_league_events: targetEvents.length,
+        odds_responses: oddsResponses,
+        market_entries: marketEntries,
         new_fixture_rows: fixtureRows.length,
         prices: currentRows.length,
         changed_prices: historyRows.length,
