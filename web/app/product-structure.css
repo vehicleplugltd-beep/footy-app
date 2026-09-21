@@ -949,3 +949,96 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+.team-room-pressure-points {
+  margin: 10px 0 0;
+  border-top: 1px solid #e7eaee;
+}
+.team-room-pressure-points > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 14px;
+  min-height: 52px;
+  align-items: center;
+  padding: 9px 34px 9px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.team-room-pressure-points > summary::-webkit-details-marker {
+  display: none;
+}
+.team-room-pressure-points > summary::after {
+  content: "＋";
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  translate: 0 -50%;
+  color: #6f7a86;
+  font-size: 16px;
+}
+.team-room-pressure-points[open] > summary::after {
+  content: "−";
+}
+.team-room-pressure-points > summary span,
+.team-room-pressure-points > summary strong,
+.team-room-pressure-points > summary small {
+  display: block;
+}
+.team-room-pressure-points > summary span {
+  color: #7a8490;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+.team-room-pressure-points > summary strong {
+  margin-top: 2px;
+  color: #2c3743;
+  font-size: 11px;
+}
+.team-room-pressure-points > summary small {
+  color: #8a929c;
+  font-size: 9px;
+  text-align: right;
+}
+.team-room-pressure-points .team-room-watch {
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.counterplay-primary-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, .7fr);
+  gap: 8px;
+  margin: 10px 0;
+}
+.counterplay-primary-context .counterplay-objective,
+.counterplay-primary-context .counterplay-impact {
+  margin: 0;
+}
+.counterplay-horizon-summary-primary {
+  border-color: #cfe6db !important;
+  background: #f7fcf9 !important;
+}
+.counterplay-deep-dive > .counterplay-calibration-status {
+  margin: 12px;
+}
+
+@media (max-width: 700px) {
+  .team-room-pressure-points > summary {
+    grid-template-columns: 1fr;
+    min-height: 58px;
+    padding-right: 32px;
+  }
+  .team-room-pressure-points > summary small {
+    margin-top: 3px;
+    text-align: left;
+  }
+  .counterplay-primary-context {
+    grid-template-columns: 1fr;
+  }
+  .counterplay-deep-dive > .counterplay-calibration-status {
+    margin: 9px;
+  }
+}
