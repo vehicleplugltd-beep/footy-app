@@ -13,6 +13,19 @@ type Leg = {
   probability: string;
 };
 
+type ModelMarket = {
+  id: string;
+  eventName: string;
+  market: string;
+  selection: string;
+  modelProbability: number;
+  fairOdds: number;
+  minimumTakePrice: number;
+  validationStatus: string;
+  verdict: string;
+  williamHillOdds: number | null;
+};
+
 function toNumber(value: string, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -43,13 +56,15 @@ function edgeLabel(edge: number | null) {
   return `${edge >= 0 ? "+" : ""}${(edge * 100).toFixed(1)}%`;
 }
 
-export function BetLab() {
+export function BetLab({ modelMarkets }: { modelMarkets: ModelMarket[] }) {
   const [stake, setStake] = useState("10");
   const [odds, setOdds] = useState("6/4");
   const [probability, setProbability] = useState("45");
   const [targetEv, setTargetEv] = useState("2");
   const [bankroll, setBankroll] = useState("500");
   const [closingOdds, setClosingOdds] = useState("");
+  const [modelMarketId, setModelMarketId] = useState(modelMarkets[0]?.id ?? "");
+  const [offeredOdds, setOfferedOdds] = useState("");
   const [legs, setLegs] = useState<Leg[]>([
     { id: 1, odds: "4/5", probability: "58" },
     { id: 2, odds: "11/10", probability: "50" },
@@ -115,11 +130,19 @@ export function BetLab() {
   }, [stake, odds, probability, targetEv, bankroll, closingOdds]);
 
   const acca = useMemo(() => {
-    const parsed = legs.map((leg) => ({
-      ...leg,
-      decimal: fractionalToDecimal(leg.odds),
-      p: toNumber(leg.probability) / 100,
-    }));
+    const parsed = legs.map((leg) => {
+      const decimal = fractionalToDecimal(leg.odds);
+      const p = toNumber(leg.probability) / 100;
+      return {
+        ...leg,
+        decimal,
+        p,
+        edge:
+          decimal && p > 0 && p < 1
+            ? p * decimal - 1
+            : null,
+      };
+    });
 
     if (parsed.some((leg) => !leg.decimal || leg.decimal <= 1)) {
       return {
@@ -129,6 +152,8 @@ export function BetLab() {
         edge: null,
         returnValue: null,
         profit: null,
+        weakestLeg: null,
+        negativeLegs: 0,
       };
     }
 
@@ -152,6 +177,14 @@ export function BetLab() {
         : combinedProbability * combinedOdds - 1;
     const s = Math.max(0, toNumber(stake));
 
+    const validEdges = parsed
+      .map((leg, index) => ({ index, edge: leg.edge }))
+      .filter((row): row is { index: number; edge: number } => row.edge != null);
+    const weakestLeg = validEdges.length
+      ? [...validEdges].sort((a, b) => a.edge - b.edge)[0]
+      : null;
+    const negativeLegs = validEdges.filter((row) => row.edge < 0).length;
+
     return {
       combinedOdds,
       combinedProbability,
@@ -159,6 +192,8 @@ export function BetLab() {
       edge,
       returnValue: s * combinedOdds,
       profit: s * (combinedOdds - 1),
+      weakestLeg,
+      negativeLegs,
     };
   }, [legs, stake]);
 
@@ -174,6 +209,36 @@ export function BetLab() {
       };
     });
   }, [probability]);
+
+  const marketCheck = useMemo(() => {
+    const market = modelMarkets.find((item) => item.id === modelMarketId) ?? null;
+    const offered = fractionalToDecimal(offeredOdds);
+    if (!market) return null;
+
+    const effective = offered ?? market.williamHillOdds;
+    const edge =
+      effective && effective > 1
+        ? market.modelProbability * effective - 1
+        : null;
+    const clears = effective != null && effective >= market.minimumTakePrice;
+
+    return {
+      market,
+      effective,
+      edge,
+      clears,
+      action:
+        effective == null
+          ? "ENTER A PRICE"
+          : clears
+            ? market.validationStatus === "APPROVED"
+              ? "BET"
+              : "WATCH"
+            : effective < market.fairOdds * 0.92
+              ? "FADE"
+              : "PASS",
+    };
+  }, [modelMarkets, modelMarketId, offeredOdds]);
 
   function updateLeg(id: number, field: "odds" | "probability", value: string) {
     setLegs((current) =>
@@ -264,6 +329,84 @@ export function BetLab() {
       </section>
 
       <section className="lab-grid">
+        <article className="lab-panel lab-panel-primary">
+          <span>BET CHECKER</span>
+          <h2>Check any bookmaker offer against Footy.</h2>
+          <div className="lab-input-grid lab-input-grid-two">
+            <label>
+              Model market
+              <select
+                value={modelMarketId}
+                onChange={(event) => setModelMarketId(event.target.value)}
+              >
+                {modelMarkets.length ? modelMarkets.map((market) => (
+                  <option key={market.id} value={market.id}>
+                    {market.eventName} · {market.selection} · {market.market}
+                  </option>
+                )) : (
+                  <option value="">No current model markets</option>
+                )}
+              </select>
+            </label>
+            <label>
+              Bookmaker offer
+              <input
+                value={offeredOdds}
+                onChange={(event) => setOfferedOdds(event.target.value)}
+                placeholder="Leave blank to use WH"
+              />
+            </label>
+          </div>
+
+          {marketCheck ? (
+            <div className="bet-checker-output">
+              <div>
+                <span>Model probability</span>
+                <strong>{pct(marketCheck.market.modelProbability)}</strong>
+              </div>
+              <div>
+                <span>Fair price</span>
+                <strong>{oddsLabel(marketCheck.market.fairOdds)}</strong>
+              </div>
+              <div className="lab-highlight">
+                <span>Footy take price</span>
+                <strong>{minimumTakeToFractional(marketCheck.market.minimumTakePrice)}+ · {marketCheck.market.minimumTakePrice.toFixed(2)}+</strong>
+              </div>
+              <div>
+                <span>Offer checked</span>
+                <strong>{oddsLabel(marketCheck.effective)}</strong>
+              </div>
+              <div>
+                <span>EV at offer</span>
+                <strong className={(marketCheck.edge ?? -1) >= 0 ? "positive" : "negative"}>{edgeLabel(marketCheck.edge)}</strong>
+              </div>
+              <div className="checker-action">
+                <span>Decision</span>
+                <strong>{marketCheck.action}</strong>
+                <small>
+                  {marketCheck.market.validationStatus === "APPROVED"
+                    ? "Production-approved market"
+                    : `Market validation: ${marketCheck.market.validationStatus}`}
+                </small>
+              </div>
+            </div>
+          ) : (
+            <div className="my-bets-empty">No current model market is available to check.</div>
+          )}
+        </article>
+
+        <article className="lab-panel">
+          <span>WHY THIS MATTERS</span>
+          <h2>Same prediction. Different bet.</h2>
+          <p>
+            A 60% outcome is not automatically value. At 4/6 it may be a PASS;
+            at EVS it may be attractive. Bet Checker lets users test the exact
+            price in front of them rather than treating a pick as universally good.
+          </p>
+        </article>
+      </section>
+
+      <section className="lab-grid">
         <article className="lab-panel">
           <span>ACCA CALCULATOR</span>
           <h2>See what every extra leg really costs.</h2>
@@ -287,11 +430,20 @@ export function BetLab() {
             <div><span>Return at £{toNumber(stake).toFixed(2)}</span><strong>{money(acca.returnValue)}</strong></div>
             <div><span>Profit</span><strong>{money(acca.profit)}</strong></div>
           </div>
-          <p className="lab-warning">
-            This calculator assumes independent legs. Footy&apos;s suggested accas
-            apply extra correlation/uncertainty controls and never use a failing
-            single as filler.
-          </p>
+          <div className="slip-doctor">
+            <span>SLIP DOCTOR</span>
+            <strong>
+              {acca.weakestLeg == null
+                ? "Add valid prices and probabilities."
+                : acca.negativeLegs > 0
+                  ? `${acca.negativeLegs} negative-EV leg${acca.negativeLegs === 1 ? "" : "s"} detected. Weakest is leg ${acca.weakestLeg.index + 1} at ${edgeLabel(acca.weakestLeg.edge)}.`
+                  : `No negative-EV legs in the raw maths. Weakest is leg ${acca.weakestLeg.index + 1} at ${edgeLabel(acca.weakestLeg.edge)}.`}
+            </strong>
+            <small>
+              Raw maths still does not prove independence. Footy&apos;s live acca
+              engine adds correlation and uncertainty controls before approval.
+            </small>
+          </div>
         </article>
 
         <article className="lab-panel">
