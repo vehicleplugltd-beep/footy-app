@@ -106,8 +106,8 @@ export default async function BettingPage() {
           </div>
           <div className="validation-grid">
             {data.validations.length ? data.validations.map((row) => (
-              <article key={row.market}>
-                <span>{row.market}</span>
+              <article key={`${row.league}:${row.market}`}>
+                <span>{row.league} · {row.market}</span>
                 <strong>{row.status}</strong>
                 <small>{row.sample_size.toLocaleString()} validation samples</small>
                 <p>{row.notes ?? "Validation evidence stored in the model ledger."}</p>
