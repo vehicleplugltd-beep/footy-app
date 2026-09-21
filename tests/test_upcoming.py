@@ -87,6 +87,24 @@ def test_upcoming_prediction_uses_completed_history():
     )
     assert abs(total - 1.0) < 1e-8
 
+    assert abs(
+        row["over_2_5_probability"] + row["under_2_5_probability"] - 1.0
+    ) < 1e-8
+    assert abs(
+        row["btts_yes_probability"] + row["btts_no_probability"] - 1.0
+    ) < 1e-8
+
     records = model_output_records(out)
-    assert len(records) == 3
-    assert {r["selection"] for r in records} == {"home", "draw", "away"}
+    assert len(records) == 7
+    assert {
+        (record["market"], record["selection"])
+        for record in records
+    } == {
+        ("1X2", "home"),
+        ("1X2", "draw"),
+        ("1X2", "away"),
+        ("TOTAL_2.5", "over"),
+        ("TOTAL_2.5", "under"),
+        ("BTTS", "yes"),
+        ("BTTS", "no"),
+    }
