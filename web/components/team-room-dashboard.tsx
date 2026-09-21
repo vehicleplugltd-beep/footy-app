@@ -25,6 +25,9 @@ import {
   TeamRoomReferenceDrawer,
   TeamRoomSummary,
 } from "@/components/team-room/structure";
+import { TeamRoomStatusStrip } from "@/components/team-room/status-strip";
+import { WhatIfPanel } from "@/components/team-room/what-if-panel";
+import { DecisionQualityPanel } from "@/components/team-room/decision-quality-panel";
 import type {
   CounterPosture,
   LeagueResponse,
@@ -471,11 +474,6 @@ export function TeamRoomDashboard({
       : standings.slice(0, 8);
 
   const resourceRows = manager?.resource_map ?? [];
-  const squadQuip = intelligenceLoading
-    ? "Checking your squad against the live market and your mini-league."
-    : squadFuture != null && squadFuture >= 65
-      ? footyQuip("strongSquad")
-      : footyQuip("weakSquad");
   const actionQuip = intelligenceLoading
     ? "Comparing squad quality, player process, structure and league pressure."
     : portfolioPlan?.action === "BANK"
@@ -497,33 +495,12 @@ export function TeamRoomDashboard({
         <div className="team-room-error">{error}</div>
       ) : null}
 
-      <blockquote className="footy-quip team-room-quip">{squadQuip}</blockquote>
-
-      <div className="team-room-status-row" aria-label="Model and data status">
-        <span className="team-room-live-pill">
-          <i />
-          {scout?.freshness === "LIVE_FPL" ? "LIVE FPL" : "FPL DATA"}
-        </span>
-        <span>
-          {scout?.dataRetrievedAt
-            ? "Updated " +
-              new Date(scout.dataRetrievedAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "Loading live intelligence"}
-        </span>
-        {counterPlay?.volatility_calibration.status === "EMPIRICAL" ? (
-          <span className="team-room-status-proof">
-            EMPIRICAL · {counterPlay.volatility_calibration.sample_count.toLocaleString()} samples
-          </span>
-        ) : null}
-        {decisionQuality?.pending ? (
-          <a className="team-room-status-audit" href="#audit">
-            GW{decisionQuality.pending.event} AUDIT ARMED
-          </a>
-        ) : null}
-      </div>
+      <TeamRoomStatusStrip
+        freshness={scout?.freshness}
+        retrievedAt={scout?.dataRetrievedAt}
+        counterPlay={counterPlay}
+        decisionQuality={decisionQuality}
+      />
 
       <TeamRoomSummary
         loading={intelligenceLoading}
@@ -1407,152 +1384,35 @@ export function TeamRoomDashboard({
             tone="test"
           />
 
-          <section className="team-room-block team-room-test-panel" id="what-if">
-            <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
-              <div className="counterplay-whatif-head">
-              <div>
-                <span>WHAT-IF LAB</span>
-                <strong>Test your own move against Footy’s path.</strong>
-              </div>
-              <small>
-                Same 10,000-run model, empirical tails, rival responses and
-                {counterHorizon}GW state carry-forward.
-              </small>
-            </div>
-
-            <div className="counterplay-whatif-controls">
-              <label>
-                <span>SELL / REMOVE</span>
-                <select
-                  value={whatIfOutId ?? ""}
-                  disabled={whatIfLoading}
-                  onChange={(event) => {
-                    const value = Number(event.target.value) || null;
-                    setWhatIfOutId(value);
-                    setWhatIfInId(null);
-                    if (whatIfCaptainId === value) setWhatIfCaptainId(null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">No transfer</option>
-                  {whatIfOptions?.squad
-                    .slice()
-                    .sort((a, b) => a.position.localeCompare(b.position) || a.name.localeCompare(b.name))
-                    .map((player) => (
-                      <option key={player.id} value={player.id}>
-                        {player.position} · {player.name} · £{player.price.toFixed(1)}
-                      </option>
-                    ))}
-                </select>
-              </label>
-
-              <label>
-                <span>BUY / ADD</span>
-                <select
-                  value={whatIfInId ?? ""}
-                  disabled={!whatIfOutId || whatIfLoading}
-                  onChange={(event) => {
-                    setWhatIfInId(Number(event.target.value) || null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">
-                    {whatIfOutId ? "Choose legal replacement" : "Choose player out first"}
-                  </option>
-                  {whatIfReplacementOptions.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name} · {player.team} · £{player.price.toFixed(1)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span>CAPTAIN</span>
-                <select
-                  value={whatIfCaptainId ?? ""}
-                  disabled={whatIfLoading}
-                  onChange={(event) => {
-                    setWhatIfCaptainId(Number(event.target.value) || null);
-                    setWhatIfError(null);
-                  }}
-                >
-                  <option value="">Footy’s captain</option>
-                  {whatIfCaptainOptions.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name} · {player.team}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="counterplay-whatif-actions">
-              <button
-                type="button"
-                onClick={() => void runWhatIf()}
-                disabled={
-                  whatIfLoading ||
-                  (!whatIfCaptainId && !(whatIfOutId && whatIfInId))
-                }
-              >
-                {whatIfLoading ? "SIMULATING…" : "RUN WHAT-IF"}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void clearWhatIf()}
-                disabled={whatIfLoading || (!whatIfOutId && !whatIfCaptainId && counterPlay.what_if.status !== "VALID")}
-              >
-                RESET
-              </button>
-              <small aria-live="polite">
-                {whatIfError ??
-                  (counterPlay.what_if.status === "VALID"
-                    ? "Custom scenario simulated. Footy’s recommendation remains independent."
-                    : counterPlay.what_if.caveat)}
-              </small>
-            </div>
-
-            {counterPlay.what_if.status === "VALID" && whatIfHorizonScenario ? (
-              <div className="counterplay-whatif-result">
-                <div>
-                  <span>YOUR PATH</span>
-                  <strong>{whatIfHorizonScenario.label}</strong>
-                  <small>
-                    {(whatIfHorizonScenario.objective_probability * 100).toFixed(1)}% objective ·{" "}
-                    {(whatIfHorizonScenario.probability_delta >= 0 ? "+" : "") +
-                      (whatIfHorizonScenario.probability_delta * 100).toFixed(1)}pp vs HOLD
-                  </small>
-                </div>
-                <div>
-                  <span>FOOTY BEST</span>
-                  <strong>
-                    {activeCounterHorizon?.recommended_scenario?.label ??
-                      counterPlay.recommended_scenario?.label ??
-                      "Hold structure"}
-                  </strong>
-                  <small>
-                    {activeCounterHorizon?.recommended_scenario
-                      ? (activeCounterHorizon.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
-                      : counterPlay.recommended_scenario
-                        ? (counterPlay.recommended_scenario.objective_probability * 100).toFixed(1) + "% objective"
-                        : "No stronger path"}
-                  </small>
-                </div>
-                <div>
-                  <span>MODEL RANGE</span>
-                  <strong>
-                    {whatIfHorizonScenario.floor_5.toFixed(1)}–{whatIfHorizonScenario.ceiling_95.toFixed(1)}
-                  </strong>
-                  <small>
-                    empirical 5th–95th projected score
-                  </small>
-                </div>
-              </div>
-            ) : null}
-            </div>
-          </section>
+          <WhatIfPanel
+            counterPlay={counterPlay}
+            counterHorizon={counterHorizon}
+            outId={whatIfOutId}
+            inId={whatIfInId}
+            captainId={whatIfCaptainId}
+            loading={whatIfLoading}
+            error={whatIfError}
+            replacementOptions={whatIfReplacementOptions}
+            captainOptions={whatIfCaptainOptions}
+            scenario={whatIfHorizonScenario}
+            activeHorizon={activeCounterHorizon}
+            onOutChange={(value) => {
+              setWhatIfOutId(value);
+              setWhatIfInId(null);
+              if (whatIfCaptainId === value) setWhatIfCaptainId(null);
+              setWhatIfError(null);
+            }}
+            onInChange={(value) => {
+              setWhatIfInId(value);
+              setWhatIfError(null);
+            }}
+            onCaptainChange={(value) => {
+              setWhatIfCaptainId(value);
+              setWhatIfError(null);
+            }}
+            onRun={() => void runWhatIf()}
+            onReset={() => void clearWhatIf()}
+          />
         </>
       ) : null}
 
@@ -1565,162 +1425,7 @@ export function TeamRoomDashboard({
       />
 
       {decisionQuality ? (
-        <section className="team-room-block decision-quality-panel" id="audit">
-          <div className="team-room-block-head">
-            <div>
-              <span>DECISION QUALITY</span>
-              <h2>
-                {decisionQuality.status === "ACTIVE"
-                  ? decisionQuality.summary?.deadlines + " tracked deadline" +
-                    (decisionQuality.summary?.deadlines === 1 ? "" : "s")
-                  : decisionQuality.status === "ACCUMULATING"
-                    ? "Building the clean history"
-                    : "Audit temporarily unavailable"}
-              </h2>
-            </div>
-            <small>Process EV and outcome variance are scored separately</small>
-          </div>
-
-          {decisionQuality.status === "ACTIVE" && decisionQuality.summary ? (
-            <>
-              <div className="decision-quality-grid">
-                <div>
-                  <span>CAPTAIN REGRET</span>
-                  <strong>
-                    {decisionQuality.summary.average_captain_expected_regret == null
-                      ? "—"
-                      : decisionQuality.summary.average_captain_expected_regret.toFixed(1)}
-                  </strong>
-                  <small>average frozen expected points given up</small>
-                </div>
-                <div>
-                  <span>TOP PATH</span>
-                  <strong>
-                    {(decisionQuality.summary.top_path_alignment * 100).toFixed(0)}%
-                  </strong>
-                  <small>deadlines matching Footy’s frozen top action</small>
-                </div>
-                <div>
-                  <span>OBJECTIVE REGRET</span>
-                  <strong>
-                    {decisionQuality.summary.average_counterplay_objective_regret_pp == null
-                      ? "—"
-                      : decisionQuality.summary.average_counterplay_objective_regret_pp.toFixed(1) + "pp"}
-                  </strong>
-                  <small>
-                    {decisionQuality.summary.counterplay_comparable_deadlines} comparable CounterPlay path
-                    {decisionQuality.summary.counterplay_comparable_deadlines === 1 ? "" : "s"}
-                  </small>
-                </div>
-                <div>
-                  <span>OUTCOME VARIANCE</span>
-                  <strong>{decisionQuality.summary.negative_variance_deadlines}</strong>
-                  <small>captain outcomes ≥2 below frozen expectation</small>
-                </div>
-              </div>
-
-              <div className="decision-quality-observations">
-                <span>WHAT THE SAMPLE ACTUALLY SAYS</span>
-                {decisionQuality.summary.observations.map((item, index) => (
-                  <p key={"decision-observation-" + index}>{item}</p>
-                ))}
-              </div>
-
-              <div className="decision-quality-history">
-                {decisionQuality.completed.map((item) => (
-                  <article key={item.event}>
-                    <header>
-                      <b>GW{item.event}</b>
-                      <small>
-                        {item.receipt.posture ?? item.battle_mode ?? "—"} ·{" "}
-                        {item.receipt.source.replaceAll("_", " ")} ·{" "}
-                        {item.receipt.calibration_status === "EMPIRICAL"
-                          ? "empirical"
-                          : "fallback"}
-                      </small>
-                    </header>
-                    <div>
-                      <span>Captain process</span>
-                      <strong>{item.captain.process.replaceAll("_", " ")}</strong>
-                      <small>
-                        {item.captain.model_player_name
-                          ? "Model: " + item.captain.model_player_name
-                          : "No comparable captain receipt"}
-                      </small>
-                    </div>
-                    <div>
-                      <span>Captain variance</span>
-                      <strong>
-                        {item.captain.actual_vs_model_expectation == null
-                          ? "—"
-                          : (item.captain.actual_vs_model_expectation >= 0 ? "+" : "") +
-                            item.captain.actual_vs_model_expectation.toFixed(1)}
-                      </strong>
-                      <small>actual raw points vs deadline expectation</small>
-                    </div>
-                    <div>
-                      <span>Path process</span>
-                      <strong>{item.transfers.process.replaceAll("_", " ")}</strong>
-                      <small>
-                        {item.transfers.top_path_label
-                          ? "Frozen top: " + item.transfers.top_path_label
-                          : "No comparable frozen top path"}
-                      </small>
-                    </div>
-                    <div>
-                      <span>Objective regret</span>
-                      <strong>
-                        {item.transfers.objective_regret == null
-                          ? "—"
-                          : (item.transfers.objective_regret * 100).toFixed(1) + "pp"}
-                      </strong>
-                      <small>
-                        {item.transfers.active_chip
-                          ? item.transfers.active_chip + " · "
-                          : ""}
-                        {item.transfers.hit_cost
-                          ? "-" + item.transfers.hit_cost + " hit"
-                          : "no hit cost"}
-                      </small>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="decision-quality-empty">
-              <strong>
-                {decisionQuality.pending
-                  ? "GW" + decisionQuality.pending.event + " audit is armed."
-                  : "Decision Quality v2 starts with GW" + decisionQuality.tracked_from_event + "."}
-              </strong>
-              {decisionQuality.pending ? (
-                <>
-                  <p>
-                    Frozen {new Date(decisionQuality.pending.generated_at).toLocaleString()} ·{" "}
-                    {decisionQuality.pending.source.replaceAll("_", " ")} ·{" "}
-                    {decisionQuality.pending.posture ?? "inferred posture"}
-                  </p>
-                  <p>
-                    Top path: {decisionQuality.pending.top_path ?? "hold / no material move"} ·{" "}
-                    {decisionQuality.pending.empirical
-                      ? (decisionQuality.pending.calibration_samples?.toLocaleString() ?? "empirical") +
-                        " calibration samples"
-                      : "volatility fallback"}
-                  </p>
-                </>
-              ) : (
-                <p>
-                  Earlier Gameweeks are deliberately not reconstructed with hindsight. Footy will
-                  score only a genuine frozen pre-deadline receipt against what the manager actually
-                  chose after the deadline.
-                </p>
-              )}
-            </div>
-          )}
-
-          <p className="decision-quality-caveat">{decisionQuality.caveat}</p>
-        </section>
+        <DecisionQualityPanel decisionQuality={decisionQuality} />
       ) : null}
 
       <TeamRoomReferenceDrawer
