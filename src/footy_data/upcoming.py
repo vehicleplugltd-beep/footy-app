@@ -239,6 +239,10 @@ def build_upcoming_predictions(
             "home_win_probability": probs["home_win"],
             "draw_probability": probs["draw"],
             "away_win_probability": probs["away_win"],
+            "over_2_5_probability": probs["over_2_5"],
+            "under_2_5_probability": probs["under_2_5"],
+            "btts_yes_probability": probs["btts_yes"],
+            "btts_no_probability": probs["btts_no"],
         })
 
     if not rows:
@@ -252,26 +256,47 @@ def model_output_records(
 ) -> list[dict]:
     records: list[dict] = []
     for row in predictions.itertuples(index=False):
-        selections = (
-            ("home", float(row.home_win_probability)),
-            ("draw", float(row.draw_probability)),
-            ("away", float(row.away_win_probability)),
-        )
-        for selection, probability in selections:
-            records.append({
-                "match_id": str(row.match_id),
-                "model_version": str(row.model_version),
-                "home_xg": float(row.home_xg),
-                "away_xg": float(row.away_xg),
-                "market": "1X2",
-                "selection": selection,
-                "model_probability": probability,
-                "fair_odds": fair_odds(probability),
-                "uncertainty_haircut": float(row.uncertainty_haircut),
-                "minimum_take_price": minimum_take_price(
-                    probability,
-                    uncertainty_haircut=float(row.uncertainty_haircut),
-                    target_ev=target_ev,
+        markets = (
+            (
+                "1X2",
+                (
+                    ("home", float(row.home_win_probability)),
+                    ("draw", float(row.draw_probability)),
+                    ("away", float(row.away_win_probability)),
                 ),
-            })
+            ),
+            (
+                "TOTAL_2.5",
+                (
+                    ("over", float(row.over_2_5_probability)),
+                    ("under", float(row.under_2_5_probability)),
+                ),
+            ),
+            (
+                "BTTS",
+                (
+                    ("yes", float(row.btts_yes_probability)),
+                    ("no", float(row.btts_no_probability)),
+                ),
+            ),
+        )
+
+        for market, selections in markets:
+            for selection, probability in selections:
+                records.append({
+                    "match_id": str(row.match_id),
+                    "model_version": str(row.model_version),
+                    "home_xg": float(row.home_xg),
+                    "away_xg": float(row.away_xg),
+                    "market": market,
+                    "selection": selection,
+                    "model_probability": probability,
+                    "fair_odds": fair_odds(probability),
+                    "uncertainty_haircut": float(row.uncertainty_haircut),
+                    "minimum_take_price": minimum_take_price(
+                        probability,
+                        uncertainty_haircut=float(row.uncertainty_haircut),
+                        target_ev=target_ev,
+                    ),
+                })
     return records
