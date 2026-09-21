@@ -75,7 +75,7 @@ function changeLine(selection: BettingSelection) {
     pieces.push(`Model ${pp >= 0 ? "+" : ""}${pp.toFixed(1)}pp`);
   }
 
-  const quote = selection.williamHillPrice ?? selection.bestPrice;
+  const quote = selection.bestPrice;
   if (
     quote?.previous_decimal_odds != null &&
     Number(quote.previous_decimal_odds) !== Number(quote.decimal_odds)
@@ -89,7 +89,7 @@ function changeLine(selection: BettingSelection) {
 }
 
 function priceLabel(selection: BettingSelection) {
-  const quote = selection.williamHillPrice ?? selection.bestPrice;
+  const quote = selection.bestPrice;
   return quote ? decimalToFractional(Number(quote.decimal_odds)) : "—";
 }
 
@@ -268,7 +268,7 @@ export function DecisionFeed({
           <header>
             <div>
               <span>BEST QUALIFYING {bestAcca.label.toUpperCase()}</span>
-              <strong>{decimalToFractional(bestAcca.williamHillOdds)}</strong>
+              <strong>{decimalToFractional(bestAcca.combinedOdds)}</strong>
               <small>{bestAcca.legCount} independently qualifying legs</small>
             </div>
             <em>BET</em>
@@ -278,7 +278,7 @@ export function DecisionFeed({
               <p key={leg.matchId}>
                 <b>{index + 1}</b>
                 <span><strong>{leg.displaySelection}</strong><small>{leg.homeTeam} vs {leg.awayTeam}</small></span>
-                <em>{decimalToFractional(Number(leg.williamHillPrice?.decimal_odds))}</em>
+                <em>{decimalToFractional(Number(leg.bestPrice?.decimal_odds))}</em>
               </p>
             ))}
           </div>
