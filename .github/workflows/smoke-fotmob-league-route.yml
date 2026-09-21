@@ -1,0 +1,103 @@
+name: smoke-fotmob-league-route
+
+on:
+  push:
+    branches: ["feature/betting-edge-workspace"]
+    paths:
+      - ".github/workflows/smoke-fotmob-league-route.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Discover stable FotMob league identifiers
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+
+          HEADERS = {
+              "Accept": "application/json,text/plain,*/*",
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+              "Referer": "https://www.fotmob.com/",
+          }
+
+          def get(path, params):
+              url = "https://www.fotmob.com" + path + "?" + urllib.parse.urlencode(params)
+              req = urllib.request.Request(url, headers=HEADERS)
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  return json.load(response)
+
+          daily = get(
+              "/api/data/matches",
+              {
+                  "date": "20260919",
+                  "timezone": "Europe/London",
+                  "ccode3": "GBR",
+              },
+          )
+
+          for league in daily.get("leagues", []):
+              if (
+                  league.get("name") == "Championship"
+                  and league.get("ccode") == "ENG"
+              ):
+                  meta = {
+                      key: value
+                      for key, value in league.items()
+                      if key != "matches"
+                  }
+                  print("FOOTY_FOTMOB_LEAGUE_META=" + json.dumps(meta, default=str))
+
+                  for candidate_key in (
+                      "id", "primaryId", "parentLeagueId",
+                      "leagueId", "uniqueTournamentId"
+                  ):
+                      candidate = league.get(candidate_key)
+                      if not candidate:
+                          continue
+                      try:
+                          payload = get(
+                              "/api/data/leagues",
+                              {
+                                  "id": candidate,
+                                  "ccode3": "ENG",
+                                  "season": "2026/2027",
+                              },
+                          )
+                          print(
+                              "FOOTY_FOTMOB_LEAGUE_ROUTE="
+                              + json.dumps({
+                                  "candidate_key": candidate_key,
+                                  "candidate": candidate,
+                                  "keys": list(payload.keys()),
+                                  "name": payload.get("details", {}).get("name"),
+                                  "seasons": payload.get("seasons"),
+                                  "matches": len(
+                                      (
+                                          payload.get("matches", {})
+                                          if isinstance(payload.get("matches"), dict)
+                                          else {}
+                                      ).get("allMatches", [])
+                                  ),
+                              }, default=str)
+                          )
+                      except Exception as exc:
+                          print(
+                              "FOOTY_FOTMOB_LEAGUE_ROUTE_ERROR="
+                              + json.dumps({
+                                  "candidate_key": candidate_key,
+                                  "candidate": candidate,
+                                  "error": str(exc),
+                              })
+                          )
+                  break
+          PY
