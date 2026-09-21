@@ -28,6 +28,8 @@ import {
 import { TeamRoomStatusStrip } from "@/components/team-room/status-strip";
 import { WhatIfPanel } from "@/components/team-room/what-if-panel";
 import { DecisionQualityPanel } from "@/components/team-room/decision-quality-panel";
+import { DecisionPanel } from "@/components/team-room/decision-panel";
+import { PortfolioPanel } from "@/components/team-room/portfolio-panel";
 import type {
   CounterPosture,
   LeagueResponse,
@@ -530,201 +532,34 @@ export function TeamRoomDashboard({
         tone="decision"
       />
 
-      <section className="team-room-command-grid" id="decision">
-        <article className="team-room-block team-room-command-card">
-          <div className="team-room-block-head">
-            <div>
-              <span>FOOTY SUGGESTS</span>
-              <h2>
-                {intelligenceLoading
-                  ? "Building your plan…"
-                  : portfolioPlan?.headline ??
-                    (transfer
-                      ? transfer.out.name + " → " + transfer.in.name
-                      : "Hold the transfer")}
-              </h2>
-            </div>
-          </div>
-
-          <blockquote className="footy-quip compact">{actionQuip}</blockquote>
-          <div className="team-room-suggestion">
-            <div>
-              <span>PORTFOLIO ACTION</span>
-              <strong>
-                {intelligenceLoading
-                  ? "CHECKING"
-                  : portfolioPlan?.action.replaceAll("_", " ") ??
-                    (transfer ? transfer.out.name + " → " + transfer.in.name : "HOLD")}
-              </strong>
-              <small>
-                {intelligenceLoading
-                  ? "Comparing football edge, FT option value, squad structure and timing."
-                  : portfolioPlan
-                    ? (portfolioPlan.free_transfers == null
-                        ? "FT bank uncertain"
-                        : portfolioPlan.free_transfers + "/5 FT") +
-                      " · portfolio " +
-                      portfolioPlan.portfolio.score +
-                      "/100 · " +
-                      portfolioPlan.portfolio.status +
-                      " · game theory " +
-                      portfolioPlan.game_theory.band.toLowerCase()
-                    : transfer
-                      ? "+" +
-                        transfer.raw_gain.toFixed(1) +
-                        " now · min +" +
-                        (transfer.minimum_gain ?? 0).toFixed(1) +
-                        " · +" +
-                        (transfer.horizon_gain ?? 0).toFixed(1) +
-                        " horizon"
-                      : "No replacement clears the value and timing threshold."}
-              </small>
-            </div>
-
-            <div>
-              <span>CAPTAIN</span>
-              <strong>
-                {intelligenceLoading
-                  ? "CHECKING"
-                  : captain?.player.name ?? "No change"}
-              </strong>
-              <small>
-                {intelligenceLoading
-                  ? "Comparing captain output, ownership and league pressure."
-                  : captain?.rationale ??
-                    "Expected output remains the priority."}
-              </small>
-              {captain?.player.name ? (
-                <em className="team-room-inline-quip">
-                  {footyQuip("captain", { player: captain.player.name })}
-                </em>
-              ) : null}
-            </div>
-
-            <div>
-              <span>RESOURCE</span>
-              <strong>
-                {intelligenceLoading
-                  ? "CHECKING"
-                  : manager?.resource_advice?.status ?? "—"}
-              </strong>
-              <small>
-                {intelligenceLoading
-                  ? "Reading free-transfer, chip and rival flexibility."
-                  : manager?.resource_advice?.recommendation ??
-                    "No resource warning."}
-              </small>
-            </div>
-          </div>
-
-          {intelligenceLoading ? (
-            <div className="team-room-model-loading" role="status">
-              <span>MODEL CHECK</span>
-              <strong>Building the decision from live player, process and league evidence…</strong>
-            </div>
-          ) : (
-            <div className="team-room-decision-proof">
-              <div>
-                <span>WHY</span>
-                <strong>{transferWhy}</strong>
-              </div>
-              <div>
-                <span>EVIDENCE</span>
-                <strong className={
-                  transferInProfile
-                    ? "confidence-" + transferInProfile.decisionConfidence.toLowerCase()
-                    : ""
-                }>
-                  {transferEvidence}
-                </strong>
-              </div>
-              <div>
-                <span>FAILURE MODE</span>
-                <strong>{transferFailure}</strong>
-              </div>
-            </div>
-          )}
-
-          {weakPlayers.length ? (
-            <div className="team-room-watch">
-              <span>SQUAD PRESSURE POINTS</span>
-              {weakPlayers.map((item) => (
-                <p key={item.pick.id}>
-                  <b>{item.pick.name}</b> — future rating{" "}
-                  {item.future}; best window{" "}
-                  {item.profile.bestWindow.startName}–
-                  {item.profile.bestWindow.endName}.
-                </p>
-              ))}
-            </div>
-          ) : null}
-
-          <a className="team-room-primary" href="#what-if">
-            Test Footy’s plan →
-          </a>
-        </article>
-
-        <article className="team-room-block team-room-pressure-card">
-          <div className="team-room-block-head">
-            <div>
-              <span>LEAGUE BATTLE</span>
-              <h2>Where the pressure is</h2>
-            </div>
-          </div>
-
-          <div className="team-room-pressure">
-            <div>
-              <span>ABOVE</span>
-              <strong>
-                {manager?.league_strategy?.target_name ??
-                  "Leader"}
-              </strong>
-              <small>
-                {manager?.league_strategy?.gap_above ?? "—"} pts
-                away
-              </small>
-            </div>
-            <div>
-              <span>YOU</span>
-              <strong>#{leagueRank ?? "—"}</strong>
-              <small>{leagueName}</small>
-            </div>
-            <div>
-              <span>BELOW</span>
-              <strong>
-                {manager?.league_strategy?.chaser_name ?? "—"}
-              </strong>
-              <small>
-                {manager?.league_strategy?.gap_below ?? "—"} pts
-                behind
-              </small>
-            </div>
-          </div>
-
-          <div className="team-room-standings">
-            {standingsWindow.map((row) => (
-              <button
-                type="button"
-                key={row.entry_id}
-                className={
-                  row.entry_id === teamId ? "you" : ""
-                }
-                onClick={() => setSelectedManager(row)}
-                aria-label={"Open " + row.entry_name + " opposition profile"}
-              >
-                <span>#{row.rank}</span>
-                <strong>{row.entry_name}</strong>
-                <small>
-                  {row.total} pts · GW {row.event_total}
-                </small>
-              </button>
-            ))}
-          </div>
-          <a className="team-room-deep-link" href="#counterplay">
-            Use league pressure in the plan →
-          </a>
-        </article>
-      </section>
+      <DecisionPanel
+        loading={intelligenceLoading}
+        portfolioPlan={portfolioPlan}
+        transfer={transfer}
+        captain={captain}
+        actionQuip={actionQuip}
+        transferWhy={transferWhy}
+        transferEvidence={transferEvidence}
+        transferConfidence={transferInProfile?.decisionConfidence ?? null}
+        transferFailure={transferFailure}
+        weakPlayers={weakPlayers}
+        leagueRank={leagueRank}
+        leagueName={leagueName}
+        standingsWindow={standingsWindow}
+        teamId={teamId}
+        targetName={manager?.league_strategy?.target_name ?? null}
+        gapAbove={manager?.league_strategy?.gap_above ?? null}
+        chaserName={manager?.league_strategy?.chaser_name ?? null}
+        gapBelow={manager?.league_strategy?.gap_below ?? null}
+        resourceStatus={manager?.resource_advice?.status ?? null}
+        resourceRecommendation={manager?.resource_advice?.recommendation ?? null}
+        captainQuip={
+          captain?.player.name
+            ? footyQuip("captain", { player: captain.player.name })
+            : null
+        }
+        onManagerOpen={setSelectedManager}
+      />
 
       <TeamRoomPhaseHeading
         step={2}
@@ -736,200 +571,10 @@ export function TeamRoomDashboard({
       />
 
       {portfolioPlan ? (
-        <section className="team-room-block portfolio-health" id="portfolio">
-          <div className="team-room-block-head">
-            <div>
-              <span>PORTFOLIO HEALTH</span>
-              <h2>
-                {portfolioPlan.portfolio.score}/100 · {portfolioPlan.portfolio.status}
-              </h2>
-            </div>
-            <small>
-              Long-term squad structure, not last week’s points ·{" "}
-              <Link href={researchHref + "#long-term"}>open long-term research →</Link>
-            </small>
-          </div>
-
-          <div className={"portfolio-driver portfolio-driver-" + portfolioPlan.game_theory.band.toLowerCase()}>
-            <div>
-              <span>DECISION DRIVER</span>
-              <strong>
-                {portfolioPlan.decision_driver === "GAME_THEORY_TIEBREAK"
-                  ? "GAME THEORY TIE-BREAK"
-                  : portfolioPlan.decision_driver === "FOOTBALL_PORTFOLIO"
-                    ? "FOOTBALL + PORTFOLIO"
-                    : "PORTFOLIO STRUCTURE"}
-              </strong>
-            </div>
-            <div>
-              <span>GAME THEORY IMPACT</span>
-              <strong>{portfolioPlan.game_theory.band}</strong>
-              <small>
-                {(portfolioPlan.game_theory.probability_delta >= 0 ? "+" : "") +
-                  (portfolioPlan.game_theory.probability_delta * 100).toFixed(1)}
-                pp vs hold baseline
-              </small>
-            </div>
-            <p>{portfolioPlan.game_theory.explanation}</p>
-          </div>
-
-          <div className="portfolio-health-grid portfolio-health-grid-primary">
-            <div>
-              <span>FREE TRANSFERS</span>
-              <strong>{portfolioPlan.free_transfers ?? "—"}/5</strong>
-              <small>
-                {portfolioPlan.hit_cost_for_one_extra_move == null
-                  ? "Hit cost uncertain"
-                  : portfolioPlan.hit_cost_for_one_extra_move === 0
-                    ? "Next extra move currently covered"
-                    : "One move beyond bank = -4"}
-              </small>
-            </div>
-            <div>
-              <span>BANK</span>
-              <strong>£{portfolioPlan.portfolio.bank.toFixed(1)}m</strong>
-              <small>{portfolioPlan.portfolio.bankStatus}</small>
-            </div>
-            <div>
-              <span>BENCH COVER</span>
-              <strong>{portfolioPlan.portfolio.reliableBench}/4</strong>
-              <small>reliable current substitutes</small>
-            </div>
-            <div>
-              <span>6GW XI</span>
-              <strong>{portfolioPlan.portfolio.horizon.sixGwAverageBestXi.toFixed(1)}</strong>
-              <small>formation-constrained model average</small>
-            </div>
-          </div>
-
-          <details className="portfolio-deep-dive">
-            <summary>
-              <span>DEEP PORTFOLIO EVIDENCE</span>
-              <strong>Structure, routes, underlying data & failure modes</strong>
-              <small>Seven secondary metrics are kept here so the decision view stays calm.</small>
-            </summary>
-
-            <div className="portfolio-health-grid portfolio-health-grid-secondary">
-              <div>
-                <span>BENCH VALUE</span>
-                <strong>£{portfolioPlan.portfolio.bench.spend.toFixed(1)}m</strong>
-                <small>
-                  {Math.round(portfolioPlan.portfolio.bench.spendShare * 100)}% of squad value ·{" "}
-                  {portfolioPlan.portfolio.bench.currentModelScore.toFixed(1)} model points
-                </small>
-              </div>
-              <div>
-                <span>8GW XI</span>
-                <strong>{portfolioPlan.portfolio.horizon.eightGwAverageBestXi.toFixed(1)}</strong>
-                <small>structural horizon</small>
-              </div>
-              <div>
-                <span>DIFFERENTIALS</span>
-                <strong>{portfolioPlan.portfolio.differentialCount}</strong>
-                <small>&lt;10% official ownership</small>
-              </div>
-              <div>
-                <span>MIDFIELD ROUTE</span>
-                <strong>{portfolioPlan.portfolio.priceStructure.midfieldRoute ? "OPEN" : "BLOCKED"}</strong>
-                <small>
-                  {portfolioPlan.portfolio.priceStructure.midfieldTarget ?? "No urgent target"}
-                </small>
-              </div>
-              <div>
-                <span>FORWARD ROUTE</span>
-                <strong>{portfolioPlan.portfolio.priceStructure.forwardRoute ? "OPEN" : "BLOCKED"}</strong>
-                <small>
-                  {portfolioPlan.portfolio.priceStructure.forwardTarget ?? "No urgent target"}
-                </small>
-              </div>
-              <div>
-                <span>FIELD OWNERSHIP</span>
-                <strong>{portfolioPlan.field_ownership_proxy.average_squad_ownership.toFixed(1)}%</strong>
-                <small>official ownership average · not EO</small>
-              </div>
-              <div>
-                <span>PREMIUMS</span>
-                <strong>{portfolioPlan.portfolio.premiumCount}</strong>
-                <small>£8.5m+ squad assets</small>
-              </div>
-            </div>
-            <div className="portfolio-price-bands">
-            <div>
-              <span>GOALKEEPERS</span>
-              <strong>£{portfolioPlan.portfolio.priceStructure.bands.goalkeeperSpend.toFixed(1)}m</strong>
-              <small>
-                {portfolioPlan.portfolio.priceStructure.bands.budgetGoalkeepers}/2 at £4.5m or below
-              </small>
-            </div>
-            <div>
-              <span>DEFENDERS</span>
-              <strong>
-                {portfolioPlan.portfolio.priceStructure.bands.premiumDefenders} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.midDefenders} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.budgetDefenders}
-              </strong>
-              <small>premium / mid / budget</small>
-            </div>
-            <div>
-              <span>MIDFIELDERS</span>
-              <strong>
-                {portfolioPlan.portfolio.priceStructure.bands.premiumMidfielders} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.midMidfielders} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.enablerMidfielders}
-              </strong>
-              <small>£8.5m+ / £6.5–8.0m / ≤£5.5m</small>
-            </div>
-            <div>
-              <span>FORWARDS</span>
-              <strong>
-                {portfolioPlan.portfolio.priceStructure.bands.premiumMidForwards} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.valueForwards} /{" "}
-                {portfolioPlan.portfolio.priceStructure.bands.budgetForwards}
-              </strong>
-              <small>£7.5m+ / £5.5–7.4m / &lt;£5.5m</small>
-            </div>
-          </div>
-
-          <div className="portfolio-evidence-grid">
-            <section>
-              <span>WHY</span>
-              {portfolioPlan.why.map((reason, index) => (
-                <p key={"why-" + index}>{reason}</p>
-              ))}
-            </section>
-            <section>
-              <span>FAILURE MODES</span>
-              {portfolioPlan.failure_modes.map((risk, index) => (
-                <p key={"risk-" + index}>{risk}</p>
-              ))}
-            </section>
-            <section>
-              <span>UNDERLYING DATA</span>
-              {portfolioPlan.underlying.map((item, index) => (
-                <p key={"data-" + index}>{item}</p>
-              ))}
-            </section>
-            <section>
-              <span>GAME THEORY</span>
-              <p>{portfolioPlan.differential_guidance}</p>
-              <p>{portfolioPlan.field_ownership_proxy.caveat}</p>
-              <p>
-                League mode: <b>{portfolioPlan.league_mode}</b> · resource state:{" "}
-                <b>{portfolioPlan.resource_status}</b>
-              </p>
-            </section>
-          </div>
-
-          {portfolioPlan.missing.length ? (
-              <div className="portfolio-missing">
-                <span>NOT YET MEASURED — NOT INVENTED</span>
-                {portfolioPlan.missing.map((item, index) => (
-                  <p key={"missing-" + index}>{item}</p>
-                ))}
-              </div>
-            ) : null}
-          </details>
-        </section>
+        <PortfolioPanel
+          portfolioPlan={portfolioPlan}
+          researchHref={researchHref}
+        />
       ) : null}
 
       {counterPlay ? (
