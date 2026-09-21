@@ -62,6 +62,30 @@ type FeedRow = {
   last_error: string | null;
 };
 
+type QualityRow = {
+  source: string;
+  league: string;
+  season: string;
+  status: "PASS" | "WARN" | "BLOCKED";
+  checked_at: string;
+};
+
+export type LeagueReadiness = {
+  league: string;
+  fixtures: number;
+  modelledFixtures: number;
+  processStatus: "PASS" | "WARN" | "MISSING";
+  latestProcessAt: string | null;
+  validationStatus: ValidationRow["status"] | "MISSING";
+  freshPricedSelections: number;
+  stage:
+    | "BETTING_READY"
+    | "PRICE_WATCH"
+    | "MODEL_RESEARCH"
+    | "PROCESS_READY"
+    | "FIXTURES_ONLY";
+};
+
 type MetricRow = {
   match_id: string;
   team: string;
@@ -635,7 +659,7 @@ export async function getBettingWorkspaceData() {
   const scopeStart = new Date(nowDate.getTime() - 30 * 60 * 60 * 1000).toISOString();
   const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
-  const [dbScopeMatches, outputs, validations, liveOdds, feedRows, recentMatches, discoveredMatches] =
+  const [dbScopeMatches, outputs, validations, liveOdds, feedRows, recentMatches, discoveredMatches, qualityRows] =
     await Promise.all([
       rest<MatchRow>(
         `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1200`,
@@ -656,6 +680,9 @@ export async function getBettingWorkspaceData() {
         `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=240`,
       ),
       fetchFotMobFixtures(nowDate),
+      rest<QualityRow>(
+        "footy_data_quality_runs?select=source,league,season,status,checked_at&order=checked_at.desc&limit=1000",
+      ),
     ]);
 
   const scopeMatches = [...dbScopeMatches];
@@ -805,6 +832,78 @@ export async function getBettingWorkspaceData() {
     (selection) => new Date(selection.kickoffAt).getTime() > nowDate.getTime(),
   );
   const todayGames = buildDailyGames(scopeMatches, selections, nowDate);
+
+  const latestQualityByLeague = new Map<string, QualityRow>();
+  for (const row of qualityRows) {
+    if (!latestQualityByLeague.has(row.league)) {
+      latestQualityByLeague.set(row.league, row);
+    }
+  }
+
+  const leagueReadiness: LeagueReadiness[] = [...new Set(
+    todayGames.map((game) => game.league),
+  )].map((league) => {
+    const leagueGames = todayGames.filter((game) => game.league === league);
+    const leagueSelections = selections.filter(
+      (selection) =>
+        selection.league === league &&
+        londonDateKey(selection.kickoffAt) === londonDateKey(nowDate),
+    );
+    const modelledFixtures = new Set(
+      leagueSelections.map((selection) => selection.matchId),
+    ).size;
+    const freshPricedSelections = leagueSelections.filter(
+      (selection) => selection.bestPrice != null,
+    ).length;
+    const quality = latestQualityByLeague.get(league) ?? null;
+    const validation =
+      validations.find(
+        (row) => row.league === league && row.market === "1X2",
+      ) ?? null;
+
+    let stage: LeagueReadiness["stage"] = "FIXTURES_ONLY";
+    if (quality) stage = "PROCESS_READY";
+    if (modelledFixtures > 0) stage = "MODEL_RESEARCH";
+    if (modelledFixtures > 0 && freshPricedSelections > 0) {
+      stage = "PRICE_WATCH";
+    }
+    if (
+      modelledFixtures > 0 &&
+      freshPricedSelections > 0 &&
+      validation?.status === "APPROVED"
+    ) {
+      stage = "BETTING_READY";
+    }
+
+    return {
+      league,
+      fixtures: leagueGames.length,
+      modelledFixtures,
+      processStatus:
+        quality?.status === "PASS"
+          ? "PASS"
+          : quality?.status === "WARN"
+            ? "WARN"
+            : "MISSING",
+      latestProcessAt: quality?.checked_at ?? null,
+      validationStatus: validation?.status ?? "MISSING",
+      freshPricedSelections,
+      stage,
+    };
+  }).sort((a, b) => {
+    const rank = {
+      BETTING_READY: 0,
+      PRICE_WATCH: 1,
+      MODEL_RESEARCH: 2,
+      PROCESS_READY: 3,
+      FIXTURES_ONLY: 4,
+    };
+    return (
+      rank[a.stage] - rank[b.stage] ||
+      b.fixtures - a.fixtures ||
+      a.league.localeCompare(b.league)
+    );
+  });
   const latestModelAt =
     outputs.map((row) => row.created_at).sort().at(-1) ?? null;
   const latestFixtureAt =
@@ -819,6 +918,7 @@ export async function getBettingWorkspaceData() {
     modelVersion: MODEL_VERSION,
     matches: futureMatches,
     todayGames,
+    leagueReadiness,
     selections: futureSelections.sort((a, b) => {
       const verdictOrder = { BET: 0, WATCH: 1, PASS: 2, FADE: 3 };
       return (
