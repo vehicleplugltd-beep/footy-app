@@ -189,6 +189,41 @@ class SupabaseRESTWriter:
             PLAYER_MATCH_METRIC_FIELDS,
         )
 
+    def quarantine_player_match_metrics(
+        self,
+        provider_match_ids: Iterable[str],
+        *,
+        source: str,
+        reason: str,
+    ) -> int:
+        ids = sorted({str(value) for value in provider_match_ids if str(value)})
+        changed = 0
+        stamp = datetime.now(timezone.utc).isoformat()
+        for provider_match_id in ids:
+            response = requests.patch(
+                f"{self.url}/rest/v1/footy_player_match_metrics",
+                params={
+                    "provider_match_id": f"eq.{provider_match_id}",
+                    "source": f"eq.{source}",
+                },
+                headers={
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {self.key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
+                json={
+                    "verified": False,
+                    "verification_status": reason,
+                    "verified_at": stamp,
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            changed += len(payload) if isinstance(payload, list) else 0
+        return changed
+
     def upsert_player_season_priors(
         self,
         rows: Iterable[Mapping[str, Any]],
