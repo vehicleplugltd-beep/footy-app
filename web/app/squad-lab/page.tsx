@@ -16,7 +16,7 @@ export default async function SquadLabPage({
       leagueId && Number.isInteger(leagueId) && leagueId > 0
         ? `?league=${leagueId}`
         : "";
-    redirect(`/team/${teamId}${leagueQuery}#build-test`);
+    redirect(`/team/${teamId}${leagueQuery}#what-if`);
   }
 
   redirect("/");
