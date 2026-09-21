@@ -1044,17 +1044,9 @@ export function TeamRoomDashboard({
             </div>
           ) : null}
 
-          <Link
-            className="team-room-primary"
-            href={
-              "/team/" +
-              teamId +
-              "/preview?league=" +
-              leagueId
-            }
-          >
-            Preview Footy’s plan →
-          </Link>
+          <a className="team-room-primary" href="#what-if">
+            Test Footy’s plan →
+          </a>
         </article>
 
         <article className="team-room-block team-room-pressure-card">
@@ -1113,12 +1105,9 @@ export function TeamRoomDashboard({
               </button>
             ))}
           </div>
-          <Link
-            className="team-room-deep-link"
-            href={"/league/" + leagueId + "?team=" + teamId}
-          >
-            View full league table & manager analysis →
-          </Link>
+          <a className="team-room-deep-link" href="#counterplay">
+            Use league pressure in the plan →
+          </a>
         </article>
       </section>
 
@@ -2237,37 +2226,21 @@ export function TeamRoomDashboard({
             ),
           )}
         </div>
-        <Link
-          className="team-room-deep-link"
-          href={"/league/" + leagueId + "?team=" + teamId}
-        >
-          View every league manager & full standings →
-        </Link>
+        <a className="team-room-deep-link" href="#counterplay">
+          See how rivals change the plan →
+        </a>
       </section>
 
       <section className="team-room-next">
         <div>
-          <span>NEXT</span>
-          <h2>
-            Use Footy’s suggestion or build your own.
-          </h2>
+          <span>TEST</span>
+          <h2>Challenge the recommendation without leaving Team Room.</h2>
           <p>
-            Preview starts with your current squad. You can
-            follow Footy’s route, ignore it, or make your own
-            transfers while keeping the same player, fixture and
-            mini-league intelligence visible.
+            Use What-If to change the transfer or captain and rerun the same
+            empirical model. Footy’s recommendation stays independent.
           </p>
         </div>
-        <Link
-          href={
-            "/team/" +
-            teamId +
-            "/preview?league=" +
-            leagueId
-          }
-        >
-          Open Preview →
-        </Link>
+        <a href="#what-if">Open What-If →</a>
       </section>
 
       <aside className="team-room-mobile-dock" aria-label="Current Footy decision">
