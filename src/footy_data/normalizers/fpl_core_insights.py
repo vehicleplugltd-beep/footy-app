@@ -27,6 +27,7 @@ def normalise_fpl_core_matches(
     matches: pd.DataFrame,
     teams: pd.DataFrame,
     retrieved_at: str | None = None,
+    penalty_xg_value: float | None = None,
 ) -> pd.DataFrame:
     """
     Convert finished Premier League FPL-Core-Insights match rows into
@@ -188,7 +189,7 @@ def reconcile_fpl_core_to_footy(
 
 
 
-def _verified_penalty_xg_value(
+def verified_penalty_xg_value(
     player_match_stats: pd.DataFrame,
 ) -> float | None:
     """
@@ -320,7 +321,13 @@ def normalise_fpl_core_player_match_stats(
         "defensive_contributions": "defensive_contributions",
     }
 
-    penalty_xg_value = _verified_penalty_xg_value(player_match_stats)
+    if penalty_xg_value is None:
+        penalty_xg_value = verified_penalty_xg_value(player_match_stats)
+    if penalty_xg_value is not None and not 0.72 <= float(penalty_xg_value) <= 0.86:
+        raise ValueError(
+            f"FPL-Core penalty xG override {penalty_xg_value} is outside "
+            "the validated provider range."
+        )
 
     rows: list[dict] = []
     for _, stat in player_match_stats.iterrows():
