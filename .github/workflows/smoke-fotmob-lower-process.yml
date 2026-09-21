@@ -1,0 +1,111 @@
+name: smoke-fotmob-lower-process
+
+on:
+  push:
+    branches: ["feature/betting-edge-workspace"]
+    paths:
+      - ".github/workflows/smoke-fotmob-lower-process.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Probe FotMob lower-league process stats
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+
+          HEADERS = {
+              "Accept": "application/json,text/plain,*/*",
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+              "Referer": "https://www.fotmob.com/",
+          }
+
+          def get(path, params):
+              query = urllib.parse.urlencode(params)
+              url = "https://www.fotmob.com" + path + "?" + query
+              req = urllib.request.Request(url, headers=HEADERS)
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  return json.load(response)
+
+          payload = get(
+              "/api/data/matches",
+              {
+                  "date": "20260919",
+                  "timezone": "Europe/London",
+                  "ccode3": "GBR",
+              },
+          )
+
+          targets = {
+              "Championship",
+              "League One",
+              "League Two",
+              "Premiership",
+          }
+          found = {}
+
+          for league in payload.get("leagues", []):
+              name = str(league.get("name") or "")
+              if name not in targets:
+                  continue
+              matches = league.get("matches") or []
+              if matches:
+                  found[name] = matches[0]
+
+          print("FOOTY_FOTMOB_LEAGUES=" + json.dumps(sorted(found)))
+
+          for league_name, match in found.items():
+              match_id = match.get("id")
+              details = get(
+                  "/api/data/matchDetails",
+                  {"matchId": match_id},
+              )
+
+              names = []
+              def walk(value):
+                  if isinstance(value, dict):
+                      label = value.get("title") or value.get("name") or value.get("key")
+                      if label:
+                          text = str(label)
+                          low = text.lower()
+                          if any(token in low for token in (
+                              "expected", "xg", "shots", "big chances",
+                              "possession", "touches", "passes"
+                          )):
+                              names.append(text)
+                      for child in value.values():
+                          walk(child)
+                  elif isinstance(value, list):
+                      for child in value:
+                          walk(child)
+
+              walk(details)
+              unique = list(dict.fromkeys(names))
+              print(
+                  "FOOTY_FOTMOB_PROCESS="
+                  + json.dumps({
+                      "league": league_name,
+                      "match_id": match_id,
+                      "home": match.get("home", {}).get("name"),
+                      "away": match.get("away", {}).get("name"),
+                      "process_fields": unique[:80],
+                      "has_xg": any(
+                          "expected goals" in field.lower() or field.lower() == "xg"
+                          for field in unique
+                      ),
+                  })
+              )
+
+          if not found:
+              raise SystemExit("No lower-league fixtures found in FotMob slate")
+          PY
