@@ -108,6 +108,15 @@ type ManagerResponse = {
   decision_quality?: {
     status: "ACTIVE" | "ACCUMULATING" | "UNAVAILABLE";
     tracked_from_event: number;
+    pending?: {
+      event: number;
+      generated_at: string;
+      source: string;
+      posture: string | null;
+      top_path: string | null;
+      empirical: boolean;
+      calibration_samples: number | null;
+    } | null;
     completed: Array<{
       event: number;
       generated_at: string;
@@ -137,12 +146,29 @@ type ManagerResponse = {
         model_expected_delta: number | null;
         model_actual_delta: number | null;
         hit_cost: number;
+        model_hit_cost: number;
+        active_chip: string | null;
+        top_path_label: string | null;
+        top_path_aligned: boolean;
+        matched_scenario_label: string | null;
+        objective_regret: number | null;
+      };
+      receipt: {
+        source: string;
+        schema: string | null;
+        posture: string | null;
+        calibration_status: string | null;
+        calibration_samples: number | null;
       };
       bench_points: number;
     }>;
     summary: {
       deadlines: number;
       captain_process_alignment: number;
+      average_captain_expected_regret: number | null;
+      top_path_alignment: number;
+      counterplay_comparable_deadlines: number;
+      average_counterplay_objective_regret_pp: number | null;
       total_hit_cost: number;
       average_bench_points: number;
       negative_variance_deadlines: number;
@@ -1879,26 +1905,37 @@ export function TeamRoomDashboard({
             <>
               <div className="decision-quality-grid">
                 <div>
-                  <span>CAPTAIN PROCESS</span>
+                  <span>CAPTAIN REGRET</span>
                   <strong>
-                    {(decisionQuality.summary.captain_process_alignment * 100).toFixed(0)}%
+                    {decisionQuality.summary.average_captain_expected_regret == null
+                      ? "—"
+                      : decisionQuality.summary.average_captain_expected_regret.toFixed(1)}
                   </strong>
-                  <small>model-aligned / close-call deadlines</small>
+                  <small>average frozen expected points given up</small>
                 </div>
                 <div>
-                  <span>HIT COST</span>
-                  <strong>-{decisionQuality.summary.total_hit_cost}</strong>
-                  <small>tracked transfer points spent</small>
+                  <span>TOP PATH</span>
+                  <strong>
+                    {(decisionQuality.summary.top_path_alignment * 100).toFixed(0)}%
+                  </strong>
+                  <small>deadlines matching Footy’s frozen top action</small>
                 </div>
                 <div>
-                  <span>BENCH LEAKAGE</span>
-                  <strong>{decisionQuality.summary.average_bench_points.toFixed(1)}</strong>
-                  <small>average actual bench points</small>
+                  <span>OBJECTIVE REGRET</span>
+                  <strong>
+                    {decisionQuality.summary.average_counterplay_objective_regret_pp == null
+                      ? "—"
+                      : decisionQuality.summary.average_counterplay_objective_regret_pp.toFixed(1) + "pp"}
+                  </strong>
+                  <small>
+                    {decisionQuality.summary.counterplay_comparable_deadlines} comparable CounterPlay path
+                    {decisionQuality.summary.counterplay_comparable_deadlines === 1 ? "" : "s"}
+                  </small>
                 </div>
                 <div>
-                  <span>BAD VARIANCE</span>
+                  <span>OUTCOME VARIANCE</span>
                   <strong>{decisionQuality.summary.negative_variance_deadlines}</strong>
-                  <small>captain outcomes ≥2 below deadline expectation</small>
+                  <small>captain outcomes ≥2 below frozen expectation</small>
                 </div>
               </div>
 
@@ -1914,7 +1951,13 @@ export function TeamRoomDashboard({
                   <article key={item.event}>
                     <header>
                       <b>GW{item.event}</b>
-                      <small>{item.battle_mode ?? "—"} · {item.model_version ?? "model receipt"}</small>
+                      <small>
+                        {item.receipt.posture ?? item.battle_mode ?? "—"} ·{" "}
+                        {item.receipt.source.replaceAll("_", " ")} ·{" "}
+                        {item.receipt.calibration_status === "EMPIRICAL"
+                          ? "empirical"
+                          : "fallback"}
+                      </small>
                     </header>
                     <div>
                       <span>Captain process</span>
@@ -1936,18 +1979,29 @@ export function TeamRoomDashboard({
                       <small>actual raw points vs deadline expectation</small>
                     </div>
                     <div>
-                      <span>Transfer process</span>
+                      <span>Path process</span>
                       <strong>{item.transfers.process.replaceAll("_", " ")}</strong>
                       <small>
+                        {item.transfers.top_path_label
+                          ? "Frozen top: " + item.transfers.top_path_label
+                          : "No comparable frozen top path"}
+                      </small>
+                    </div>
+                    <div>
+                      <span>Objective regret</span>
+                      <strong>
+                        {item.transfers.objective_regret == null
+                          ? "—"
+                          : (item.transfers.objective_regret * 100).toFixed(1) + "pp"}
+                      </strong>
+                      <small>
+                        {item.transfers.active_chip
+                          ? item.transfers.active_chip + " · "
+                          : ""}
                         {item.transfers.hit_cost
                           ? "-" + item.transfers.hit_cost + " hit"
                           : "no hit cost"}
                       </small>
-                    </div>
-                    <div>
-                      <span>Bench</span>
-                      <strong>{item.bench_points}</strong>
-                      <small>actual points left on bench</small>
                     </div>
                   </article>
                 ))}
@@ -1956,14 +2010,32 @@ export function TeamRoomDashboard({
           ) : (
             <div className="decision-quality-empty">
               <strong>
-                Footy started storing genuine pre-deadline decision receipts in GW
-                {decisionQuality.tracked_from_event}.
+                {decisionQuality.pending
+                  ? "GW" + decisionQuality.pending.event + " audit is armed."
+                  : "Decision Quality v2 starts with GW" + decisionQuality.tracked_from_event + "."}
               </strong>
-              <p>
-                Earlier Gameweeks are deliberately not reconstructed with hindsight. Once the
-                first tracked deadline is complete, this section will compare what the model knew
-                then with the manager’s actual choice and eventual outcome.
-              </p>
+              {decisionQuality.pending ? (
+                <>
+                  <p>
+                    Frozen {new Date(decisionQuality.pending.generated_at).toLocaleString()} ·{" "}
+                    {decisionQuality.pending.source.replaceAll("_", " ")} ·{" "}
+                    {decisionQuality.pending.posture ?? "inferred posture"}
+                  </p>
+                  <p>
+                    Top path: {decisionQuality.pending.top_path ?? "hold / no material move"} ·{" "}
+                    {decisionQuality.pending.empirical
+                      ? (decisionQuality.pending.calibration_samples?.toLocaleString() ?? "empirical") +
+                        " calibration samples"
+                      : "volatility fallback"}
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Earlier Gameweeks are deliberately not reconstructed with hindsight. Footy will
+                  score only a genuine frozen pre-deadline receipt against what the manager actually
+                  chose after the deadline.
+                </p>
+              )}
             </div>
           )}
 
