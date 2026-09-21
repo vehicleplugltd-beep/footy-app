@@ -1621,3 +1621,86 @@
   .exposure-panel .decision-quality-metrics { grid-template-columns: 1fr 1fr; }
   .ticket-close { width: 100%; }
 }
+
+
+/* Slip Analyzer */
+.slip-analyzer-grid { grid-template-columns: 1.35fr .65fr; }
+.slip-analyzer-input {
+  width: 100%;
+  border: 1px solid #2b4f3b;
+  border-radius: 11px;
+  padding: 12px;
+  background: #07140e;
+  color: var(--edge-text);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.55;
+  resize: vertical;
+  outline: none;
+}
+.slip-analyzer-input:focus {
+  border-color: var(--edge-green);
+  box-shadow: 0 0 0 3px rgba(113,244,160,.07);
+}
+.slip-analysis-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.slip-analysis-summary > div {
+  padding: 9px;
+  border: 1px solid #1d392a;
+  border-radius: 9px;
+  background: #07140e;
+}
+.slip-analysis-summary span,
+.slip-analysis-summary strong { display: block; }
+.slip-analysis-summary span { color: var(--edge-muted); font-size: 8px; }
+.slip-analysis-summary strong { margin-top: 4px; font-size: 13px; }
+.slip-analysis-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.slip-analysis-list article {
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid #1d392a;
+  border-radius: 9px;
+  background: #07140e;
+}
+.slip-analysis-list article > b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(113,244,160,.09);
+  color: var(--edge-green);
+  font-size: 8px;
+}
+.slip-analysis-list article > div strong,
+.slip-analysis-list article > div small,
+.slip-analysis-list p span,
+.slip-analysis-list p strong { display: block; }
+.slip-analysis-list article > div strong { font-size: 10px; }
+.slip-analysis-list article > div small,
+.slip-analysis-list p span { color: var(--edge-muted); font-size: 8px; }
+.slip-analysis-list p { margin: 0; text-align: right; }
+.slip-analysis-list p strong { margin-top: 2px; font-size: 10px; }
+.slip-analysis-list em { font-size: 8px; font-style: normal; font-weight: 900; }
+.lab-panel code { color: #d7e7dd; }
+
+@media (max-width: 900px) {
+  .slip-analyzer-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 650px) {
+  .slip-analysis-summary { grid-template-columns: 1fr 1fr; }
+  .slip-analysis-list article { grid-template-columns: 22px 1fr; }
+  .slip-analysis-list p,
+  .slip-analysis-list em { grid-column: 2; text-align: left; }
+}
