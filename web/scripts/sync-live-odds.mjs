@@ -248,6 +248,109 @@ async function evaluateAlerts(currentRows, capturedAt) {
   return triggered;
 }
 
+async function captureUserClosingLines(capturedAt) {
+  const now = new Date(capturedAt);
+  const windowStart = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
+
+  const [pendingBets, pendingLegs, recentMatches] = await Promise.all([
+    sb(
+      `footy_bets?select=id,match_id,kickoff_at,market,selection,bookmaker,decimal_odds,closing_odds&closing_odds=is.null&match_id=not.is.null&limit=500`,
+    ),
+    sb(
+      `footy_bet_legs?select=id,bet_id,match_id,market,selection,bookmaker,decimal_odds,closing_odds&closing_odds=is.null&match_id=not.is.null&limit=1000`,
+    ),
+    sb(
+      `footy_matches?select=match_id,kickoff_at&kickoff_at=gte.${encodeURIComponent(windowStart)}&kickoff_at=lte.${encodeURIComponent(capturedAt)}&limit=500`,
+    ),
+  ]);
+
+  const kickoffByMatch = new Map(
+    (recentMatches || []).map((row) => [String(row.match_id), row.kickoff_at]),
+  );
+
+  async function closingQuote(item, explicitKickoff = null) {
+    const kickoffAt = explicitKickoff || kickoffByMatch.get(String(item.match_id));
+    if (!kickoffAt) return null;
+
+    const kickoffMs = new Date(kickoffAt).getTime();
+    if (!Number.isFinite(kickoffMs) || kickoffMs > now.getTime()) return null;
+    if (now.getTime() - kickoffMs > 36 * 60 * 60 * 1000) return null;
+
+    const searchStart = new Date(kickoffMs - 8 * 60 * 60 * 1000).toISOString();
+    const rows =
+      (await sb(
+        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(item.market)}&selection=eq.${encodeURIComponent(item.selection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
+      )) || [];
+
+    if (!rows.length) return null;
+
+    const wanted = cleanText(item.bookmaker || "");
+    let chosen = null;
+    if (wanted) {
+      chosen =
+        rows.find((row) => {
+          const title = cleanText(row.bookmaker_name);
+          const key = cleanText(row.bookmaker_key);
+          return (
+            title === wanted ||
+            key === wanted ||
+            title.includes(wanted) ||
+            wanted.includes(title)
+          );
+        }) || null;
+    }
+
+    if (!chosen) {
+      const latestAt = rows[0].captured_at;
+      const latestRows = rows.filter((row) => row.captured_at === latestAt);
+      chosen = [...latestRows].sort(
+        (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
+      )[0];
+    }
+
+    if (!chosen) return null;
+    const closingOdds = Number(chosen.decimal_odds);
+    const takenOdds = Number(item.decimal_odds);
+    if (!Number.isFinite(closingOdds) || closingOdds <= 1) return null;
+
+    return {
+      closing_odds: closingOdds,
+      closing_bookmaker: chosen.bookmaker_name,
+      closing_price_at: chosen.captured_at,
+      clv:
+        Number.isFinite(takenOdds) && takenOdds > 1
+          ? takenOdds / closingOdds - 1
+          : null,
+    };
+  }
+
+  let betsUpdated = 0;
+  for (const bet of pendingBets || []) {
+    const quote = await closingQuote(bet, bet.kickoff_at);
+    if (!quote) continue;
+    await patch(
+      "footy_bets",
+      `id=eq.${encodeURIComponent(bet.id)}`,
+      quote,
+    );
+    betsUpdated += 1;
+  }
+
+  let legsUpdated = 0;
+  for (const leg of pendingLegs || []) {
+    const quote = await closingQuote(leg);
+    if (!quote) continue;
+    await patch(
+      "footy_bet_legs",
+      `id=eq.${encodeURIComponent(leg.id)}`,
+      quote,
+    );
+    legsUpdated += 1;
+  }
+
+  return { betsUpdated, legsUpdated };
+}
+
 async function main() {
   if (!ODDS_API_KEY) {
     await recordFeedStatus({
@@ -375,6 +478,7 @@ async function main() {
   await upsert("footy_live_odds_current", currentRows, "price_key");
   await insert("footy_live_odds_history", historyRows);
   const alertsTriggered = await evaluateAlerts(currentRows, capturedAt);
+  const closingCapture = await captureUserClosingLines(capturedAt);
 
   await recordFeedStatus({
     last_success_at: capturedAt,
@@ -394,6 +498,8 @@ async function main() {
     prices: currentRows.length,
     changed_prices: historyRows.length,
     alerts_triggered: alertsTriggered,
+    closing_bets_updated: closingCapture.betsUpdated,
+    closing_legs_updated: closingCapture.legsUpdated,
     matched_footy_events: new Set(
       currentRows.filter((row) => row.match_id).map((row) => row.match_id),
     ).size,
