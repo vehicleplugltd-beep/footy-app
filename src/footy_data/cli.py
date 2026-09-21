@@ -809,6 +809,32 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     }, indent=2, default=str))
 
 
+def _load_upcoming_schedule(
+    league: str,
+    season: str,
+) -> tuple[pd.DataFrame, str]:
+    if league == "ENG-Premier League":
+        try:
+            schedule = OfficialFPLSource().schedule(
+                season=season,
+                league=league,
+            )
+            if not schedule.empty:
+                return schedule, "official-fpl"
+        except Exception as exc:
+            print(json.dumps({
+                "status": "warning",
+                "source": "official-fpl",
+                "message": f"Official FPL schedule unavailable: {exc}",
+            }))
+
+    source = SoccerDataSource(
+        leagues=[league],
+        seasons=[season],
+    )
+    return source.understat_schedule(), "understat"
+
+
 def command_predict_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     history = reader.historical_match_team_metrics()
@@ -824,30 +850,10 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical rows match the requested league/history scope.")
 
-    schedule_source = "understat"
-    schedule = pd.DataFrame()
-
-    if args.league == "ENG-Premier League":
-        try:
-            schedule = OfficialFPLSource().schedule(
-                season=args.season,
-                league=args.league,
-            )
-            schedule_source = "official-fpl"
-        except Exception as exc:
-            print(json.dumps({
-                "status": "warning",
-                "source": "official-fpl",
-                "message": f"Official FPL schedule unavailable: {exc}",
-            }))
-
-    if schedule.empty:
-        source = SoccerDataSource(
-            leagues=[args.league],
-            seasons=[args.season],
-        )
-        schedule = source.understat_schedule()
-        schedule_source = "understat"
+    schedule, schedule_source = _load_upcoming_schedule(
+        args.league,
+        args.season,
+    )
 
     fixtures = normalise_upcoming_fixtures(
         schedule,
