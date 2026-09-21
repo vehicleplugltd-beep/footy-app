@@ -105,6 +105,12 @@ jobs:
 
               walk(details)
               unique = list(dict.fromkeys(names))
+              if league_name == "ENG-Championship":
+                  stats = (details.get("content") or {}).get("stats")
+                  print(
+                      "FOOTY_FOTMOB_STATS_SHAPE="
+                      + json.dumps(stats, default=str)[:28000]
+                  )
               print(
                   "FOOTY_FOTMOB_PROCESS="
                   + json.dumps({
