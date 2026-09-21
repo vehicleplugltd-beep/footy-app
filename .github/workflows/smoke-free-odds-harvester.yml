@@ -27,7 +27,7 @@ jobs:
           pip install "oddsharvester==0.14.0"
           python -m playwright install --with-deps chromium
 
-      - name: Scrape upcoming EPL 1X2
+      - name: Scrape upcoming active-league 1X2
         id: scrape
         continue-on-error: true
         shell: bash
@@ -35,8 +35,8 @@ jobs:
           set +e
           timeout 10m oddsharvester upcoming \
             -s football \
-            -l england-premier-league \
-            -d 20260926 \
+            -l argentina-liga-profesional,turkey-super-lig,liga-portugal-2,netherlands-eerste-divisie \
+            -d 20260921 \
             -m 1x2 \
             --bookies-filter all \
             --request-delay 1.2 \
@@ -69,7 +69,7 @@ jobs:
               if line.strip().startswith("{")
           ]
 
-          print(f"FOOTY_SMOKE_MATCHES_DATE_20260926={len(rows)}")
+          print(f"FOOTY_SMOKE_MATCHES_DATE_20260921={len(rows)}")
           bookmaker_quotes = 0
           for row in rows:
               market = row.get("1x2_market") or []
