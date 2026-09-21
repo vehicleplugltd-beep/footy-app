@@ -780,7 +780,7 @@ export function TeamRoomDashboard({
           <span>2 / PLAN</span>
           <strong>Build the path, then size the risk.</strong>
         </div>
-        <small>Portfolio structure → CounterPlay → optional What-If</small>
+        <small>Portfolio structure → CounterPlay → risk posture</small>
       </div>
 
       {portfolioPlan ? (
@@ -1037,6 +1037,14 @@ export function TeamRoomDashboard({
                     ? "Using your selected posture."
                     : "Using Footy’s inferred posture."}
             </div>
+          </div>
+
+          <div className="team-room-phase-heading team-room-phase-heading-test">
+            <div>
+              <span>3 / TEST</span>
+              <strong>Challenge the plan without changing the recommendation.</strong>
+            </div>
+            <small>Custom transfer / captain → same model → side-by-side result</small>
           </div>
 
           <details
