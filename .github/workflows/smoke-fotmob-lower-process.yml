@@ -68,6 +68,8 @@ jobs:
                       "name": name,
                       "ccode": ccode,
                       "id": league.get("id"),
+                      "primaryId": league.get("primaryId"),
+                      "parentLeagueId": league.get("parentLeagueId"),
                       "matches": len(league.get("matches") or []),
                   })
               canonical = targets.get((name, ccode))
