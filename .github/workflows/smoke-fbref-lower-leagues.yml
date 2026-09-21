@@ -1,0 +1,93 @@
+name: smoke-fbref-lower-leagues
+
+on:
+  push:
+    branches: ["feature/betting-edge-workspace"]
+    paths:
+      - ".github/workflows/smoke-fbref-lower-leagues.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - league: "ENG-Championship"
+            fbref: "Championship"
+          - league: "ENG-League One"
+            fbref: "League One"
+          - league: "ENG-League Two"
+            fbref: "League Two"
+          - league: "SCO-Premiership"
+            fbref: "Premiership"
+    env:
+      SOCCERDATA_DIR: ${{ github.workspace }}/.soccerdata
+      LEAGUE: ${{ matrix.league }}
+      FBREF_NAME: ${{ matrix.fbref }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install soccerdata
+        run: |
+          python -m pip install --upgrade pip
+          pip install "soccerdata>=1.9.1"
+
+      - name: Configure custom league
+        run: |
+          mkdir -p "$SOCCERDATA_DIR/config"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          payload = {
+              os.environ["LEAGUE"]: {
+                  "FBref": os.environ["FBREF_NAME"],
+                  "season_start": "Aug",
+                  "season_end": "May",
+              }
+          }
+          path = Path(os.environ["SOCCERDATA_DIR"]) / "config" / "league_dict.json"
+          path.write_text(json.dumps(payload), encoding="utf-8")
+          print(path.read_text())
+          PY
+
+      - name: Read current FBref schedule/xG
+        run: |
+          python - <<'PY'
+          import json, os
+          import pandas as pd
+          import soccerdata as sd
+
+          league = os.environ["LEAGUE"]
+          reader = sd.FBref(
+              leagues=[league],
+              seasons=["2627"],
+              headless=True,
+          )
+          frame = reader.read_schedule(force_cache=False).reset_index()
+
+          played = frame[
+              frame.get("home_xg", pd.Series(index=frame.index, dtype=float)).notna()
+              & frame.get("away_xg", pd.Series(index=frame.index, dtype=float)).notna()
+          ].copy()
+
+          summary = {
+              "league": league,
+              "rows": int(len(frame)),
+              "played_with_xg": int(len(played)),
+              "columns": [str(x) for x in frame.columns.tolist()],
+              "sample": played[
+                  [c for c in ["date","home_team","away_team","home_xg","away_xg","score"] if c in played.columns]
+              ].tail(3).to_dict(orient="records"),
+          }
+          print("FOOTY_FBREF_SMOKE=" + json.dumps(summary, default=str))
+
+          if frame.empty:
+              raise SystemExit("empty schedule")
+          PY
