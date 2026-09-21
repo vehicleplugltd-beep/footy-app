@@ -4,11 +4,13 @@ const SUPABASE_SERVICE_ROLE_KEY =
 const PROVIDER = "flashscore-free";
 const MODEL_VERSION = "v7-r16-p50-v20";
 
-const FEED_URLS = [
-  "https://2.flashscore.ninja/2/x/feed/f_1_0_2_en_1",
-  "https://local-global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
-  "https://global.flashscore.ninja/2/x/feed/f_1_0_3_en_1",
-];
+function feedUrls(dayOffset) {
+  return [
+    `https://2.flashscore.ninja/2/x/feed/f_1_${dayOffset}_2_en_1`,
+    `https://local-global.flashscore.ninja/2/x/feed/f_1_${dayOffset}_3_en_1`,
+    `https://global.flashscore.ninja/2/x/feed/f_1_${dayOffset}_3_en_1`,
+  ];
+}
 
 const PRICE_LEAGUES = new Set([
   "ENG-Premier League",
@@ -264,9 +266,9 @@ async function fetchText(url, headers = {}) {
   return body;
 }
 
-async function fetchTodayFeed() {
-  const errors = [];
-  for (const url of FEED_URLS) {
+async function fetchDayFeed(dayOffset) {
+  const errors = [...feedErrors];
+  for (const url of feedUrls(dayOffset)) {
     try {
       const body = await fetchText(url);
       const events = parseTodayFeed(body);
@@ -277,6 +279,37 @@ async function fetchTodayFeed() {
     }
   }
   throw new Error(errors.join(" | ").slice(0, 1200));
+}
+
+async function fetchUpcomingFeeds() {
+  const results = await Promise.allSettled([
+    fetchDayFeed(0),
+    fetchDayFeed(1),
+  ]);
+  const errors = [];
+  const sources = [];
+  const eventMap = new Map();
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      errors.push(String(result.reason?.message || result.reason));
+      continue;
+    }
+    sources.push(result.value.url);
+    for (const event of result.value.events) {
+      eventMap.set(event.eventId, event);
+    }
+  }
+
+  if (!eventMap.size) {
+    throw new Error(errors.join(" | ").slice(0, 1200));
+  }
+
+  return {
+    events: [...eventMap.values()],
+    sources,
+    errors,
+  };
 }
 
 function bookmakerMap(root) {
@@ -505,7 +538,8 @@ function priceKey(eventId, bookmakerId, market, selection, line) {
 
 async function main() {
   const capturedAt = new Date().toISOString();
-  const { events, url: feedUrl } = await fetchTodayFeed();
+  const { events, sources: feedUrlsUsed, errors: feedErrors } =
+    await fetchUpcomingFeeds();
 
   const validation =
     (await sb(
@@ -526,10 +560,20 @@ async function main() {
     )) || [];
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
-  const targetEvents = events.filter(
-    (event) =>
-      modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league),
-  );
+  const nowMs = Date.now();
+  const futureCutoff = nowMs + 48 * 60 * 60 * 1000;
+  const targetEvents = events
+    .filter((event) => {
+      const kickoff = new Date(event.kickoffAt).getTime();
+      return (
+        event.status === "1" &&
+        Number.isFinite(kickoff) &&
+        kickoff >= nowMs - 5 * 60 * 1000 &&
+        kickoff <= futureCutoff &&
+        (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league))
+      );
+    })
+    .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
   const fixtureRows = [];
   const currentRows = [];
   const historyRows = [];
@@ -688,7 +732,7 @@ async function main() {
       {
         status: currentRows.length ? "ok" : "empty",
         provider: PROVIDER,
-        feed: feedUrl,
+        feeds: feedUrlsUsed,
         events_discovered: events.length,
         priced_league_events: targetEvents.length,
         odds_responses: oddsResponses,
