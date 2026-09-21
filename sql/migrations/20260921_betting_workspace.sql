@@ -82,13 +82,15 @@ create table if not exists public.footy_feedback (
 
 create index if not exists footy_bets_user_placed_idx on public.footy_bets(user_id, placed_at desc);
 create index if not exists footy_bets_user_status_idx on public.footy_bets(user_id, status);
-create index if not exists footy_bets_match_idx on public.footy_bets(match_id);\ncreate index if not exists footy_bets_import_batch_idx on public.footy_bets(import_batch_id);
+create index if not exists footy_bets_match_idx on public.footy_bets(match_id);
+create index if not exists footy_bets_import_batch_idx on public.footy_bets(import_batch_id);
 create index if not exists footy_bet_imports_user_created_idx on public.footy_bet_imports(user_id, created_at desc);
 create index if not exists footy_bet_legs_user_idx on public.footy_bet_legs(user_id, created_at desc);
 create index if not exists footy_bet_legs_bet_idx on public.footy_bet_legs(bet_id);
 create index if not exists footy_bet_legs_match_idx on public.footy_bet_legs(match_id);
 create index if not exists footy_feedback_user_created_idx on public.footy_feedback(user_id, created_at desc);
-create index if not exists footy_feedback_match_idx on public.footy_feedback(match_id);\ncreate index if not exists footy_feedback_bet_idx on public.footy_feedback(bet_id);
+create index if not exists footy_feedback_match_idx on public.footy_feedback(match_id);
+create index if not exists footy_feedback_bet_idx on public.footy_feedback(bet_id);
 
 alter table public.footy_bet_imports enable row level security;
 alter table public.footy_bets enable row level security;
