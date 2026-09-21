@@ -4,6 +4,7 @@ import { BettingBoard } from "@/components/betting-board";
 import { DailyPredictions } from "@/components/daily-predictions";
 import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
+import { LeagueReadinessMap } from "@/components/league-readiness";
 import { getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
@@ -95,12 +96,13 @@ export default async function BettingPage() {
         ) : null}
 
         <DailyPredictions games={data.todayGames} />
+        <LeagueReadinessMap leagues={data.leagueReadiness} />
         <BettingBoard selections={data.selections} accas={data.accas} />
 
         <section className="betting-section">
           <div className="betting-section-head">
             <div>
-              <span>04 / MODEL GOVERNANCE</span>
+              <span>05 / MODEL GOVERNANCE</span>
               <h2>What is allowed to become a tip?</h2>
             </div>
           </div>
