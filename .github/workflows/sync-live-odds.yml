@@ -1,10 +1,27 @@
-name: sync-live-odds-parked
+name: sync-live-odds
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "7 * * * *"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/sync-live-odds.yml"
+      - "web/scripts/sync-live-odds.mjs"
 
 jobs:
-  parked:
+  sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
     steps:
-      - run: echo "Betting-information product parked. No automatic odds polling."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Sync UK 1X2 prices and price alerts
+        run: node web/scripts/sync-live-odds.mjs
