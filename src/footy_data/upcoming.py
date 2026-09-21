@@ -22,6 +22,7 @@ def normalise_upcoming_fixtures(
     schedule: pd.DataFrame,
     horizon_days: int = 10,
     now: pd.Timestamp | None = None,
+    source_name: str = "understat",
 ) -> pd.DataFrame:
     required = {
         "league", "season", "game", "date", "home_team", "away_team",
@@ -54,7 +55,7 @@ def normalise_upcoming_fixtures(
     frame["match_id"] = frame["game"].astype(str)
     frame["kickoff_at"] = frame["match_date"]
     frame["status"] = "scheduled"
-    frame["source"] = "understat"
+    frame["source"] = source_name
     frame["retrieved_at"] = stamp
 
     columns = [
