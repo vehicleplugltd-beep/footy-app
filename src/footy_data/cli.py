@@ -671,10 +671,28 @@ def command_football_data_odds_ingest(args: argparse.Namespace) -> None:
 
 def command_value_backtest(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
+
+    history = reader.historical_match_team_metrics()
+    if history.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+    history = history[history["league"] == args.league].copy()
+    if history.empty:
+        raise RuntimeError(
+            f"No historical Footy rows found for league {args.league}."
+        )
+    valid_match_ids = set(history["match_id"].astype(str).unique().tolist())
+
     predictions = reader.historical_predictions(args.model_version)
     if predictions.empty:
         raise RuntimeError(
             f"No stored predictions for model version {args.model_version}."
+        )
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if predictions.empty:
+        raise RuntimeError(
+            f"No stored predictions for {args.model_version} in {args.league}."
         )
 
     prices = reader.bookmaker_prices(
@@ -685,6 +703,13 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     )
     if prices.empty:
         raise RuntimeError("No matching historical bookmaker prices found.")
+    prices = prices[
+        prices["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if prices.empty:
+        raise RuntimeError(
+            f"No matching historical prices found for {args.league}."
+        )
 
     if args.market == "1X2":
         assessed = assess_1x2_history(
@@ -701,7 +726,6 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Unsupported value-backtest market: {args.market}")
 
-    history = reader.historical_match_team_metrics()
     home = (
         history[history["home_away"] == "H"]
         [["match_id", "goals"]]
@@ -719,19 +743,101 @@ def command_value_backtest(args: argparse.Namespace) -> None:
         validate="one_to_one",
     )
 
+    benchmark_log_loss = None
+    model_log_loss = None
+    benchmark_sample = 0
+
     if args.market == "1X2":
         summary, bets = summarize_qualified_1x2(
             assessed,
             outcomes,
         )
+
+        model_pivot = assessed.pivot_table(
+            index="match_id",
+            columns="selection",
+            values="model_probability",
+            aggfunc="first",
+        )
+        market_pivot = assessed.pivot_table(
+            index="match_id",
+            columns="selection",
+            values="market_probability_devig",
+            aggfunc="first",
+        )
+        scored = (
+            model_pivot
+            .join(
+                market_pivot,
+                how="inner",
+                lsuffix="_model",
+                rsuffix="_market",
+            )
+            .reset_index()
+            .merge(outcomes, on="match_id", how="inner")
+        )
+        required = {
+            "home_model", "draw_model", "away_model",
+            "home_market", "draw_market", "away_market",
+        }
+        if required.issubset(scored.columns) and not scored.empty:
+            actual = pd.Series(
+                [
+                    "home" if hg > ag else "away" if hg < ag else "draw"
+                    for hg, ag in zip(
+                        scored["home_goals"],
+                        scored["away_goals"],
+                    )
+                ],
+                index=scored.index,
+            )
+            model_log_loss = multiclass_log_loss(
+                pd.DataFrame({
+                    "home": scored["home_model"],
+                    "draw": scored["draw_model"],
+                    "away": scored["away_model"],
+                }),
+                actual,
+            )
+            benchmark_log_loss = multiclass_log_loss(
+                pd.DataFrame({
+                    "home": scored["home_market"],
+                    "draw": scored["draw_market"],
+                    "away": scored["away_market"],
+                }),
+                actual,
+            )
+            benchmark_sample = int(len(scored))
     else:
         summary, bets = summarize_qualified_total_2_5(
             assessed,
             outcomes,
         )
 
+        over = assessed[assessed["selection"] == "over"].copy()
+        if not over.empty:
+            scored = over.merge(
+                outcomes,
+                on="match_id",
+                how="inner",
+                validate="one_to_one",
+            )
+            actual_over = (
+                scored["home_goals"] + scored["away_goals"] >= 3
+            ).astype(int)
+            _, model_log_loss = binary_metrics(
+                scored["model_probability"],
+                actual_over,
+            )
+            _, benchmark_log_loss = binary_metrics(
+                scored["market_probability_devig"],
+                actual_over,
+            )
+            benchmark_sample = int(len(scored))
+
     result = {
         "model_version": args.model_version,
+        "league": args.league,
         "bookmaker": args.bookmaker,
         "price_kind": args.price_kind,
         "source": args.source,
@@ -742,10 +848,101 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     writer = SupabaseRESTWriter()
     insert_value_backtest_run(writer, result)
 
+    if benchmark_sample > 0:
+        validation = reader.model_market_validation(
+            args.model_version,
+            league=args.league,
+        )
+        existing = (
+            validation[validation["market"] == args.market].iloc[0]
+            if (
+                not validation.empty
+                and not validation[validation["market"] == args.market].empty
+            )
+            else None
+        )
+        status = (
+            str(existing["status"])
+            if existing is not None
+            else "RESEARCH"
+        )
+        notes = (
+            str(existing["notes"])
+            if existing is not None and pd.notna(existing.get("notes"))
+            else "Research-only market validation."
+        )
+        if args.price_kind == "close":
+            notes = (
+                notes.split(" Closing benchmark refreshed")[0]
+                + " Closing benchmark refreshed from "
+                + f"{args.bookmaker} / {args.source}; "
+                + "promotion remains manual."
+            )
+
+        validation_row = {
+            "model_version": args.model_version,
+            "league": args.league,
+            "market": args.market,
+            "status": status,
+            "sample_size": benchmark_sample,
+            "model_log_loss": (
+                float(model_log_loss)
+                if model_log_loss is not None
+                else None
+            ),
+            "benchmark_log_loss": (
+                float(benchmark_log_loss)
+                if (
+                    benchmark_log_loss is not None
+                    and args.price_kind == "close"
+                )
+                else (
+                    float(existing["benchmark_log_loss"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("benchmark_log_loss"))
+                    )
+                    else None
+                )
+            ),
+            "close_roi": (
+                float(summary["roi"])
+                if (
+                    args.price_kind == "close"
+                    and summary.get("roi") is not None
+                )
+                else (
+                    float(existing["close_roi"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("close_roi"))
+                    )
+                    else None
+                )
+            ),
+            "bookmaker_reference": (
+                f"{args.bookmaker} {args.price_kind} / {args.source}"
+                if args.price_kind == "close"
+                else (
+                    str(existing["bookmaker_reference"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("bookmaker_reference"))
+                    )
+                    else None
+                )
+            ),
+            "notes": notes,
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        writer.upsert_model_market_validation([validation_row])
+
     printable = dict(result)
     printable["settled_bets"] = int(len(bets))
+    printable["benchmark_sample"] = benchmark_sample
+    printable["model_log_loss"] = model_log_loss
+    printable["benchmark_log_loss"] = benchmark_log_loss
     print(json.dumps(printable, indent=2))
-
 
 def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
@@ -1416,6 +1613,10 @@ def main() -> None:
         help="Backtest stored Footy probabilities against imported 1X2 prices",
     )
     value_backtest.add_argument("--model-version", required=True)
+    value_backtest.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
     value_backtest.add_argument("--bookmaker", required=True)
     value_backtest.add_argument(
         "--price-kind",
