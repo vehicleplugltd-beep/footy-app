@@ -144,9 +144,84 @@ function findMatch(scraped, matches, league) {
 
 function providerEventId(leagueSlug, match) {
   return createHash("sha1")
-    .update(`${leagueSlug}|${match.match_id}`)
+    .update(
+      [
+        leagueSlug,
+        match.match_id || "",
+        match.home_team || "",
+        match.away_team || "",
+        match.kickoff_at || "",
+      ].join("|"),
+    )
     .digest("hex")
     .slice(0, 20);
+}
+
+function londonOffsetMs(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+  return asUtc - date.getTime();
+}
+
+function scrapedKickoff(data) {
+  const rawDate = String(data?.date || "").trim();
+  const rawTime = String(data?.time || "12:00").trim();
+  let year;
+  let month;
+  let day;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    [year, month, day] = rawDate.split("-").map(Number);
+  } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDate)) {
+    [day, month, year] = rawDate.split("/").map(Number);
+  } else {
+    const parsed = new Date(rawDate);
+    if (!Number.isFinite(parsed.getTime())) return null;
+    year = parsed.getFullYear();
+    month = parsed.getMonth() + 1;
+    day = parsed.getDate();
+  }
+
+  const timeMatch = rawTime.match(/(\d{1,2}):(\d{2})/);
+  const hour = timeMatch ? Number(timeMatch[1]) : 12;
+  const minute = timeMatch ? Number(timeMatch[2]) : 0;
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return null;
+
+  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const offset = londonOffsetMs(guess);
+  return new Date(guess.getTime() - offset).toISOString();
+}
+
+function unresolvedMatch(data) {
+  const kickoff = scrapedKickoff(data);
+  if (!kickoff || !data?.homeTeam || !data?.awayTeam) return null;
+  return {
+    match_id: null,
+    kickoff_at: kickoff,
+    home_team: data.homeTeam,
+    away_team: data.awayTeam,
+  };
 }
 
 function addPrice({
@@ -166,9 +241,10 @@ function addPrice({
   if (!decimalOdds || !bookmaker) return;
 
   const key = bookmakerKey(bookmaker);
+  const eventId = providerEventId(leagueSlug, match);
   const priceKey = [
     PROVIDER,
-    match.match_id,
+    match.match_id || eventId,
     key,
     market,
     selection,
@@ -182,8 +258,8 @@ function addPrice({
   const row = {
     price_key: priceKey,
     provider: PROVIDER,
-    provider_event_id: providerEventId(leagueSlug, match),
-    match_id: match.match_id,
+    provider_event_id: eventId,
+    match_id: match.match_id || null,
     sport_key: leagueSlug,
     home_team: match.home_team,
     away_team: match.away_team,
@@ -207,7 +283,7 @@ function addPrice({
       price_key: priceKey,
       provider: PROVIDER,
       provider_event_id: row.provider_event_id,
-      match_id: match.match_id,
+      match_id: match.match_id || null,
       bookmaker_key: key,
       bookmaker_name: bookmaker,
       market,
@@ -290,15 +366,17 @@ async function main() {
   let unmatched = 0;
 
   for (const item of scraped) {
-    const match = findMatch(
+    const resolved = findMatch(
       item.data,
       matches,
       item.competition.league,
     );
+    const match = resolved || unresolvedMatch(item.data);
     if (!match) {
       unmatched += 1;
       continue;
     }
+    if (!resolved) unmatched += 1;
 
     for (const quote of item.data.mlFullTime || []) {
       const bookmaker =
@@ -417,4 +495,23 @@ async function main() {
   );
 }
 
-main();
+main().catch(async (error) => {
+  const capturedAt = new Date().toISOString();
+  try {
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: PROVIDER,
+        sport_key: "football",
+        last_attempt_at: capturedAt,
+        last_success_at: null,
+        events_received: 0,
+        prices_received: 0,
+        last_error: String(error?.message || error).slice(0, 1000),
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+  } catch {}
+  throw error;
+});
