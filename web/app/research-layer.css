@@ -2172,3 +2172,55 @@
     font-size: 9px;
   }
 }
+
+
+.team-room-league-switcher {
+  display: block;
+  min-width: 0;
+  padding-left: 15px;
+}
+.team-room-league-switcher > span,
+.team-room-league-switcher > small {
+  display: block;
+}
+.team-room-league-switcher > span {
+  color: #878e98;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+.team-room-league-switcher select {
+  width: 100%;
+  max-width: 260px;
+  min-height: 30px;
+  margin: 2px 0 1px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 24px 0 0;
+  background: transparent;
+  color: #111318;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.team-room-league-switcher select:focus-visible {
+  outline: 2px solid rgba(11, 139, 97, .28);
+  outline-offset: 2px;
+}
+.team-room-league-switcher > small {
+  color: #7b838e;
+  font-size: 7px;
+}
+@media (max-width: 650px) {
+  .team-room-league-switcher {
+    padding-left: 8px;
+  }
+  .team-room-league-switcher select {
+    min-height: 34px;
+    font-size: 11px;
+  }
+  .team-room-league-switcher > small {
+    display: none;
+  }
+}
