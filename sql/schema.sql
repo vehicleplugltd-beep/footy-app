@@ -788,6 +788,8 @@ create table if not exists public.footy_fpl_recommendation_snapshots (
   overlap jsonb not null default '{}'::jsonb,
   player_trends jsonb not null default '[]'::jsonb,
   team_trends jsonb not null default '[]'::jsonb,
+  receipt_source text not null default 'USER_VIEW',
+  decision_receipt jsonb not null default '{}'::jsonb,
   is_pre_deadline boolean not null default true,
   actual_captain_id bigint,
   actual_incoming_ids jsonb,
@@ -801,6 +803,12 @@ create index if not exists idx_footy_fpl_reco_entry_event
   on public.footy_fpl_recommendation_snapshots(league_id, entry_id, event, generated_at desc);
 create index if not exists idx_footy_fpl_reco_deadline
   on public.footy_fpl_recommendation_snapshots(deadline_time, generated_at desc);
+create index if not exists idx_footy_fpl_reco_event_source
+  on public.footy_fpl_recommendation_snapshots(event, receipt_source, generated_at desc);
+
+alter table public.footy_fpl_recommendation_snapshots
+  add column if not exists receipt_source text not null default 'USER_VIEW',
+  add column if not exists decision_receipt jsonb not null default '{}'::jsonb;
 
 alter table public.footy_fpl_recommendation_snapshots enable row level security;
 revoke all on table public.footy_fpl_recommendation_snapshots from public, anon, authenticated;

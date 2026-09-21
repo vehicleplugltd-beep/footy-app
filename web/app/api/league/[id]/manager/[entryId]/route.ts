@@ -29,6 +29,7 @@ type EntrySnapshot = {
     multiplier: number;
     is_captain: boolean;
   }>;
+  active_chip?: string | null;
   entry_history: {
     bank?: number;
     event_transfers?: number;
@@ -123,11 +124,75 @@ async function latestLeagueSnapshots(leagueId: number): Promise<{
   };
 }
 
+type DecisionPathScenario = {
+  id?: string | null;
+  label?: string | null;
+  objective_probability?: number | null;
+  probability_delta?: number | null;
+  first_week?: {
+    transfers?: Array<{
+      out_id?: number | null;
+      in_id?: number | null;
+    }>;
+    captain_id?: number | null;
+    chip?: string | null;
+    hit_cost?: number | null;
+  } | null;
+};
+
 type RecommendationReceipt = {
   event: number;
   generated_at: string;
   battle_mode: string | null;
   model_version: string | null;
+  receipt_source: string | null;
+  decision_receipt: {
+    schema_version?: string;
+    receipt_source?: string;
+    strategy?: {
+      posture?: string | null;
+      posture_source?: string | null;
+      objective?: string | null;
+    };
+    calibration?: {
+      status?: string | null;
+      sample_count?: number | null;
+    };
+    manager_state?: {
+      squad?: Array<{
+        id: number;
+        name: string;
+        expected_score: number;
+      }>;
+    };
+    counterplay?: {
+      baseline?: {
+        objective_probability?: number | null;
+      } | null;
+      recommended_scenario?: {
+        id?: string | null;
+        label?: string | null;
+        objective_probability?: number | null;
+        probability_delta?: number | null;
+        captain?: { id?: number | null; name?: string | null } | null;
+      } | null;
+      scenarios?: Array<{
+        id?: string | null;
+        label?: string | null;
+        objective_probability?: number | null;
+        probability_delta?: number | null;
+        transfer?: {
+          out_id?: number | null;
+          in_id?: number | null;
+        } | null;
+      }>;
+      horizons?: Record<string, {
+        baseline?: DecisionPathScenario | null;
+        recommended?: DecisionPathScenario | null;
+        scenarios?: DecisionPathScenario[];
+      }>;
+    };
+  } | null;
   captain_options: Array<{
     id: number;
     name: string;
@@ -171,11 +236,11 @@ async function decisionQualityHistory(
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
   const [receiptResponse, picksResponse, liveResponse] = await Promise.all([
     fetch(
-      `${url}/rest/v1/footy_fpl_recommendation_snapshots?select=event,generated_at,battle_mode,model_version,captain_options,transfer_options&league_id=eq.${leagueId}&entry_id=eq.${entryId}&is_pre_deadline=eq.true&order=event.asc,generated_at.desc`,
+      `${url}/rest/v1/footy_fpl_recommendation_snapshots?select=event,generated_at,battle_mode,model_version,receipt_source,decision_receipt,captain_options,transfer_options&league_id=eq.${leagueId}&entry_id=eq.${entryId}&event=gte.6&is_pre_deadline=eq.true&order=event.asc,generated_at.desc`,
       { headers, cache: "no-store" },
     ),
     fetch(
-      `${url}/rest/v1/footy_fpl_entry_snapshots?select=entry_id,event,picks,entry_history&league_id=eq.${leagueId}&entry_id=eq.${entryId}&order=event.asc`,
+      `${url}/rest/v1/footy_fpl_entry_snapshots?select=entry_id,event,picks,entry_history,active_chip&league_id=eq.${leagueId}&entry_id=eq.${entryId}&order=event.asc`,
       { headers, cache: "no-store" },
     ),
     fetch(
@@ -198,8 +263,13 @@ async function decisionQualityHistory(
   const picks = (await picksResponse.json()) as EntrySnapshot[];
   const liveSnapshots = (await liveResponse.json()) as EventLiveSnapshot[];
 
+  const v2Receipts = receipts.filter(
+    (receipt) =>
+      Number(receipt.event) >= 6 &&
+      receipt.decision_receipt?.schema_version === "decision-quality-v2",
+  );
   const latestReceiptByEvent = new Map<number, RecommendationReceipt>();
-  for (const receipt of receipts) {
+  for (const receipt of v2Receipts) {
     if (!latestReceiptByEvent.has(Number(receipt.event))) {
       latestReceiptByEvent.set(Number(receipt.event), receipt);
     }
@@ -221,6 +291,41 @@ async function decisionQualityHistory(
     event < currentEventId ||
     (event === currentEventId && Boolean(currentEvent?.finished));
 
+  const normaliseChip = (value: string | null | undefined) => {
+    const raw = String(value ?? "").toLowerCase();
+    if (raw === "wildcard") return "Wildcard";
+    if (raw === "freehit" || raw === "free hit") return "Free Hit";
+    if (raw === "bboost" || raw === "bench boost") return "Bench Boost";
+    if (raw === "3xc" || raw === "triple captain") return "Triple Captain";
+    return value || null;
+  };
+  const idsMatch = (left: number[], right: number[]) => {
+    if (left.length !== right.length) return false;
+    const a = [...left].sort((x, y) => x - y);
+    const b = [...right].sort((x, y) => x - y);
+    return a.every((value, index) => value === b[index]);
+  };
+  const pathMatches = (
+    scenario: DecisionPathScenario | null | undefined,
+    actualIn: number[],
+    actualOut: number[],
+    actualChip: string | null,
+  ) => {
+    if (!scenario?.first_week) return false;
+    const transfers = scenario.first_week.transfers ?? [];
+    const scenarioIn = transfers
+      .map((transfer) => Number(transfer.in_id ?? 0))
+      .filter(Boolean);
+    const scenarioOut = transfers
+      .map((transfer) => Number(transfer.out_id ?? 0))
+      .filter(Boolean);
+    return (
+      idsMatch(scenarioIn, actualIn) &&
+      idsMatch(scenarioOut, actualOut) &&
+      normaliseChip(scenario.first_week.chip) === actualChip
+    );
+  };
+
   const completed = [...latestReceiptByEvent.values()]
     .filter((receipt) => isCompleted(Number(receipt.event)))
     .map((receipt) => {
@@ -233,12 +338,42 @@ async function decisionQualityHistory(
       const actualCaptainPick = (eventPicks.picks ?? []).find(
         (pick) => pick.is_captain,
       );
-      const topCaptain = receipt.captain_options?.[0] ?? null;
+      const frozen = receipt.decision_receipt;
+      const frozenSquad = new Map(
+        (frozen?.manager_state?.squad ?? []).map((player) => [
+          Number(player.id),
+          player,
+        ]),
+      );
+      const frozenRecommendedCaptainId = Number(
+        frozen?.counterplay?.horizons?.["1"]?.recommended?.first_week?.captain_id ??
+          frozen?.counterplay?.recommended_scenario?.captain?.id ??
+          0,
+      ) || null;
+      const topCaptain =
+        (frozenRecommendedCaptainId
+          ? receipt.captain_options?.find(
+              (option) => option.id === frozenRecommendedCaptainId,
+            ) ?? null
+          : null) ??
+        receipt.captain_options?.[0] ??
+        null;
+      const actualCaptainFrozen = actualCaptainPick
+        ? frozenSquad.get(actualCaptainPick.element) ?? null
+        : null;
       const actualCaptainOption = actualCaptainPick
         ? receipt.captain_options?.find(
             (option) => option.id === actualCaptainPick.element,
           ) ?? null
         : null;
+      const actualCaptainExpected =
+        actualCaptainFrozen?.expected_score ??
+        actualCaptainOption?.score ??
+        null;
+      const modelCaptainExpected =
+        (topCaptain?.id ? frozenSquad.get(topCaptain.id)?.expected_score : null) ??
+        topCaptain?.score ??
+        null;
       const actualCaptainRawPoints = actualCaptainPick
         ? points.get(actualCaptainPick.element) ?? 0
         : null;
@@ -246,8 +381,8 @@ async function decisionQualityHistory(
         ? points.get(topCaptain.id) ?? 0
         : null;
       const expectedCaptainGap =
-        topCaptain && actualCaptainOption
-          ? Number(topCaptain.score ?? 0) - Number(actualCaptainOption.score ?? 0)
+        modelCaptainExpected != null && actualCaptainExpected != null
+          ? Math.max(0, Number(modelCaptainExpected) - Number(actualCaptainExpected))
           : null;
 
       const captainProcess =
@@ -255,11 +390,11 @@ async function decisionQualityHistory(
           ? "UNAVAILABLE"
           : actualCaptainPick.element === topCaptain.id
             ? "MODEL_ALIGNED"
-            : actualCaptainOption && (expectedCaptainGap ?? 99) <= 0.5
+            : expectedCaptainGap != null && expectedCaptainGap <= 0.5
               ? "CLOSE_CALL"
-              : actualCaptainOption
+              : actualCaptainExpected != null
                 ? "OFF_MODEL"
-                : "NOT_IN_MODEL_SHORTLIST";
+                : "UNAVAILABLE";
 
       const currentIds = new Set((eventPicks.picks ?? []).map((pick) => pick.element));
       const priorIds = new Set((priorPicks?.picks ?? []).map((pick) => pick.element));
@@ -281,18 +416,63 @@ async function decisionQualityHistory(
           actualIn.includes(option.in.id) &&
           actualOut.includes(option.out.id),
       );
+
+      const actualChip = normaliseChip(eventPicks.active_chip ?? null);
+      const oneGw = frozen?.counterplay?.horizons?.["1"] ?? null;
+      const frozenTopPath = oneGw?.recommended ?? null;
+      const frozenBaseline = oneGw?.baseline ?? null;
+      const frozenScenarios = oneGw?.scenarios ?? [];
+      const matchedFrozenScenario =
+        [frozenTopPath, frozenBaseline, ...frozenScenarios].find((scenario) =>
+          pathMatches(scenario, actualIn, actualOut, actualChip),
+        ) ?? null;
+      const topPathAligned = pathMatches(
+        frozenTopPath,
+        actualIn,
+        actualOut,
+        actualChip,
+      );
+      const topObjective =
+        frozenTopPath?.objective_probability == null
+          ? null
+          : Number(frozenTopPath.objective_probability);
+      const actualObjective =
+        matchedFrozenScenario?.objective_probability == null
+          ? null
+          : Number(matchedFrozenScenario.objective_probability);
+      const objectiveRegret =
+        topObjective != null && actualObjective != null
+          ? Math.max(0, topObjective - actualObjective)
+          : null;
+      const topProbabilityDelta =
+        frozenTopPath?.probability_delta == null
+          ? null
+          : Number(frozenTopPath.probability_delta);
+
       const transferProcess =
         !priorPicks
           ? "NO_PRIOR_SQUAD_SNAPSHOT"
-          : actualIn.length === 0 && actualOut.length === 0
-            ? topTransfer
-              ? "BANKED_AGAINST_MODEL_MOVE"
-              : "MODEL_ALIGNED_HOLD"
-            : alignedTransfer
-              ? "MODEL_ALIGNED"
-              : anyRecommendedTransfer
-                ? "MODEL_SHORTLIST"
-                : "OFF_MODEL_OR_STRUCTURAL";
+          : topPathAligned
+            ? actualChip
+              ? "MODEL_ALIGNED_CHIP"
+              : actualIn.length
+                ? "MODEL_ALIGNED"
+                : "MODEL_ALIGNED_HOLD"
+            : matchedFrozenScenario && (objectiveRegret ?? 99) <= 0.01
+              ? "CLOSE_CALL_SCENARIO"
+              : matchedFrozenScenario
+                ? "MODEL_SCENARIO"
+                : actualChip
+                  ? "OFF_MODEL_CHIP"
+                  : actualIn.length === 0 && actualOut.length === 0
+                    ? (topProbabilityDelta ?? 0) <= 0.01
+                      ? "CLOSE_CALL_BANK"
+                      : "BANKED_AGAINST_MODEL_MOVE"
+                    : alignedTransfer
+                      ? "MODEL_ALIGNED_LEGACY"
+                      : anyRecommendedTransfer
+                        ? "MODEL_SHORTLIST"
+                        : "OFF_MODEL_OR_STRUCTURAL";
 
       const topTransferActualDelta =
         topTransfer?.in
@@ -322,14 +502,14 @@ async function decisionQualityHistory(
           actual_player_id: actualCaptainPick?.element ?? null,
           model_player_id: topCaptain?.id ?? null,
           model_player_name: topCaptain?.name ?? null,
-          model_expected: topCaptain?.score ?? null,
-          actual_choice_expected: actualCaptainOption?.score ?? null,
+          model_expected: modelCaptainExpected,
+          actual_choice_expected: actualCaptainExpected,
           expected_ev_gap: expectedCaptainGap,
           actual_choice_points: actualCaptainRawPoints,
           model_choice_points: topCaptainRawPoints,
           actual_vs_model_expectation:
-            actualCaptainRawPoints != null && actualCaptainOption
-              ? actualCaptainRawPoints - Number(actualCaptainOption.score ?? 0)
+            actualCaptainRawPoints != null && actualCaptainExpected != null
+              ? actualCaptainRawPoints - Number(actualCaptainExpected)
               : null,
         },
         transfers: {
@@ -340,23 +520,59 @@ async function decisionQualityHistory(
           model_expected_delta: topTransferExpectedDelta,
           model_actual_delta: topTransferActualDelta,
           hit_cost: hitCost,
+          model_hit_cost: Number(frozenTopPath?.first_week?.hit_cost ?? 0),
+          active_chip: actualChip,
+          top_path_label: frozenTopPath?.label ?? null,
+          top_path_aligned: topPathAligned,
+          matched_scenario_label: matchedFrozenScenario?.label ?? null,
+          objective_regret: objectiveRegret,
+        },
+        receipt: {
+          source: receipt.receipt_source ?? frozen?.receipt_source ?? "UNKNOWN",
+          schema: frozen?.schema_version ?? null,
+          posture: frozen?.strategy?.posture ?? null,
+          calibration_status: frozen?.calibration?.status ?? null,
+          calibration_samples: frozen?.calibration?.sample_count ?? null,
         },
         bench_points: benchPoints,
       };
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
+  const pendingReceipt = [...latestReceiptByEvent.values()]
+    .filter((receipt) => !isCompleted(Number(receipt.event)))
+    .sort((a, b) => Number(a.event) - Number(b.event))[0] ?? null;
+  const pending = pendingReceipt
+    ? {
+        event: Number(pendingReceipt.event),
+        generated_at: pendingReceipt.generated_at,
+        source:
+          pendingReceipt.receipt_source ??
+          pendingReceipt.decision_receipt?.receipt_source ??
+          "UNKNOWN",
+        posture: pendingReceipt.decision_receipt?.strategy?.posture ?? null,
+        top_path:
+          pendingReceipt.decision_receipt?.counterplay?.horizons?.["1"]
+            ?.recommended?.label ??
+          pendingReceipt.decision_receipt?.counterplay?.recommended_scenario
+            ?.label ??
+          null,
+        empirical:
+          pendingReceipt.decision_receipt?.calibration?.status === "EMPIRICAL",
+        calibration_samples:
+          pendingReceipt.decision_receipt?.calibration?.sample_count ?? null,
+      }
+    : null;
+
   if (!completed.length) {
     return {
       status: "ACCUMULATING",
-      tracked_from_event:
-        receipts.length
-          ? Math.min(...receipts.map((receipt) => Number(receipt.event)))
-          : 6,
+      tracked_from_event: 6,
       completed: [],
+      pending,
       summary: null,
       caveat:
-        "Footy only scores decision quality where a genuine pre-deadline recommendation receipt exists. Tracking started in GW6, so earlier Gameweeks are not reconstructed with hindsight.",
+        "GW6 is the first Decision Quality v2 vintage. Footy scores only genuine frozen pre-deadline receipts; earlier Gameweeks are not reconstructed with hindsight.",
     };
   }
 
@@ -377,8 +593,38 @@ async function decisionQualityHistory(
       item.captain.actual_vs_model_expectation != null &&
       item.captain.actual_vs_model_expectation < -2,
   ).length;
+  const captainRegrets = completed
+    .map((item) => item.captain.expected_ev_gap)
+    .filter((value): value is number => value != null);
+  const averageCaptainRegret = captainRegrets.length
+    ? captainRegrets.reduce((sum, value) => sum + value, 0) /
+      captainRegrets.length
+    : null;
+  const pathRegrets = completed
+    .map((item) => item.transfers.objective_regret)
+    .filter((value): value is number => value != null);
+  const averageObjectiveRegret = pathRegrets.length
+    ? pathRegrets.reduce((sum, value) => sum + value, 0) / pathRegrets.length
+    : null;
+  const topPathAligned = completed.filter(
+    (item) => item.transfers.top_path_aligned,
+  ).length;
 
   const observations: string[] = [];
+  if (averageCaptainRegret != null && averageCaptainRegret >= 1) {
+    observations.push(
+      `Captain choices have given up an average ${averageCaptainRegret.toFixed(1)} frozen expected points versus Footy's deadline captain. Review the repeated process before blaming individual outcomes.`,
+    );
+  }
+  if (
+    averageObjectiveRegret != null &&
+    pathRegrets.length >= 2 &&
+    averageObjectiveRegret >= 0.01
+  ) {
+    observations.push(
+      `Comparable transfer/chip paths have averaged ${(averageObjectiveRegret * 100).toFixed(1)} percentage points of CounterPlay objective regret versus the frozen top path.`,
+    );
+  }
   if (hitCost >= 8) {
     observations.push(
       "Hit usage is material in the tracked sample. Audit whether the pre-deadline EV justified each cost rather than judging the hits by outcome alone.",
@@ -404,16 +650,22 @@ async function decisionQualityHistory(
     status: "ACTIVE",
     tracked_from_event: Math.min(...completed.map((item) => item.event)),
     completed,
+    pending,
     summary: {
       deadlines: completed.length,
       captain_process_alignment: alignedCaptains / completed.length,
+      average_captain_expected_regret: averageCaptainRegret,
+      top_path_alignment: topPathAligned / completed.length,
+      counterplay_comparable_deadlines: pathRegrets.length,
+      average_counterplay_objective_regret_pp:
+        averageObjectiveRegret == null ? null : averageObjectiveRegret * 100,
       total_hit_cost: hitCost,
       average_bench_points: averageBench,
       negative_variance_deadlines: negativeVariance,
       observations,
     },
     caveat:
-      "Decision quality is judged from the latest stored pre-deadline model receipt for each event. Outcome variance is reported separately from process alignment.",
+      "Decision Quality v2 uses the latest frozen pre-deadline model receipt for each event. Captain expected regret and CounterPlay objective regret are measured from what the model knew then; realised points and variance are reported separately.",
   };
 }
 
@@ -3409,6 +3661,9 @@ async function persistRecommendationSnapshot(
   leader: LeagueEntry,
   analysis: Awaited<ReturnType<typeof getLeagueManagerEdgeAnalysis>>,
   leagueStrategy: ReturnType<typeof buildLeagueStrategy>,
+  counterPlay: ReturnType<typeof buildCounterPlay>,
+  portfolioPlan: ReturnType<typeof buildPortfolioPlan>,
+  resourceAdvice: ReturnType<typeof buildResourceAdvice> | null,
 ) {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -3416,6 +3671,7 @@ async function persistRecommendationSnapshot(
   if (!key || !next?.id || !next.deadline_time) return;
 
   const now = new Date();
+  const receiptSource = "USER_VIEW" as const;
   const preDeadline = now.getTime() < new Date(next.deadline_time).getTime();
 
   const captainOptions = leagueStrategy.captain_moves.length
@@ -3429,6 +3685,150 @@ async function persistRecommendationSnapshot(
         reason: move.rationale,
       }))
     : analysis.transferOptions;
+
+  const simplifyScenario = (scenario: any) =>
+    scenario
+      ? {
+          id: scenario.id ?? null,
+          label: scenario.label ?? null,
+          style: scenario.style ?? null,
+          objective_probability:
+            scenario.objective_probability == null
+              ? null
+              : Number(scenario.objective_probability),
+          probability_delta:
+            scenario.probability_delta == null
+              ? null
+              : Number(scenario.probability_delta),
+          mean_score:
+            scenario.mean_score == null ? null : Number(scenario.mean_score),
+          volatility:
+            scenario.volatility == null ? null : Number(scenario.volatility),
+          floor_5: scenario.floor_5 == null ? null : Number(scenario.floor_5),
+          ceiling_95:
+            scenario.ceiling_95 == null ? null : Number(scenario.ceiling_95),
+          transfer: scenario.transfer
+            ? {
+                out_id: Number(scenario.transfer.out?.id ?? 0) || null,
+                in_id: Number(scenario.transfer.in?.id ?? 0) || null,
+                out_name: scenario.transfer.out?.name ?? null,
+                in_name: scenario.transfer.in?.name ?? null,
+              }
+            : null,
+          captain: scenario.captain
+            ? {
+                id: Number(scenario.captain.id ?? 0) || null,
+                name: scenario.captain.name ?? null,
+              }
+            : null,
+        }
+      : null;
+
+  const simplifyPathScenario = (scenario: any) => {
+    const simplified = simplifyScenario(scenario);
+    if (!scenario || !simplified) return null;
+    const firstWeek = scenario.resource_path?.weeks?.[0] ?? null;
+    return {
+      ...simplified,
+      first_week: firstWeek
+        ? {
+            event_id: firstWeek.event_id ?? null,
+            event_name: firstWeek.event_name ?? null,
+            transfers: (firstWeek.transfers ?? []).map((transfer: any) => ({
+              out_id: Number(transfer.out?.id ?? 0) || null,
+              in_id: Number(transfer.in?.id ?? 0) || null,
+              out_name: transfer.out?.name ?? null,
+              in_name: transfer.in?.name ?? null,
+              gain: transfer.gain == null ? null : Number(transfer.gain),
+            })),
+            captain_id: Number(firstWeek.captain?.id ?? 0) || null,
+            captain_name: firstWeek.captain?.name ?? null,
+            chip: firstWeek.chip ?? null,
+            hit_cost: Number(firstWeek.hit_cost ?? 0),
+            free_transfers_before:
+              firstWeek.free_transfers_before == null
+                ? null
+                : Number(firstWeek.free_transfers_before),
+            free_transfers_after:
+              firstWeek.free_transfers_after == null
+                ? null
+                : Number(firstWeek.free_transfers_after),
+            bank_before:
+              firstWeek.bank_before == null
+                ? null
+                : Number(firstWeek.bank_before),
+            bank_after:
+              firstWeek.bank_after == null
+                ? null
+                : Number(firstWeek.bank_after),
+          }
+        : null,
+    };
+  };
+
+  const receiptHorizons = Object.fromEntries(
+    Object.entries(counterPlay.horizon_results ?? {}).map(([key, horizon]: [string, any]) => [
+      key,
+      {
+        horizon: horizon?.horizon ?? Number(key),
+        event_names: horizon?.event_names ?? [],
+        baseline: simplifyPathScenario(horizon?.baseline),
+        recommended: simplifyPathScenario(horizon?.recommended_scenario),
+        scenarios: (horizon?.scenarios ?? []).slice(0, 7).map(simplifyPathScenario),
+      },
+    ]),
+  );
+
+  const decisionReceipt = {
+    schema_version: "decision-quality-v2",
+    receipt_source: receiptSource,
+    generated_at: now.toISOString(),
+    data_retrieved_at: analysis.dataRetrievedAt,
+    strategy: {
+      battle_mode: battleMode(manager, leader),
+      league_mode: leagueStrategy.mode,
+      posture: counterPlay.posture,
+      posture_source: counterPlay.posture_source,
+      objective: counterPlay.objective,
+    },
+    calibration: counterPlay.volatility_calibration,
+    data_quality: {
+      measured: analysis.dataCoverage?.measured ?? [],
+      missing: analysis.dataCoverage?.notMeasured ?? [],
+    },
+    manager_state: {
+      bank: analysis.manager.bank,
+      squad: analysis.manager.squad.map((player) => ({
+        id: player.id,
+        name: player.name,
+        team: player.team,
+        position: player.position,
+        price: player.price,
+        expected_score: player.assistantScore,
+      })),
+      captain_options: captainOptions.map((player) => ({
+        id: player.id,
+        name: player.name,
+        expected_score: player.assistantScore,
+      })),
+    },
+    portfolio: {
+      action: portfolioPlan.action,
+      headline: portfolioPlan.headline,
+      free_transfers: portfolioPlan.free_transfers,
+      status: portfolioPlan.portfolio.status,
+      score: portfolioPlan.portfolio.score,
+      game_theory: portfolioPlan.game_theory,
+      resource_advice: resourceAdvice?.recommendation ?? null,
+    },
+    counterplay: {
+      baseline: counterPlay.baseline,
+      game_theory_impact: counterPlay.game_theory_impact,
+      recommended_scenario: simplifyScenario(counterPlay.recommended_scenario),
+      scenarios: (counterPlay.scenarios ?? []).slice(0, 7).map(simplifyScenario),
+      horizons: receiptHorizons,
+    },
+  };
 
   const response = await fetch(
     `${url}/rest/v1/footy_fpl_recommendation_snapshots`,
@@ -3448,8 +3848,10 @@ async function persistRecommendationSnapshot(
         deadline_time: next.deadline_time,
         generated_at: now.toISOString(),
         data_retrieved_at: analysis.dataRetrievedAt,
-        model_version: "league-edge-v4-portfolio-counterplay",
+        model_version: "league-edge-v5-decision-quality",
         battle_mode: battleMode(manager, leader),
+        receipt_source: receiptSource,
+        decision_receipt: decisionReceipt,
         captain_options: captainOptions.map((player) => ({
           id: player.id,
           name: player.name,
@@ -3772,6 +4174,9 @@ export async function GET(
         leaderStanding,
         analysis,
         leagueStrategy,
+        counterPlay,
+        portfolioPlan,
+        resourceAdvice,
       ).catch(() => null);
     }
 
