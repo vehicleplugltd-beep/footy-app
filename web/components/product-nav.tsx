@@ -6,17 +6,19 @@ export function ProductNav({
   active,
   teamHref,
   teamName,
+  researchHref = "/research",
 }: {
   active: ProductArea;
   teamHref?: string;
   teamName?: string;
+  researchHref?: string;
 }) {
   const items = [
     { key: "hq" as const, label: "HQ", href: "/" },
     ...(teamHref
       ? [{ key: "team" as const, label: teamName ?? "Team Room", href: teamHref }]
       : []),
-    { key: "research" as const, label: "Research", href: "/research" },
+    { key: "research" as const, label: "Research", href: researchHref },
   ];
 
   return (
