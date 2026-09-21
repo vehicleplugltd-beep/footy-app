@@ -220,6 +220,176 @@ async function recordFeedStatus(fields) {
   );
 }
 
+function yyyymmdd(date) {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("");
+}
+
+function titleFromSlug(value) {
+  const slug = String(value || "")
+    .replace(/^\d{4}(?:-\d{2})?-/, "")
+    .replace(/-/g, " ")
+    .trim();
+  if (!slug) return "Football";
+  return slug.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function espnLeagueLabel(event) {
+  const slug = String(event?.season?.slug || "").toLowerCase();
+  const known = [
+    ["english-premier-league", "ENG-Premier League"],
+    ["english-league-championship", "ENG-Championship"],
+    ["english-league-one", "ENG-League One"],
+    ["english-league-two", "ENG-League Two"],
+    ["spanish-laliga", "ESP-La Liga"],
+    ["spanish-laliga-2", "ESP-La Liga 2"],
+    ["german-bundesliga", "GER-Bundesliga"],
+    ["german-2-bundesliga", "GER-2. Bundesliga"],
+    ["italian-serie-a", "ITA-Serie A"],
+    ["italian-serie-b", "ITA-Serie B"],
+    ["french-ligue-1", "FRA-Ligue 1"],
+    ["french-ligue-2", "FRA-Ligue 2"],
+    ["dutch-eredivisie", "NED-Eredivisie"],
+    ["scottish-premiership", "SCO-Premiership"],
+    ["portuguese-primeira-liga", "POR-Primeira Liga"],
+    ["belgian-pro-league", "BEL-First Division A"],
+    ["turkish-super-lig", "TUR-Super Lig"],
+    ["greek-super-league", "GRE-Super League"],
+    ["uefa-champions-league", "UEFA-Champions League"],
+    ["uefa-europa-league", "UEFA-Europa League"],
+    ["uefa-conference-league", "UEFA-Conference League"],
+    ["major-league-soccer", "USA-MLS"],
+    ["brazilian-serie-a", "BRA-Serie A"],
+    ["argentine-liga-profesional", "ARG-Primera Division"],
+    ["mexican-liga-bbva-mx", "MEX-Liga MX"],
+  ];
+  for (const [needle, label] of known) {
+    if (slug.includes(needle)) return label;
+  }
+  return titleFromSlug(slug || event?.name || "football");
+}
+
+function espnSeasonCode(event) {
+  const slug = String(event?.season?.slug || "");
+  const pair = slug.match(/^(\d{4})-(\d{2})-/);
+  if (pair) return `${pair[1].slice(-2)}${pair[2]}`;
+  const year = Number(event?.season?.year);
+  return Number.isFinite(year) ? String(year) : "unknown";
+}
+
+function espnFixture(event) {
+  const competition = event?.competitions?.[0];
+  if (!competition) return null;
+  const competitors = competition.competitors || [];
+  const home = competitors.find((row) => row.homeAway === "home");
+  const away = competitors.find((row) => row.homeAway === "away");
+  const homeTeam = home?.team?.displayName || home?.team?.shortDisplayName;
+  const awayTeam = away?.team?.displayName || away?.team?.shortDisplayName;
+  const kickoff = event.date || competition.date;
+  if (!event.id || !homeTeam || !awayTeam || !kickoff) return null;
+
+  const state = String(event?.status?.type?.state || "").toLowerCase();
+  const status =
+    state === "post"
+      ? "finished"
+      : state === "in"
+        ? "in_progress"
+        : "scheduled";
+
+  return {
+    event,
+    candidate: {
+      home_team: homeTeam,
+      away_team: awayTeam,
+      commence_time: kickoff,
+    },
+    row: {
+      match_id: `espn:${event.id}`,
+      league: espnLeagueLabel(event),
+      season: espnSeasonCode(event),
+      kickoff_at: kickoff,
+      home_team: homeTeam,
+      away_team: awayTeam,
+      status,
+      source: "espn-scoreboard",
+      retrieved_at: new Date().toISOString(),
+    },
+  };
+}
+
+async function syncEspnFixtures(capturedAt) {
+  const start = new Date(new Date(capturedAt).getTime() - 12 * 60 * 60 * 1000);
+  const end = new Date(new Date(capturedAt).getTime() + 72 * 60 * 60 * 1000);
+  const dates = `${yyyymmdd(start)}-${yyyymmdd(end)}`;
+  const endpoint = new URL(
+    "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard",
+  );
+  endpoint.searchParams.set("dates", dates);
+  endpoint.searchParams.set("limit", "1000");
+
+  const response = await fetch(endpoint, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `ESPN fixtures ${response.status}: ${(await response.text()).slice(0, 300)}`,
+    );
+  }
+
+  const payload = await response.json();
+  const parsed = (payload.events || [])
+    .map(espnFixture)
+    .filter(Boolean);
+
+  if (!parsed.length) {
+    return { discovered: 0, inserted: 0, leagues: 0 };
+  }
+
+  const existingStart = new Date(start.getTime() - 8 * 60 * 60 * 1000).toISOString();
+  const existingEnd = new Date(end.getTime() + 8 * 60 * 60 * 1000).toISOString();
+  const existing =
+    (await sb(
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(existingStart)}&kickoff_at=lte.${encodeURIComponent(existingEnd)}&limit=5000`,
+    )) || [];
+
+  const inserts = [];
+  for (const item of parsed) {
+    const matched = reconcileMatch(item.candidate, existing);
+    if (matched) continue;
+    inserts.push({
+      ...item.row,
+      retrieved_at: capturedAt,
+    });
+    existing.push(item.row);
+  }
+
+  await upsert("footy_matches", inserts, "match_id");
+
+  await upsert(
+    "footy_odds_feed_status",
+    [{
+      provider: "espn-fixtures",
+      sport_key: "soccer-all",
+      last_attempt_at: capturedAt,
+      last_success_at: capturedAt,
+      events_received: parsed.length,
+      prices_received: 0,
+      last_error: null,
+      updated_at: capturedAt,
+    }],
+    "provider",
+  );
+
+  return {
+    discovered: parsed.length,
+    inserted: inserts.length,
+    leagues: new Set(parsed.map((item) => item.row.league)).size,
+  };
+}
+
 function reconcileMatch(event, matches) {
   const home = canonicalTeam(event.home_team);
   const away = canonicalTeam(event.away_team);
@@ -503,16 +673,43 @@ async function captureUserClosingLines(capturedAt) {
 }
 
 async function main() {
+  const now = new Date();
+  const capturedAt = now.toISOString();
+
+  let fixtureSync = { discovered: 0, inserted: 0, leagues: 0 };
+  try {
+    fixtureSync = await syncEspnFixtures(capturedAt);
+  } catch (error) {
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: "espn-fixtures",
+        sport_key: "soccer-all",
+        last_attempt_at: capturedAt,
+        last_success_at: null,
+        events_received: 0,
+        prices_received: 0,
+        last_error: String(error?.message || error).slice(0, 1000),
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+  }
+
   if (!ODDS_API_KEY) {
     await recordFeedStatus({
       last_error: "THE_ODDS_API_KEY is not configured",
     });
-    console.log("football board sync skipped: THE_ODDS_API_KEY not configured");
+    console.log(JSON.stringify({
+      status: "fixtures-only",
+      fixture_provider: "espn",
+      fixtures_discovered: fixtureSync.discovered,
+      fixtures_inserted: fixtureSync.inserted,
+      leagues_discovered: fixtureSync.leagues,
+      odds: "skipped: THE_ODDS_API_KEY is not configured",
+    }, null, 2));
     return;
   }
-
-  const now = new Date();
-  const capturedAt = now.toISOString();
   const discoveryStart = new Date(
     now.getTime() - 6 * 60 * 60 * 1000,
   ).toISOString();
@@ -775,6 +972,10 @@ async function main() {
   console.log(JSON.stringify({
     status: partialErrors.length ? "partial" : "ok",
     provider: PROVIDER,
+    fixture_provider: "espn",
+    fixtures_discovered: fixtureSync.discovered,
+    fixtures_inserted: fixtureSync.inserted,
+    fixture_leagues: fixtureSync.leagues,
     active_competitions: activeCompetitions.length,
     discovered_events: allDiscoveredEvents.length,
     new_fixture_rows: fixtureRows.length,
