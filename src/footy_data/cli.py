@@ -824,14 +824,35 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical rows match the requested league/history scope.")
 
-    source = SoccerDataSource(
-        leagues=[args.league],
-        seasons=[args.season],
-    )
-    schedule = source.understat_schedule()
+    schedule_source = "understat"
+    schedule = pd.DataFrame()
+
+    if args.league == "ENG-Premier League":
+        try:
+            schedule = OfficialFPLSource().schedule(
+                season=args.season,
+                league=args.league,
+            )
+            schedule_source = "official-fpl"
+        except Exception as exc:
+            print(json.dumps({
+                "status": "warning",
+                "source": "official-fpl",
+                "message": f"Official FPL schedule unavailable: {exc}",
+            }))
+
+    if schedule.empty:
+        source = SoccerDataSource(
+            leagues=[args.league],
+            seasons=[args.season],
+        )
+        schedule = source.understat_schedule()
+        schedule_source = "understat"
+
     fixtures = normalise_upcoming_fixtures(
         schedule,
         horizon_days=args.horizon_days,
+        source_name=schedule_source,
     )
 
     if fixtures.empty:
