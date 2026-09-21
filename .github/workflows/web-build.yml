@@ -25,4 +25,5 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package.json
       - run: npm install --no-audit --no-fund
+      - run: node --check scripts/sync-live-odds.mjs
       - run: npm run build
