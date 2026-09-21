@@ -984,3 +984,61 @@
   .price-watch-actions { grid-column: 1 / -1; }
   .price-watch-actions { justify-content: start; }
 }
+
+
+/* Bet Checker + Slip Doctor */
+.lab-input-grid select {
+  width: 100%;
+  border: 1px solid #2b4f3b;
+  border-radius: 9px;
+  padding: 10px;
+  background: #07140e;
+  color: var(--edge-text);
+  outline: none;
+}
+.lab-input-grid select:focus { border-color: var(--edge-green); }
+.lab-input-grid-two { grid-template-columns: 1.5fr 1fr; }
+
+.bet-checker-output {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.bet-checker-output > div {
+  padding: 10px;
+  border: 1px solid #1d392a;
+  border-radius: 9px;
+  background: #07140e;
+}
+.bet-checker-output span,
+.bet-checker-output strong,
+.bet-checker-output small { display: block; }
+.bet-checker-output span,
+.bet-checker-output small { color: var(--edge-muted); font-size: 8px; }
+.bet-checker-output strong { margin-top: 4px; font-size: 14px; }
+.checker-action {
+  border-color: rgba(113,244,160,.26) !important;
+  background: rgba(113,244,160,.05) !important;
+}
+.checker-action strong { color: var(--edge-green); }
+
+.slip-doctor {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(121,191,255,.22);
+  border-left: 3px solid var(--edge-blue);
+  border-radius: 10px;
+  background: rgba(121,191,255,.045);
+}
+.slip-doctor span,
+.slip-doctor strong,
+.slip-doctor small { display: block; }
+.slip-doctor span { color: var(--edge-blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.slip-doctor strong { margin-top: 4px; font-size: 11px; }
+.slip-doctor small { margin-top: 4px; color: var(--edge-muted); font-size: 8px; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  .lab-input-grid-two,
+  .bet-checker-output { grid-template-columns: 1fr; }
+}
