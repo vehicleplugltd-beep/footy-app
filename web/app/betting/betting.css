@@ -250,3 +250,247 @@
   .betting-feedback-cta, .betting-footer { align-items: stretch; flex-direction: column; }
   .betting-feedback-cta > a { width: 100%; }
 }
+
+
+/* My Bets — private upload, tracking and feedback workspace */
+.my-bets-hero {
+  padding-top: 60px;
+  padding-bottom: 28px;
+}
+.my-bets-hero > span,
+.bet-workspace-panel > span,
+.my-bets-auth form > span,
+.adult-workspace-confirm > span,
+.workspace-panel-head span,
+.csv-format > span {
+  color: var(--edge-green);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+.my-bets-hero h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(38px, 6vw, 66px);
+  letter-spacing: -.055em;
+  line-height: .98;
+}
+.my-bets-hero p {
+  max-width: 760px;
+  color: #b8ccbf;
+  line-height: 1.65;
+}
+.workspace-message {
+  margin: 0 0 14px;
+  border: 1px solid #315b44;
+  border-radius: 11px;
+  padding: 11px 13px;
+  background: rgba(16,38,26,.78);
+  color: #d8e8de;
+  font-size: 11px;
+}
+.my-bets-empty,
+.adult-workspace-confirm {
+  border: 1px solid var(--edge-line);
+  border-radius: 16px;
+  padding: 22px;
+  background: rgba(9,25,17,.72);
+  color: var(--edge-muted);
+}
+.adult-workspace-confirm h2 { color: var(--edge-text); margin: 7px 0; }
+.adult-workspace-confirm button,
+.bet-workspace-form button,
+.my-bets-auth button {
+  min-height: 43px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 15px;
+  background: var(--edge-green);
+  color: #06100b;
+  font-weight: 950;
+  cursor: pointer;
+}
+.adult-workspace-confirm button:disabled,
+.bet-workspace-form button:disabled { opacity: .55; cursor: wait; }
+
+.my-bets-auth {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.my-bets-auth form,
+.bet-workspace-panel {
+  border: 1px solid var(--edge-line);
+  border-radius: 17px;
+  padding: 19px;
+  background: linear-gradient(180deg, rgba(15,33,24,.95), rgba(8,22,15,.95));
+}
+.my-bets-auth h2,
+.bet-workspace-panel h2 { margin: 7px 0 14px; }
+.my-bets-auth label,
+.bet-workspace-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--edge-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.my-bets-auth input,
+.bet-workspace-form input,
+.bet-workspace-form select,
+.bet-workspace-form textarea {
+  width: 100%;
+  border: 1px solid #2b4f3b;
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: #07140e;
+  color: var(--edge-text);
+  outline: none;
+}
+.bet-workspace-form textarea { resize: vertical; }
+.my-bets-auth input:focus,
+.bet-workspace-form input:focus,
+.bet-workspace-form select:focus,
+.bet-workspace-form textarea:focus {
+  border-color: var(--edge-green);
+  box-shadow: 0 0 0 3px rgba(113,244,160,.07);
+}
+.age-check {
+  grid-template-columns: auto 1fr !important;
+  align-items: center;
+}
+.age-check input { width: auto; }
+.my-bets-auth form { display: grid; gap: 12px; }
+.my-bets-auth .workspace-message { grid-column: 1 / -1; }
+
+.bet-record-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.bet-record-summary article {
+  border: 1px solid #1f3b2d;
+  border-radius: 13px;
+  padding: 13px;
+  background: #08170f;
+}
+.bet-record-summary span,
+.bet-record-summary small,
+.ticket-numbers span {
+  display: block;
+  color: var(--edge-muted);
+  font-size: 9px;
+}
+.bet-record-summary strong {
+  display: block;
+  margin: 4px 0;
+  font-size: 18px;
+}
+.positive { color: var(--edge-green) !important; }
+.negative { color: var(--edge-red) !important; }
+
+.bet-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
+  margin-bottom: 14px;
+}
+.bet-workspace-panel > p {
+  color: var(--edge-muted);
+  line-height: 1.55;
+  font-size: 11px;
+}
+.bet-workspace-form { display: grid; gap: 10px; }
+.field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.csv-format {
+  margin-top: 12px;
+  border: 1px solid #1f3c2c;
+  border-radius: 10px;
+  padding: 10px;
+  background: #07140e;
+}
+.csv-format code {
+  display: block;
+  margin-top: 6px;
+  color: #c3d7ca;
+  font-size: 9px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.bet-history-panel,
+.feedback-panel { margin-bottom: 14px; }
+.workspace-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.workspace-panel-head h2 { margin: 4px 0 0; }
+.workspace-panel-head small { color: var(--edge-muted); font-size: 10px; }
+
+.bet-ticket-list { display: grid; gap: 7px; }
+.bet-ticket-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #1d382a;
+  border-radius: 11px;
+  background: #07140e;
+}
+.bet-ticket-list article > div:first-child strong,
+.bet-ticket-list article > div:first-child small,
+.ticket-type {
+  display: block;
+}
+.ticket-type {
+  color: var(--edge-green);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.bet-ticket-list article > div:first-child strong { margin: 3px 0; }
+.bet-ticket-list article > div:first-child small { color: var(--edge-muted); font-size: 9px; }
+.ticket-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(58px, auto));
+  gap: 8px;
+  text-align: right;
+}
+.ticket-numbers strong { font-size: 16px; }
+.ticket-actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: end; }
+.ticket-actions button {
+  border: 1px solid #315b44;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #0c2117;
+  color: #d7e7dd;
+  cursor: pointer;
+  font-size: 9px;
+}
+.bet-ticket-list em {
+  color: var(--edge-muted);
+  font-size: 9px;
+  font-style: normal;
+}
+.feedback-panel { max-width: 780px; }
+.feedback-panel p { max-width: 680px; }
+.feedback-panel button { width: max-content; min-width: 160px; }
+
+@media (max-width: 900px) {
+  .bet-record-summary { grid-template-columns: repeat(3, 1fr); }
+  .bet-input-grid { grid-template-columns: 1fr; }
+  .bet-ticket-list article { grid-template-columns: 1fr; }
+  .ticket-numbers { justify-content: start; text-align: left; }
+  .ticket-actions { justify-content: start; }
+}
+@media (max-width: 650px) {
+  .my-bets-hero { padding-top: 34px; }
+  .my-bets-auth { grid-template-columns: 1fr; }
+  .bet-record-summary { grid-template-columns: 1fr 1fr; }
+  .field-pair { grid-template-columns: 1fr; }
+  .workspace-panel-head { align-items: start; flex-direction: column; }
+  .ticket-numbers { grid-template-columns: repeat(3, 1fr); width: 100%; }
+}
