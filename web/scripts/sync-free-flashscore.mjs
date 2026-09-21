@@ -464,6 +464,41 @@ function normalizeMarket(entry) {
     });
   }
 
+  if (type === "ASIAN_HANDICAP") {
+    const participants = marketParticipantOrder(items);
+    return items.flatMap((item) => {
+      const id =
+        item?.eventParticipantId == null
+          ? null
+          : String(item.eventParticipantId);
+      const selection =
+        id === participants[0]
+          ? "home"
+          : id === participants[1]
+            ? "away"
+            : null;
+      const rawLine = Number(item?.handicap?.value);
+      const price = priceNumber(item?.value);
+      if (!selection || !Number.isFinite(rawLine) || !price) return [];
+
+      // Flashscore's feed expresses the handicap from the home-side
+      // perspective for paired Asian handicap entries. Store the line from
+      // the selected team's perspective so home -0.5 and away +0.5 are
+      // represented consistently.
+      const line =
+        selection === "away" && rawLine !== 0
+          ? -rawLine
+          : rawLine;
+
+      return [{
+        market: "AH",
+        selection,
+        line,
+        price,
+      }];
+    });
+  }
+
   if (type === "BOTH_TEAMS_TO_SCORE") {
     return items.flatMap((item) => {
       const flag = item?.bothTeamsToScore;
