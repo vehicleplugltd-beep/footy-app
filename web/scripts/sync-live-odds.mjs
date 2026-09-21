@@ -320,27 +320,64 @@ function espnFixture(event) {
   };
 }
 
-async function syncEspnFixtures(capturedAt) {
-  const start = new Date(new Date(capturedAt).getTime() - 12 * 60 * 60 * 1000);
-  const end = new Date(new Date(capturedAt).getTime() + 72 * 60 * 60 * 1000);
-  const dates = `${yyyymmdd(start)}-${yyyymmdd(end)}`;
-  const endpoint = new URL(
-    "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard",
-  );
-  endpoint.searchParams.set("dates", dates);
-  endpoint.searchParams.set("limit", "1000");
+async function fetchEspnScoreboard(dateKey) {
+  const hosts = [
+    "https://site.api.espn.com",
+    "https://site.web.api.espn.com",
+  ];
+  let lastError = null;
 
-  const response = await fetch(endpoint, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `ESPN fixtures ${response.status}: ${(await response.text()).slice(0, 300)}`,
-    );
+  for (const host of hosts) {
+    for (const includeLimit of [true, false]) {
+      const endpoint = new URL(
+        `${host}/apis/site/v2/sports/soccer/all/scoreboard`,
+      );
+      endpoint.searchParams.set("dates", dateKey);
+      if (includeLimit) endpoint.searchParams.set("limit", "500");
+
+      try {
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          lastError = new Error(
+            `ESPN fixtures ${response.status}: ${(await response.text()).slice(0, 300)}`,
+          );
+          continue;
+        }
+        return await response.json();
+      } catch (error) {
+        lastError = error;
+      }
+    }
   }
 
-  const payload = await response.json();
-  const parsed = (payload.events || [])
+  throw lastError || new Error(`ESPN fixtures unavailable for ${dateKey}`);
+}
+
+async function syncEspnFixtures(capturedAt) {
+  const anchor = new Date(capturedAt);
+  const dayStart = new Date(Date.UTC(
+    anchor.getUTCFullYear(),
+    anchor.getUTCMonth(),
+    anchor.getUTCDate() - 1,
+  ));
+  const dateKeys = Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(dayStart.getTime() + index * 24 * 60 * 60 * 1000);
+    return yyyymmdd(date);
+  });
+
+  const payloads = await Promise.all(
+    dateKeys.map((dateKey) => fetchEspnScoreboard(dateKey)),
+  );
+  const eventMap = new Map();
+  for (const payload of payloads) {
+    for (const event of payload.events || []) {
+      if (event?.id) eventMap.set(String(event.id), event);
+    }
+  }
+
+  const parsed = [...eventMap.values()]
     .map(espnFixture)
     .filter(Boolean);
 
@@ -348,11 +385,14 @@ async function syncEspnFixtures(capturedAt) {
     return { discovered: 0, inserted: 0, leagues: 0 };
   }
 
-  const existingStart = new Date(start.getTime() - 8 * 60 * 60 * 1000).toISOString();
-  const existingEnd = new Date(end.getTime() + 8 * 60 * 60 * 1000).toISOString();
+  const kickoffTimes = parsed
+    .map((item) => new Date(item.row.kickoff_at).getTime())
+    .filter(Number.isFinite);
+  const earliest = new Date(Math.min(...kickoffTimes) - 8 * 60 * 60 * 1000).toISOString();
+  const latest = new Date(Math.max(...kickoffTimes) + 8 * 60 * 60 * 1000).toISOString();
   const existing =
     (await sb(
-      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(existingStart)}&kickoff_at=lte.${encodeURIComponent(existingEnd)}&limit=5000`,
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(earliest)}&kickoff_at=lte.${encodeURIComponent(latest)}&limit=10000`,
     )) || [];
 
   const inserts = [];
@@ -388,288 +428,6 @@ async function syncEspnFixtures(capturedAt) {
     inserted: inserts.length,
     leagues: new Set(parsed.map((item) => item.row.league)).size,
   };
-}
-
-function reconcileMatch(event, matches) {
-  const home = canonicalTeam(event.home_team);
-  const away = canonicalTeam(event.away_team);
-  const eventTime = new Date(event.commence_time).getTime();
-
-  const candidates = matches
-    .filter(
-      (match) =>
-        canonicalTeam(match.home_team) === home &&
-        canonicalTeam(match.away_team) === away,
-    )
-    .map((match) => ({
-      match,
-      diff: Math.abs(new Date(match.kickoff_at).getTime() - eventTime),
-    }))
-    .filter((row) => row.diff <= 6 * 60 * 60 * 1000)
-    .sort((a, b) => a.diff - b.diff);
-
-  return candidates[0]?.match || null;
-}
-
-function outcomeSelection(event, outcomeName) {
-  if (cleanText(outcomeName) === "draw") return "draw";
-  const outcome = canonicalTeam(outcomeName);
-  if (outcome === canonicalTeam(event.home_team)) return "home";
-  if (outcome === canonicalTeam(event.away_team)) return "away";
-  return null;
-}
-
-function alertSelection(alert, sample) {
-  const raw = cleanText(alert.selection);
-  if (["home", "draw", "away"].includes(raw)) return raw;
-  const candidate = canonicalTeam(alert.selection);
-  if (candidate === canonicalTeam(sample.home_team)) return "home";
-  if (candidate === canonicalTeam(sample.away_team)) return "away";
-  return null;
-}
-
-function bookmakerMatches(alertBookmaker, row) {
-  const wanted = cleanText(alertBookmaker);
-  if (!wanted || ["any", "best", "any best price"].includes(wanted)) return true;
-  const title = cleanText(row.bookmaker_name);
-  const key = cleanText(row.bookmaker_key);
-  return (
-    title === wanted ||
-    key === wanted ||
-    title.includes(wanted) ||
-    wanted.includes(title)
-  );
-}
-
-function eventMatchesAlert(alert, row) {
-  if (alert.match_id) return String(alert.match_id) === String(row.match_id);
-  const haystack = compact(alert.event_name);
-  return (
-    haystack.includes(compact(row.home_team)) &&
-    haystack.includes(compact(row.away_team))
-  );
-}
-
-async function evaluateAlerts(currentRows, capturedAt) {
-  const alerts = await sb(
-    "footy_price_alerts?select=id,user_id,match_id,event_name,market,selection,bookmaker,target_odds,enabled,last_triggered_at,was_above_target,last_observed_odds&enabled=eq.true",
-  ) || [];
-
-  let triggered = 0;
-
-  for (const alert of alerts) {
-    const eventRows = currentRows.filter((row) => eventMatchesAlert(alert, row));
-    if (!eventRows.length) continue;
-
-    const selection = alertSelection(alert, eventRows[0]);
-    if (!selection) continue;
-
-    const candidates = eventRows.filter(
-      (row) =>
-        row.market === "1X2" &&
-        row.selection === selection &&
-        bookmakerMatches(alert.bookmaker, row),
-    );
-    if (!candidates.length) continue;
-
-    const best = [...candidates].sort(
-      (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
-    )[0];
-    const observed = Number(best.decimal_odds);
-    const target = Number(alert.target_odds);
-    const above = observed >= target;
-    const crossed = above && !Boolean(alert.was_above_target);
-
-    if (crossed) {
-      await insert("footy_alert_events", [{
-        user_id: alert.user_id,
-        alert_id: alert.id,
-        match_id: best.match_id || alert.match_id || null,
-        event_name: alert.event_name,
-        market: alert.market,
-        selection: alert.selection,
-        bookmaker: best.bookmaker_name,
-        target_odds: target,
-        observed_odds: observed,
-        triggered_at: capturedAt,
-      }]);
-      triggered += 1;
-    }
-
-    await patch(
-      "footy_price_alerts",
-      `id=eq.${encodeURIComponent(alert.id)}`,
-      {
-        was_above_target: above,
-        last_observed_odds: observed,
-        last_checked_at: capturedAt,
-        last_triggered_at: crossed ? capturedAt : alert.last_triggered_at,
-      },
-    );
-  }
-
-  return triggered;
-}
-
-async function captureUserClosingLines(capturedAt) {
-  const now = new Date(capturedAt);
-  const windowStart = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString();
-
-  const [pendingBets, pendingLegs, recentMatches] = await Promise.all([
-    sb(
-      `footy_bets?select=id,match_id,kickoff_at,market,selection,bookmaker,decimal_odds,closing_odds&closing_odds=is.null&match_id=not.is.null&limit=500`,
-    ),
-    sb(
-      `footy_bet_legs?select=id,bet_id,match_id,market,selection,bookmaker,decimal_odds,closing_odds&closing_odds=is.null&match_id=not.is.null&limit=1000`,
-    ),
-    sb(
-      `footy_matches?select=match_id,kickoff_at,home_team,away_team&kickoff_at=gte.${encodeURIComponent(windowStart)}&kickoff_at=lte.${encodeURIComponent(capturedAt)}&limit=500`,
-    ),
-  ]);
-
-  const matchById = new Map(
-    (recentMatches || []).map((row) => [String(row.match_id), row]),
-  );
-  const kickoffByMatch = new Map(
-    (recentMatches || []).map((row) => [String(row.match_id), row.kickoff_at]),
-  );
-
-  async function closingQuote(item, explicitKickoff = null) {
-    const kickoffAt = explicitKickoff || kickoffByMatch.get(String(item.match_id));
-    if (!kickoffAt) return null;
-
-    const kickoffMs = new Date(kickoffAt).getTime();
-    if (!Number.isFinite(kickoffMs) || kickoffMs > now.getTime()) return null;
-    if (now.getTime() - kickoffMs > 36 * 60 * 60 * 1000) return null;
-
-    const searchStart = new Date(kickoffMs - 8 * 60 * 60 * 1000).toISOString();
-    const match = matchById.get(String(item.match_id));
-    const rawSelection = cleanText(item.selection);
-    let normalizedSelection = rawSelection;
-    if (match && !["home", "draw", "away"].includes(rawSelection)) {
-      const candidate = canonicalTeam(item.selection);
-      if (candidate === canonicalTeam(match.home_team)) normalizedSelection = "home";
-      if (candidate === canonicalTeam(match.away_team)) normalizedSelection = "away";
-    }
-    if (!["home", "draw", "away"].includes(normalizedSelection)) return null;
-
-    const rows =
-      (await sb(
-        `footy_live_odds_history?select=bookmaker_name,bookmaker_key,decimal_odds,captured_at&match_id=eq.${encodeURIComponent(item.match_id)}&market=eq.${encodeURIComponent(canonicalMarket(item.market))}&selection=eq.${encodeURIComponent(normalizedSelection)}&captured_at=gte.${encodeURIComponent(searchStart)}&captured_at=lte.${encodeURIComponent(kickoffAt)}&order=captured_at.desc&limit=120`,
-      )) || [];
-
-    if (!rows.length) return null;
-
-    const wanted = cleanText(item.bookmaker || "");
-    let chosen = null;
-    if (wanted) {
-      chosen =
-        rows.find((row) => {
-          const title = cleanText(row.bookmaker_name);
-          const key = cleanText(row.bookmaker_key);
-          return (
-            title === wanted ||
-            key === wanted ||
-            title.includes(wanted) ||
-            wanted.includes(title)
-          );
-        }) || null;
-    }
-
-    if (!chosen) {
-      const latestAt = rows[0].captured_at;
-      const latestRows = rows.filter((row) => row.captured_at === latestAt);
-      chosen = [...latestRows].sort(
-        (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
-      )[0];
-    }
-
-    if (!chosen) return null;
-    const closingOdds = Number(chosen.decimal_odds);
-    const takenOdds = Number(item.decimal_odds);
-    if (!Number.isFinite(closingOdds) || closingOdds <= 1) return null;
-
-    return {
-      closing_odds: closingOdds,
-      closing_bookmaker: chosen.bookmaker_name,
-      closing_price_at: chosen.captured_at,
-      clv:
-        Number.isFinite(takenOdds) && takenOdds > 1
-          ? takenOdds / closingOdds - 1
-          : null,
-    };
-  }
-
-  let betsUpdated = 0;
-  for (const bet of pendingBets || []) {
-    const quote = await closingQuote(bet, bet.kickoff_at);
-    if (!quote) continue;
-    await patch(
-      "footy_bets",
-      `id=eq.${encodeURIComponent(bet.id)}`,
-      quote,
-    );
-    betsUpdated += 1;
-  }
-
-  let legsUpdated = 0;
-  for (const leg of pendingLegs || []) {
-    const quote = await closingQuote(leg);
-    if (!quote) continue;
-    await patch(
-      "footy_bet_legs",
-      `id=eq.${encodeURIComponent(leg.id)}`,
-      quote,
-    );
-    legsUpdated += 1;
-  }
-
-  const pendingAccas =
-    (await sb(
-      "footy_bets?select=id,decimal_odds,leg_count,bet_type,closing_odds&closing_odds=is.null&bet_type=in.(DOUBLE,TREBLE,ACCA)&limit=300",
-    )) || [];
-  let accasUpdated = 0;
-
-  for (const bet of pendingAccas) {
-    const legs =
-      (await sb(
-        `footy_bet_legs?select=closing_odds,closing_price_at&bet_id=eq.${encodeURIComponent(bet.id)}&order=leg_no.asc`,
-      )) || [];
-    if (
-      legs.length !== Number(bet.leg_count) ||
-      legs.some((leg) => !Number.isFinite(Number(leg.closing_odds)) || Number(leg.closing_odds) <= 1)
-    ) {
-      continue;
-    }
-
-    const combinedClose = legs.reduce(
-      (product, leg) => product * Number(leg.closing_odds),
-      1,
-    );
-    const taken = Number(bet.decimal_odds);
-    const latestCloseAt = legs
-      .map((leg) => leg.closing_price_at)
-      .filter(Boolean)
-      .sort()
-      .at(-1) || capturedAt;
-
-    await patch(
-      "footy_bets",
-      `id=eq.${encodeURIComponent(bet.id)}`,
-      {
-        closing_odds: combinedClose,
-        closing_bookmaker: "Combined market close",
-        closing_price_at: latestCloseAt,
-        clv:
-          Number.isFinite(taken) && taken > 1
-            ? taken / combinedClose - 1
-            : null,
-      },
-    );
-    accasUpdated += 1;
-  }
-
-  return { betsUpdated, legsUpdated, accasUpdated };
 }
 
 async function main() {
