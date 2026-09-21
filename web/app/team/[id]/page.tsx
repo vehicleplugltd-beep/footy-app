@@ -66,6 +66,9 @@ export default async function TeamPage({
       <ProductNav
         active="team"
         teamHref={"/team/" + team.id + "?league=" + selectedLeague.id}
+        researchHref={
+          "/research?team=" + team.id + "&league=" + selectedLeague.id
+        }
       />
 
       <header className="shell team-room-header">
