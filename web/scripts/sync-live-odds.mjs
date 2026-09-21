@@ -2,7 +2,55 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY || "";
 const PROVIDER = "the-odds-api";
-const SPORT_KEY = "soccer_epl";
+const FEED_KEY = "multi-soccer";
+
+const COMPETITIONS = [
+  ["soccer_epl", "ENG-Premier League", false],
+  ["soccer_efl_champ", "ENG-Championship", false],
+  ["soccer_england_league1", "ENG-League One", false],
+  ["soccer_england_league2", "ENG-League Two", false],
+  ["soccer_spl", "SCO-Premiership", false],
+  ["soccer_spain_la_liga", "ESP-La Liga", false],
+  ["soccer_spain_segunda_division", "ESP-Segunda", false],
+  ["soccer_italy_serie_a", "ITA-Serie A", false],
+  ["soccer_italy_serie_b", "ITA-Serie B", false],
+  ["soccer_germany_bundesliga", "GER-Bundesliga", false],
+  ["soccer_germany_bundesliga2", "GER-2. Bundesliga", false],
+  ["soccer_france_ligue_one", "FRA-Ligue 1", false],
+  ["soccer_france_ligue_two", "FRA-Ligue 2", false],
+  ["soccer_netherlands_eredivisie", "NED-Eredivisie", false],
+  ["soccer_belgium_first_div", "BEL-First Division A", false],
+  ["soccer_portugal_primeira_liga", "POR-Primeira Liga", false],
+  ["soccer_turkey_super_league", "TUR-Super Lig", false],
+  ["soccer_greece_super_league", "GRE-Super League", false],
+  ["soccer_denmark_superliga", "DEN-Superliga", false],
+  ["soccer_norway_eliteserien", "NOR-Eliteserien", true],
+  ["soccer_sweden_allsvenskan", "SWE-Allsvenskan", true],
+  ["soccer_poland_ekstraklasa", "POL-Ekstraklasa", false],
+  ["soccer_switzerland_superleague", "SUI-Super League", false],
+  ["soccer_uefa_champs_league", "UEFA-Champions League", false],
+  ["soccer_uefa_europa_league", "UEFA-Europa League", false],
+  ["soccer_uefa_europa_conference_league", "UEFA-Conference League", false],
+  ["soccer_england_efl_cup", "ENG-EFL Cup", false],
+  ["soccer_fa_cup", "ENG-FA Cup", false],
+  ["soccer_spain_copa_del_rey", "ESP-Copa del Rey", false],
+  ["soccer_italy_coppa_italia", "ITA-Coppa Italia", false],
+  ["soccer_germany_dfb_pokal", "GER-DFB Pokal", false],
+  ["soccer_france_coupe_de_france", "FRA-Coupe de France", false],
+  ["soccer_usa_mls", "USA-MLS", true],
+  ["soccer_brazil_campeonato", "BRA-Serie A", true],
+  ["soccer_argentina_primera_division", "ARG-Primera Division", true],
+  ["soccer_mexico_ligamx", "MEX-Liga MX", true],
+  ["soccer_fifa_world_cup_qualifiers_europe", "INT-World Cup Qualifiers Europe", true],
+].map(([sportKey, league, calendarYear]) => ({
+  sportKey,
+  league,
+  calendarYear,
+}));
+
+const COMPETITION_BY_KEY = new Map(
+  COMPETITIONS.map((competition) => [competition.sportKey, competition]),
+);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase server credentials");
@@ -81,6 +129,41 @@ function canonicalMarket(value) {
   return String(value || "").trim();
 }
 
+function seasonCodeFor(dateValue, calendarYear = false) {
+  const date = new Date(dateValue);
+  if (!Number.isFinite(date.getTime())) return "unknown";
+  const year = date.getUTCFullYear();
+  if (calendarYear) return String(year);
+  const start = date.getUTCMonth() >= 6 ? year : year - 1;
+  return `${String(start).slice(-2)}${String(start + 1).slice(-2)}`;
+}
+
+function syntheticMatchId(sportKey, eventId) {
+  return `odds:${sportKey}:${eventId}`;
+}
+
+async function oddsApi(path, params = {}) {
+  const endpoint = new URL(`https://api.the-odds-api.com/v4/${path}`);
+  endpoint.searchParams.set("apiKey", ODDS_API_KEY);
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null) endpoint.searchParams.set(key, String(value));
+  }
+
+  const response = await fetch(endpoint, {
+    headers: { Accept: "application/json" },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Odds API ${response.status} for ${path}: ${body.slice(0, 500)}`,
+    );
+  }
+  return {
+    data: body ? JSON.parse(body) : [],
+    headers: response.headers,
+  };
+}
+
 async function sb(path, init = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
@@ -128,7 +211,7 @@ async function recordFeedStatus(fields) {
     "footy_odds_feed_status",
     [{
       provider: PROVIDER,
-      sport_key: SPORT_KEY,
+      sport_key: FEED_KEY,
       last_attempt_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...fields,
