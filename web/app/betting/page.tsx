@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BettingAgeGate } from "@/components/age-gate";
 import { BettingBoard } from "@/components/betting-board";
+import { DailyPredictions } from "@/components/daily-predictions";
 import { BettingNav } from "@/components/betting-nav";
 import { getBettingWorkspaceData } from "@/lib/betting";
 
@@ -86,12 +87,13 @@ export default async function BettingPage() {
           </div>
         ) : null}
 
+        <DailyPredictions games={data.todayGames} />
         <BettingBoard selections={data.selections} accas={data.accas} />
 
         <section className="betting-section">
           <div className="betting-section-head">
             <div>
-              <span>03 / MODEL GOVERNANCE</span>
+              <span>04 / MODEL GOVERNANCE</span>
               <h2>What is allowed to become a tip?</h2>
             </div>
           </div>
