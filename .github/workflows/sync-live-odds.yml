@@ -1,4 +1,5 @@
 name: sync-live-odds
+# Free-source verification run.
 
 on:
   workflow_dispatch:
