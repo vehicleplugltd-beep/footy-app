@@ -3,6 +3,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY || "";
 const PROVIDER = "the-odds-api";
 const FEED_KEY = "multi-soccer";
+const FREE_PRICE_PROVIDER = "sofascore";
+const SOFASCORE_API_URL = "https://api.sofascore.com/api/v1";
 
 const COMPETITIONS = [
   ["soccer_epl", "ENG-Premier League", false],
@@ -311,6 +313,270 @@ function londonDateKey(date) {
       .map((part) => [part.type, part.value]),
   );
   return `${values.year}${values.month}${values.day}`;
+}
+
+function londonIsoDate(date) {
+  const key = londonDateKey(date);
+  return `${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6, 8)}`;
+}
+
+function sofascoreDecimal(choice) {
+  const direct = Number(choice?.decimalValue ?? choice?.value);
+  if (Number.isFinite(direct) && direct > 1) return direct;
+
+  const fraction = String(choice?.fractionalValue || "").trim();
+  const parts = fraction.split("/");
+  if (parts.length === 2) {
+    const numerator = Number(parts[0]);
+    const denominator = Number(parts[1]);
+    if (
+      Number.isFinite(numerator) &&
+      Number.isFinite(denominator) &&
+      denominator > 0
+    ) {
+      return 1 + numerator / denominator;
+    }
+  }
+  return null;
+}
+
+function sofascoreSelection(event, choiceName) {
+  const raw = cleanText(choiceName);
+  if (["1", "home", "home win"].includes(raw)) return "home";
+  if (["x", "draw"].includes(raw)) return "draw";
+  if (["2", "away", "away win"].includes(raw)) return "away";
+
+  const candidate = canonicalTeam(choiceName);
+  if (candidate === canonicalTeam(event?.homeTeam?.name)) return "home";
+  if (candidate === canonicalTeam(event?.awayTeam?.name)) return "away";
+  return null;
+}
+
+function sofascoreLeague(event) {
+  const name = String(
+    event?.tournament?.uniqueTournament?.name ||
+      event?.tournament?.name ||
+      "Football",
+  ).trim();
+  const country = String(
+    event?.tournament?.category?.alpha2 ||
+      event?.tournament?.category?.flag ||
+      event?.tournament?.category?.name ||
+      "",
+  ).toUpperCase();
+
+  const key = cleanText(name);
+  const aliases = new Map([
+    ["premier league|EN", "ENG-Premier League"],
+    ["championship|EN", "ENG-Championship"],
+    ["league one|EN", "ENG-League One"],
+    ["league two|EN", "ENG-League Two"],
+    ["premiership|SC", "SCO-Premiership"],
+    ["laliga|ES", "ESP-La Liga"],
+    ["la liga|ES", "ESP-La Liga"],
+    ["serie a|IT", "ITA-Serie A"],
+    ["serie b|IT", "ITA-Serie B"],
+    ["bundesliga|DE", "GER-Bundesliga"],
+    ["2 bundesliga|DE", "GER-2. Bundesliga"],
+    ["ligue 1|FR", "FRA-Ligue 1"],
+    ["ligue 2|FR", "FRA-Ligue 2"],
+    ["eredivisie|NL", "NED-Eredivisie"],
+    ["primeira liga|PT", "POR-Primeira Liga"],
+    ["super lig|TR", "TUR-Super Lig"],
+  ]);
+
+  for (const [alias, label] of aliases) {
+    const [leagueName, code] = alias.split("|");
+    if (key === leagueName && (!code || country.startsWith(code))) return label;
+  }
+
+  return name;
+}
+
+async function sofascore(path) {
+  const response = await fetch(`${SOFASCORE_API_URL}/${path}`, {
+    headers: {
+      Accept: "application/json,text/plain,*/*",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+      Referer: "https://www.sofascore.com/",
+      "Cache-Control": "no-cache",
+    },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Sofascore ${response.status} for ${path}: ${body.slice(0, 300)}`,
+    );
+  }
+  return body ? JSON.parse(body) : {};
+}
+
+async function syncSofascorePrices(capturedAt) {
+  const date = londonIsoDate(new Date(capturedAt));
+  const [fixturesPayload, oddsPayload] = await Promise.all([
+    sofascore(`sport/football/scheduled-events/${date}`),
+    sofascore(`sport/football/odds/1/${date}`),
+  ]);
+
+  const events = fixturesPayload?.events || [];
+  const oddsByEvent = oddsPayload?.odds || {};
+
+  const dayStart = new Date(
+    new Date(capturedAt).getTime() - 18 * 60 * 60 * 1000,
+  ).toISOString();
+  const dayEnd = new Date(
+    new Date(capturedAt).getTime() + 36 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const matches =
+    (await sb(
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(dayStart)}&kickoff_at=lte.${encodeURIComponent(dayEnd)}&limit=10000`,
+    )) || [];
+
+  const existing =
+    (await sb(
+      `footy_live_odds_current?select=price_key,decimal_odds,previous_decimal_odds&provider=eq.${encodeURIComponent(FREE_PRICE_PROVIDER)}&captured_at=gte.${encodeURIComponent(new Date(new Date(capturedAt).getTime() - 7 * 24 * 60 * 60 * 1000).toISOString())}&limit=20000`,
+    )) || [];
+  const existingMap = new Map(existing.map((row) => [row.price_key, row]));
+
+  const fixtureRows = [];
+  const currentRows = [];
+  const historyRows = [];
+
+  for (const event of events) {
+    const eventId = String(event?.id || "");
+    const homeTeam = event?.homeTeam?.name;
+    const awayTeam = event?.awayTeam?.name;
+    const kickoff =
+      Number.isFinite(Number(event?.startTimestamp))
+        ? new Date(Number(event.startTimestamp) * 1000).toISOString()
+        : null;
+    if (!eventId || !homeTeam || !awayTeam || !kickoff) continue;
+
+    const candidate = {
+      home_team: homeTeam,
+      away_team: awayTeam,
+      commence_time: kickoff,
+    };
+    let footyMatch = reconcileMatch(candidate, matches);
+    if (!footyMatch) {
+      footyMatch = {
+        match_id: `sofascore:${eventId}`,
+        kickoff_at: kickoff,
+        home_team: homeTeam,
+        away_team: awayTeam,
+        league: sofascoreLeague(event),
+      };
+      matches.push(footyMatch);
+      fixtureRows.push({
+        match_id: footyMatch.match_id,
+        league: footyMatch.league,
+        season: seasonCodeFor(kickoff),
+        kickoff_at: kickoff,
+        home_team: homeTeam,
+        away_team: awayTeam,
+        status:
+          event?.status?.type === "finished"
+            ? "finished"
+            : event?.status?.type === "inprogress"
+              ? "in_progress"
+              : "scheduled",
+        source: "sofascore",
+        retrieved_at: capturedAt,
+      });
+    }
+
+    const market = oddsByEvent[eventId];
+    if (!market || market?.isLive === true) continue;
+
+    const choices = Array.isArray(market?.choices) ? market.choices : [];
+    for (const choice of choices) {
+      const selection = sofascoreSelection(event, choice?.name);
+      const price = sofascoreDecimal(choice);
+      if (!selection || !price || price <= 1) continue;
+
+      const sourceId = String(
+        choice?.sourceId ?? market?.sourceId ?? "market",
+      );
+      const priceKey = [
+        FREE_PRICE_PROVIDER,
+        eventId,
+        sourceId,
+        "1X2",
+        selection,
+      ].join("|");
+      const before = existingMap.get(priceKey);
+      const changed =
+        !before ||
+        Math.abs(Number(before.decimal_odds) - Number(price)) > 1e-9;
+
+      const row = {
+        price_key: priceKey,
+        provider: FREE_PRICE_PROVIDER,
+        provider_event_id: eventId,
+        match_id: footyMatch.match_id,
+        sport_key: "football",
+        home_team: homeTeam,
+        away_team: awayTeam,
+        commence_time: kickoff,
+        bookmaker_key: `sofascore:${sourceId}`,
+        bookmaker_name: "Sofascore market",
+        market: "1X2",
+        selection,
+        line: null,
+        decimal_odds: Number(price),
+        previous_decimal_odds: changed
+          ? Number(before?.decimal_odds) || null
+          : Number(before?.previous_decimal_odds) || null,
+        provider_last_update: null,
+        captured_at: capturedAt,
+      };
+      currentRows.push(row);
+
+      if (changed) {
+        historyRows.push({
+          price_key: priceKey,
+          provider: FREE_PRICE_PROVIDER,
+          provider_event_id: eventId,
+          match_id: footyMatch.match_id,
+          bookmaker_key: `sofascore:${sourceId}`,
+          bookmaker_name: "Sofascore market",
+          market: "1X2",
+          selection,
+          line: null,
+          decimal_odds: Number(price),
+          captured_at: capturedAt,
+        });
+      }
+    }
+  }
+
+  await upsert("footy_matches", fixtureRows, "match_id");
+  await upsert("footy_live_odds_current", currentRows, "price_key");
+  await insert("footy_live_odds_history", historyRows);
+  await upsert(
+    "footy_odds_feed_status",
+    [{
+      provider: FREE_PRICE_PROVIDER,
+      sport_key: "football",
+      last_attempt_at: capturedAt,
+      last_success_at: capturedAt,
+      events_received: events.length,
+      prices_received: currentRows.length,
+      last_error: null,
+      updated_at: capturedAt,
+    }],
+    "provider",
+  );
+
+  return {
+    events: events.length,
+    fixtureRows: fixtureRows.length,
+    prices: currentRows.length,
+    changedPrices: historyRows.length,
+    rows: currentRows,
+  };
 }
 
 function timeZoneOffsetMs(date, timeZone) {
@@ -1110,19 +1376,64 @@ async function main() {
     leagues: Math.max(openFootballSync.leagues, espnSync.leagues),
   };
 
+  let freePriceSync = {
+    events: 0,
+    fixtureRows: 0,
+    prices: 0,
+    changedPrices: 0,
+    rows: [],
+  };
+  let freePriceError = null;
+  try {
+    freePriceSync = await syncSofascorePrices(capturedAt);
+  } catch (error) {
+    freePriceError = String(error?.message || error);
+    await upsert(
+      "footy_odds_feed_status",
+      [{
+        provider: FREE_PRICE_PROVIDER,
+        sport_key: "football",
+        last_attempt_at: capturedAt,
+        last_success_at: null,
+        events_received: 0,
+        prices_received: 0,
+        last_error: freePriceError.slice(0, 1000),
+        updated_at: capturedAt,
+      }],
+      "provider",
+    );
+  }
+
+  const freeAlertsTriggered = await evaluateAlerts(
+    freePriceSync.rows,
+    capturedAt,
+  );
+  const freeClosingCapture = await captureUserClosingLines(capturedAt);
+
   if (!ODDS_API_KEY) {
     await recordFeedStatus({
       last_error: "THE_ODDS_API_KEY is not configured",
     });
     console.log(JSON.stringify({
-      status: "fixtures-only",
+      status: freePriceSync.prices > 0 ? "free-prices" : "fixtures-only",
       fixture_sources: {
         openfootball: openFootballSync,
         espn: espnSync,
       },
+      free_prices: {
+        provider: FREE_PRICE_PROVIDER,
+        events: freePriceSync.events,
+        prices: freePriceSync.prices,
+        changed_prices: freePriceSync.changedPrices,
+        error: freePriceError,
+      },
       fixtures_discovered: fixtureSync.discovered,
-      fixtures_inserted: fixtureSync.inserted,
-      odds: "skipped: THE_ODDS_API_KEY is not configured",
+      fixtures_inserted: fixtureSync.inserted + freePriceSync.fixtureRows,
+      alerts_triggered: freeAlertsTriggered,
+      closing_bets_updated: freeClosingCapture.betsUpdated,
+      closing_legs_updated: freeClosingCapture.legsUpdated,
+      closing_accas_updated: freeClosingCapture.accasUpdated,
+      paid_odds: "optional: THE_ODDS_API_KEY is not configured",
     }, null, 2));
     return;
   }
@@ -1388,11 +1699,15 @@ async function main() {
   console.log(JSON.stringify({
     status: partialErrors.length ? "partial" : "ok",
     provider: PROVIDER,
-    fixture_providers: ["openfootball", "espn"],
+    fixture_providers: ["openfootball", "espn", "sofascore"],
     openfootball: openFootballSync,
     espn: espnSync,
     fixtures_discovered: fixtureSync.discovered,
-    fixtures_inserted: fixtureSync.inserted,
+    fixtures_inserted: fixtureSync.inserted + freePriceSync.fixtureRows,
+    free_price_provider: FREE_PRICE_PROVIDER,
+    free_price_events: freePriceSync.events,
+    free_prices: freePriceSync.prices,
+    free_changed_prices: freePriceSync.changedPrices,
     fixture_leagues: fixtureSync.leagues,
     active_competitions: activeCompetitions.length,
     discovered_events: allDiscoveredEvents.length,
