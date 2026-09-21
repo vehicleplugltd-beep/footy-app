@@ -1909,8 +1909,6 @@ export function TeamRoomDashboard({
               </div>
             </section>
           </div>
-
-            </div>
           </details>
 
           <details className="counterplay-caveats">
