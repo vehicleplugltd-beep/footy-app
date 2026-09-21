@@ -20,6 +20,11 @@ import {
   TeamRoomWorkflowRail,
   type WorkflowPhase,
 } from "@/components/team-room/workflow-nav";
+import {
+  TeamRoomPhaseHeading,
+  TeamRoomReferenceDrawer,
+  TeamRoomSummary,
+} from "@/components/team-room/structure";
 import type {
   CounterPosture,
   LeagueResponse,
@@ -49,14 +54,6 @@ function percentileRating(
     1,
     Math.min(99, Math.round((below / peers.length) * 100)),
   );
-}
-
-function ratingBand(value: number) {
-  if (value >= 80) return "Elite";
-  if (value >= 65) return "Strong";
-  if (value >= 50) return "Okay";
-  if (value >= 35) return "Concern";
-  return "Weak";
 }
 
 export function TeamRoomDashboard({
@@ -528,58 +525,33 @@ export function TeamRoomDashboard({
         ) : null}
       </div>
 
-      <section className="team-room-scoreboard" aria-label="Team Room summary">
-        <div className="team-room-scoreboard-primary">
-          <span>NEXT ACTION</span>
-          <strong>
-            {intelligenceLoading
-              ? "CHECKING"
-              : portfolioPlan?.action.replaceAll("_", " ") ??
-                (transfer ? "MOVE" : "HOLD")}
-          </strong>
-          <small>
-            {intelligenceLoading
-              ? "Building recommendation"
-              : portfolioPlan?.headline ??
-                (transfer
-                  ? transfer.out.name + " → " + transfer.in.name
-                  : "No move clears threshold")}
-          </small>
-        </div>
-        <div>
-          <span>LEAGUE RANK</span>
-          <strong>#{leagueRank ?? "—"}</strong>
-          <small>{leagueName}</small>
-        </div>
-        <div>
-          <span>SQUAD NOW</span>
-          <strong>{squadNow ?? "—"}</strong>
-          <small>
-            {squadNow != null
-              ? ratingBand(squadNow) + " · current squad quality"
-              : "Loading"}
-          </small>
-        </div>
-        <div>
-          <span>6GW OUTLOOK</span>
-          <strong>{squadFuture ?? "—"}</strong>
-          <small>
-            {squadFuture != null
-              ? ratingBand(squadFuture) + " · process + fixtures"
-              : "Loading"}
-          </small>
-        </div>
-      </section>
+      <TeamRoomSummary
+        loading={intelligenceLoading}
+        action={
+          portfolioPlan?.action.replaceAll("_", " ") ??
+          (transfer ? "MOVE" : "HOLD")
+        }
+        headline={
+          portfolioPlan?.headline ??
+          (transfer
+            ? transfer.out.name + " → " + transfer.in.name
+            : "No move clears threshold")
+        }
+        leagueRank={leagueRank}
+        leagueName={leagueName}
+        squadNow={squadNow}
+        squadFuture={squadFuture}
+      />
 
       <TeamRoomWorkflowRail active={activeWorkflowPhase} />
 
-      <div className="team-room-phase-heading team-room-phase-heading-decision">
-        <div>
-          <span>1 / DECIDE</span>
-          <strong>Start with the action, then inspect the evidence.</strong>
-        </div>
-        <small>Recommendation → league pressure → plan</small>
-      </div>
+      <TeamRoomPhaseHeading
+        step={1}
+        label="DECIDE"
+        title="Start with the action, then inspect the evidence."
+        caption="Recommendation → league pressure → plan"
+        tone="decision"
+      />
 
       <section className="team-room-command-grid" id="decision">
         <article className="team-room-block team-room-command-card">
@@ -777,13 +749,14 @@ export function TeamRoomDashboard({
         </article>
       </section>
 
-      <div className="team-room-phase-heading" id="plan">
-        <div>
-          <span>2 / PLAN</span>
-          <strong>Build the path, then size the risk.</strong>
-        </div>
-        <small>Portfolio structure → CounterPlay → risk posture</small>
-      </div>
+      <TeamRoomPhaseHeading
+        step={2}
+        label="PLAN"
+        title="Build the path, then size the risk."
+        caption="Portfolio structure → CounterPlay → risk posture"
+        id="plan"
+        tone="plan"
+      />
 
       {portfolioPlan ? (
         <section className="team-room-block portfolio-health" id="portfolio">
@@ -1426,13 +1399,13 @@ export function TeamRoomDashboard({
 
       {counterPlay ? (
         <>
-          <div className="team-room-phase-heading team-room-phase-heading-test">
-            <div>
-              <span>3 / TEST</span>
-              <strong>Challenge the plan without changing the recommendation.</strong>
-            </div>
-            <small>Custom transfer / captain → same model → side-by-side result</small>
-          </div>
+          <TeamRoomPhaseHeading
+            step={3}
+            label="TEST"
+            title="Challenge the plan without changing the recommendation."
+            caption="Custom transfer / captain → same model → side-by-side result"
+            tone="test"
+          />
 
           <section className="team-room-block team-room-test-panel" id="what-if">
             <div className="counterplay-whatif-shell" aria-busy={whatIfLoading}>
@@ -1583,13 +1556,13 @@ export function TeamRoomDashboard({
         </>
       ) : null}
 
-      <div className="team-room-phase-heading team-room-phase-heading-review">
-        <div>
-          <span>4 / REVIEW</span>
-          <strong>Judge the decision, not just the score.</strong>
-        </div>
-        <small>Frozen expectations, regret and outcome variance</small>
-      </div>
+      <TeamRoomPhaseHeading
+        step={4}
+        label="REVIEW"
+        title="Judge the decision, not just the score."
+        caption="Frozen expectations, regret and outcome variance"
+        tone="review"
+      />
 
       {decisionQuality ? (
         <section className="team-room-block decision-quality-panel" id="audit">
@@ -1750,137 +1723,17 @@ export function TeamRoomDashboard({
         </section>
       ) : null}
 
-      <details className="team-room-reference-drawer" id="reference">
-        <summary>
-          <div>
-            <span>REFERENCE</span>
-            <strong>Squad ratings + opponent resources</strong>
-          </div>
-          <small>Supporting evidence kept outside the four-step decision flow.</small>
-        </summary>
-        <div className="team-room-reference-content">
-          <section className="team-room-block" id="squad">
-            <div className="team-room-block-head">
-              <div>
-                <span>SQUAD</span>
-                <h2>Current team + player ratings</h2>
-              </div>
-              <small>
-                Tap any player for EPA, fixtures, risks and source detail ·{" "}
-                <Link href={researchHref + "#players"}>research every player →</Link>
-              </small>
-            </div>
-
-            <div className="team-room-player-table">
-              {squadRatings.map(
-                ({ pick, profile, now, future }) => (
-                  <button
-                    type="button"
-                    key={pick.id}
-                    className="team-room-player-row"
-                    onClick={() => {
-                      setSelectedTeam(null);
-                      setSelectedPlayer(profile);
-                    }}
-                    aria-label={"Open " + pick.name + " player profile"}
-                  >
-                    <div className="team-room-player-name">
-                      <strong>{pick.name}</strong>
-                      <small>
-                        {pick.team} · {pick.position} · £
-                        {pick.price.toFixed(1)}m
-                      </small>
-                      <em>{profile.reasons[0] ?? "Role, process and fixtures drive the rating."}</em>
-                    </div>
-                    <div>
-                      <span>Now</span>
-                      <b>{now}</b>
-                      <small>{ratingBand(now)}</small>
-                    </div>
-                    <div>
-                      <span>6GW</span>
-                      <b>{future}</b>
-                      <small>
-                        {profile.bestWindow.startName}–
-                        {profile.bestWindow.endName}
-                      </small>
-                    </div>
-                    <div>
-                      <span>EPA</span>
-                      <b>
-                        {profile.epa.epa >= 0 ? "+" : ""}
-                        {profile.epa.epa.toFixed(2)}
-                      </b>
-                      <small>
-                        {profile.epa.undervalued
-                          ? "Undervalued"
-                          : profile.player.selectedBy.toFixed(1) +
-                            "% owned"}
-                      </small>
-                    </div>
-                    <div>
-                      <span>Available</span>
-                      <b>{profile.player.availability}%</b>
-                      <small>
-                        {profile.player.news ||
-                          "No current blocker"}
-                      </small>
-                    </div>
-                  </button>
-                ),
-              )}
-            </div>
-          </section>
-
-          <section className="team-room-block">
-            <div className="team-room-block-head">
-              <div>
-                <span>OPPONENT RESOURCES</span>
-                <h2>Chips, transfers and behaviour</h2>
-              </div>
-              <small>Public FPL history only · tap any manager for the full dossier</small>
-            </div>
-
-            <div className="team-room-rivals">
-              {resourceRows.slice(0, 6).map(
-                ({ standing, history }) => (
-                  <button
-                    type="button"
-                    key={standing.entry_id}
-                    className={
-                      standing.entry_id === teamId ? "you" : ""
-                    }
-                    onClick={() => setSelectedManager(standing)}
-                    aria-label={"Open " + standing.entry_name + " opposition profile"}
-                  >
-                    <div>
-                      <strong>{standing.entry_name}</strong>
-                      <small>
-                        #{standing.rank} · {history.activity}
-                      </small>
-                    </div>
-                    <div>
-                      <span>FT est.</span>
-                      <b>{history.estimatedFreeTransfers}</b>
-                    </div>
-                    <div>
-                      <span>Hits</span>
-                      <b>-{history.totalHitCost}</b>
-                    </div>
-                    <div>
-                      <span>Chips left</span>
-                      <b>{history.currentHalfRemaining.length}</b>
-                    </div>
-                  </button>
-                ),
-              )}
-            </div>
-            <a className="team-room-deep-link" href="#counterplay">
-              See how rivals change the plan →
-            </a>
-          </section>
-        </div>
-      </details>
+      <TeamRoomReferenceDrawer
+        squadRatings={squadRatings}
+        researchHref={researchHref}
+        resourceRows={resourceRows}
+        teamId={teamId}
+        onPlayerOpen={(profile) => {
+          setSelectedTeam(null);
+          setSelectedPlayer(profile);
+        }}
+        onManagerOpen={setSelectedManager}
+      />
 
       <TeamRoomMobileDock
         active={activeWorkflowPhase}
