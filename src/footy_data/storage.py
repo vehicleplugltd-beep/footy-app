@@ -476,21 +476,28 @@ class SupabaseRESTReader:
     def model_market_validation(
         self,
         model_version: str | None = None,
+        league: str | None = None,
     ) -> pd.DataFrame:
         rows = self._get_all(
             "footy_model_market_validation",
             (
-                "model_version,market,status,sample_size,"
+                "model_version,league,market,status,sample_size,"
                 "model_log_loss,benchmark_log_loss,close_roi,clv_proxy,"
                 "bookmaker_reference,notes,evaluated_at"
             ),
         )
         frame = pd.DataFrame(rows)
-        if frame.empty or model_version is None:
+        if frame.empty:
             return frame
-        return frame[
-            frame["model_version"].astype(str) == str(model_version)
-        ].reset_index(drop=True)
+        if model_version is not None:
+            frame = frame[
+                frame["model_version"].astype(str) == str(model_version)
+            ].copy()
+        if league is not None:
+            frame = frame[
+                frame["league"].astype(str) == str(league)
+            ].copy()
+        return frame.reset_index(drop=True)
 
     def upcoming_matches(
         self,
