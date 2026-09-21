@@ -48,6 +48,12 @@ type LocalExposure = {
 
 type CounterPosture = "PROTECT" | "HYBRID" | "ATTACK";
 
+type CounterWhatIfRequest = {
+  outId: number | null;
+  inId: number | null;
+  captainId: number | null;
+};
+
 async function localPlayerDirectory() {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -873,6 +879,7 @@ function buildCounterPlay(
   playerDirectory: Map<number, { id: number; name: string; team: string }>,
   posture: CounterPosture,
   postureSource: "USER" | "INFERRED",
+  whatIfRequest: CounterWhatIfRequest | null,
 ) {
   const rivalByEntry = new Map(
     analysis.rivals.map((team) => [team.entryId, team]),
@@ -1145,6 +1152,77 @@ function buildCounterPlay(
     iteration: number,
   ) => rivalVectorForIteration(entryId, iteration)?.transfer ?? null;
 
+  const whatIfPool = new Map<number, RankedPlayer>();
+  for (const player of analysis.counterPlayTransferPool ?? []) {
+    whatIfPool.set(player.id, player);
+  }
+  for (const move of analysis.manager.weakLinks) {
+    if (move.replacement) whatIfPool.set(move.replacement.id, move.replacement);
+  }
+
+  const whatIfOptions = {
+    bank: analysis.manager.bank,
+    squad: analysis.manager.squad.map((player) => ({
+      id: player.id,
+      name: player.name,
+      team: player.team,
+      position: player.position,
+      price: player.price,
+      score: player.assistantScore,
+    })),
+    replacement_pool: [...whatIfPool.values()]
+      .filter(
+        (player) =>
+          !analysis.manager.squad.some((owned) => owned.id === player.id) &&
+          player.availability >= 75 &&
+          player.price > 0,
+      )
+      .sort(
+        (a, b) =>
+          b.assistantScore - a.assistantScore ||
+          b.valueScore - a.valueScore,
+      )
+      .slice(0, 60)
+      .map((player) => ({
+        id: player.id,
+        name: player.name,
+        team: player.team,
+        position: player.position,
+        price: player.price,
+        score: player.assistantScore,
+        selected_by: player.selectedBy,
+      })),
+  };
+
+  let whatIfStatus:
+    | {
+        status: "IDLE";
+        error: null;
+        selection: null;
+      }
+    | {
+        status: "INVALID";
+        error: string;
+        selection: {
+          out_id: number | null;
+          in_id: number | null;
+          captain_id: number | null;
+        };
+      }
+    | {
+        status: "VALID";
+        error: null;
+        selection: {
+          out_id: number | null;
+          in_id: number | null;
+          captain_id: number | null;
+        };
+      } = {
+    status: "IDLE",
+    error: null,
+    selection: null,
+  };
+
   const candidates: Array<{
     id: string;
     label: string;
@@ -1223,6 +1301,143 @@ function buildCounterPlay(
       captain: captainMove.player,
       style: candidateStyle,
     });
+  }
+
+  if (whatIfRequest) {
+    const selection = {
+      out_id: whatIfRequest.outId,
+      in_id: whatIfRequest.inId,
+      captain_id: whatIfRequest.captainId,
+    };
+    let customTransfer: { out: RankedPlayer; in: RankedPlayer } | null = null;
+    let customSquad = [...analysis.manager.squad];
+    let validationError: string | null = null;
+
+    if (
+      (whatIfRequest.outId == null) !==
+      (whatIfRequest.inId == null)
+    ) {
+      validationError =
+        "Choose both a player out and a replacement, or leave both blank.";
+    } else if (
+      whatIfRequest.outId != null &&
+      whatIfRequest.inId != null
+    ) {
+      const out = analysis.manager.squad.find(
+        (player) => player.id === whatIfRequest.outId,
+      );
+      const incoming = whatIfPool.get(whatIfRequest.inId);
+      if (!out || !incoming) {
+        validationError =
+          "That transfer is no longer available in the current CounterPlay pool.";
+      } else if (out.position !== incoming.position) {
+        validationError = "What-If transfers must keep the same FPL position.";
+      } else if (
+        analysis.manager.squad.some((player) => player.id === incoming.id)
+      ) {
+        validationError = "The replacement is already in your squad.";
+      } else if (
+        incoming.price >
+        out.price + analysis.manager.bank + 0.001
+      ) {
+        validationError =
+          "That replacement is outside the current listed-price budget.";
+      } else {
+        const clubCounts = new Map<string, number>();
+        for (const player of analysis.manager.squad) {
+          if (player.id === out.id) continue;
+          clubCounts.set(
+            player.team,
+            (clubCounts.get(player.team) ?? 0) + 1,
+          );
+        }
+        if ((clubCounts.get(incoming.team) ?? 0) >= 3) {
+          validationError =
+            "That transfer would exceed the three-player club limit.";
+        } else {
+          customTransfer = { out, in: incoming };
+          customSquad = analysis.manager.squad.map((player) =>
+            player.id === out.id ? incoming : player,
+          );
+        }
+      }
+    }
+
+    const customCaptain =
+      whatIfRequest.captainId == null
+        ? leagueStrategy.captain_moves[0]?.player ??
+          analysis.manager.recommendedCaptain ??
+          null
+        : customSquad.find(
+            (player) => player.id === whatIfRequest.captainId,
+          ) ?? null;
+
+    if (
+      !validationError &&
+      whatIfRequest.captainId != null &&
+      !customCaptain
+    ) {
+      validationError =
+        "The selected captain is not in the post-transfer squad.";
+    }
+    if (
+      !validationError &&
+      !customTransfer &&
+      whatIfRequest.captainId == null
+    ) {
+      validationError =
+        "Choose a transfer, a captain change, or both before running What-If.";
+    }
+
+    if (validationError) {
+      whatIfStatus = {
+        status: "INVALID",
+        error: validationError,
+        selection,
+      };
+    } else {
+      const comparisonPlayer = customTransfer?.in ?? customCaptain;
+      const targetOwns =
+        comparisonPlayer != null &&
+        target?.team.squad.some(
+          (player) => player.id === comparisonPlayer.id,
+        );
+      const chaserOwns =
+        comparisonPlayer != null &&
+        primaryChaser?.team.squad.some(
+          (player) => player.id === comparisonPlayer.id,
+        );
+      const customStyle =
+        target
+          ? targetOwns
+            ? ("BLOCK" as const)
+            : ("ATTACK" as const)
+          : primaryChaser
+            ? chaserOwns
+              ? ("BLOCK" as const)
+              : ("BALANCED" as const)
+            : ("BALANCED" as const);
+
+      candidates.push({
+        id: "what-if",
+        label: customTransfer
+          ? customTransfer.out.name +
+            " → " +
+            customTransfer.in.name +
+            (customCaptain
+              ? " · C " + customCaptain.name
+              : "")
+          : "Captain " + (customCaptain?.name ?? "custom option"),
+        transfer: customTransfer,
+        captain: customCaptain,
+        style: customStyle,
+      });
+      whatIfStatus = {
+        status: "VALID",
+        error: null,
+        selection,
+      };
+    }
   }
 
   const iterations = 10000;
@@ -1356,7 +1571,12 @@ function buildCounterPlay(
       return b.mean_score - a.mean_score;
     });
 
-  const bestScenario = rankedScenarios[0] ?? baseline;
+  const recommendationScenarios = rankedScenarios.filter(
+    (scenario) => scenario.id !== "what-if",
+  );
+  const whatIfNextGameweek =
+    rankedScenarios.find((scenario) => scenario.id === "what-if") ?? null;
+  const bestScenario = recommendationScenarios[0] ?? baseline;
   const bestProbabilityDelta =
     bestScenario?.objective_probability != null && baseline
       ? bestScenario.objective_probability - baseline.objective_probability
@@ -2116,7 +2336,12 @@ function buildCounterPlay(
           }
           return b.mean_score - a.mean_score;
         });
-      const best = ranked[0] ?? null;
+      const whatIfScenario =
+        ranked.find((scenario) => scenario.id === "what-if") ?? null;
+      const recommendationRanked = ranked.filter(
+        (scenario) => scenario.id !== "what-if",
+      );
+      const best = recommendationRanked[0] ?? null;
       const delta = best?.probability_delta ?? 0;
       const magnitude = Math.abs(delta);
       const band =
@@ -2135,7 +2360,8 @@ function buildCounterPlay(
           iterations: pathIterations,
           baseline: hold,
           recommended_scenario: best,
-          scenarios: ranked,
+          what_if_scenario: whatIfScenario,
+          scenarios: recommendationRanked,
           game_theory_impact: {
             band,
             probability_delta: delta,
@@ -2326,8 +2552,25 @@ function buildCounterPlay(
       explanation: gameTheoryExplanation,
     },
     horizon_results: horizonResults,
-    scenarios: rankedScenarios.slice(0, 7),
-    recommended_scenario: rankedScenarios[0] ?? null,
+    what_if: {
+      ...whatIfStatus,
+      options: whatIfOptions,
+      next_gameweek:
+        whatIfStatus.status === "VALID" ? whatIfNextGameweek : null,
+      horizons:
+        whatIfStatus.status === "VALID"
+          ? Object.fromEntries(
+              Object.entries(horizonResults).map(([key, value]) => [
+                key,
+                value.what_if_scenario ?? null,
+              ]),
+            )
+          : {},
+      caveat:
+        "What-If uses current listed prices for affordability because public league data does not expose exact selling-price profit. It reuses the same rival-response and empirical scoring model as CounterPlay.",
+    },
+    scenarios: recommendationScenarios.slice(0, 7),
+    recommended_scenario: recommendationScenarios[0] ?? null,
     local_exposure: localMatrix,
     primary_threats: threatPlayers,
     rival_vectors: rivalVectors,
@@ -3006,6 +3249,26 @@ export async function GET(
     postureParam === "PROTECT" || postureParam === "HYBRID" || postureParam === "ATTACK"
       ? postureParam
       : null;
+  const parseOptionalId = (name: string) => {
+    const raw = url.searchParams.get(name);
+    if (raw == null || raw === "") return null;
+    const value = Number(raw);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  };
+  const whatIfOutId = parseOptionalId("whatif_out");
+  const whatIfInId = parseOptionalId("whatif_in");
+  const whatIfCaptainId = parseOptionalId("whatif_captain");
+  const whatIfRequested =
+    url.searchParams.has("whatif_out") ||
+    url.searchParams.has("whatif_in") ||
+    url.searchParams.has("whatif_captain");
+  const whatIfRequest: CounterWhatIfRequest | null = whatIfRequested
+    ? {
+        outId: whatIfOutId,
+        inId: whatIfInId,
+        captainId: whatIfCaptainId,
+      }
+    : null;
 
   if (!Number.isInteger(leagueId) || leagueId <= 0) {
     return NextResponse.json(
@@ -3157,6 +3420,7 @@ export async function GET(
       playerDirectory,
       selectedPosture,
       requestedPosture ? "USER" : "INFERRED",
+      whatIfRequest,
     );
     const portfolioPlan = buildPortfolioPlan(
       analysis,
