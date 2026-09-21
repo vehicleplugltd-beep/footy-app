@@ -789,6 +789,7 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     fixtures = normalise_upcoming_fixtures(
         schedule,
         horizon_days=args.horizon_days,
+        source_name=schedule_source,
     )
 
     diagnostics = []
