@@ -222,6 +222,9 @@ export type RankedPlayer = {
   availability: number;
   xgiPer90: number;
   xgPer90: number;
+  npxgPer90: number;
+  nonPenaltyXgiShare: number | null;
+  nonPenaltyXgiShareMinutes: number;
   xaPer90: number;
   xgcPer90: number;
   minutes: number;
@@ -852,7 +855,10 @@ export type PlayerProcessEvidence = {
   premierLeagueMinutes: number;
   premierLeagueMatches: number;
   recentXgPer90: number;
+  recentNpxgPer90: number;
   recentXaPer90: number;
+  nonPenaltyXgiShare: number | null;
+  nonPenaltyXgiShareMinutes: number;
   recentXgotPer90: number;
   chancesCreatedPer90: number;
   boxTouchesPer90: number;
@@ -890,6 +896,7 @@ type PlayerMetricRow = {
   kickoff_at: string | null;
   minutes: number | string | null;
   xg: number | string | null;
+  npxg: number | string | null;
   xa: number | string | null;
   xgot: number | string | null;
   chances_created: number | string | null;
@@ -961,7 +968,7 @@ function playerMinutesInWindow(
 async function footyPlayerProcesses() {
   const [rows, priors] = await Promise.all([
     supabaseRest<PlayerMetricRow>(
-      `footy_player_match_metrics?select=player_id,player_code,team,competition,kickoff_at,minutes,xg,xa,xgot,chances_created,box_touches,final_third_passes,defensive_contributions,xgot_faced,goals_prevented,verification_status&season=eq.${CURRENT_FOOTY_SEASON}&verified=eq.true&order=kickoff_at.asc`,
+      `footy_player_match_metrics?select=player_id,player_code,team,competition,kickoff_at,minutes,xg,npxg,xa,xgot,chances_created,box_touches,final_third_passes,defensive_contributions,xgot_faced,goals_prevented,verification_status&season=eq.${CURRENT_FOOTY_SEASON}&verified=eq.true&order=kickoff_at.asc`,
     ),
     supabaseRest<PlayerSeasonPriorRow>(
       "footy_player_season_priors?select=player_code,player_name,position,team,minutes,xg_per90,xa_per90,xgi_per90,defensive_contribution_per90,saves_per90,verification_status&season=eq.2526&verified=eq.true",
@@ -982,6 +989,40 @@ async function footyPlayerProcesses() {
     const group = byPlayerCode.get(code) ?? [];
     group.push(row);
     byPlayerCode.set(code, group);
+  }
+
+  const teamNonPenaltyXgi = new Map<string, number>();
+  const playerTeamNonPenaltyXgi = new Map<string, number>();
+  const playerTeamRoleMinutes = new Map<string, number>();
+  for (const row of rows) {
+    if (String(row.competition).toLowerCase() !== "prem") continue;
+    if (
+      row.npxg === null ||
+      row.npxg === undefined ||
+      row.npxg === "" ||
+      row.xa === null ||
+      row.xa === undefined ||
+      row.xa === ""
+    ) continue;
+    const code = Number(row.player_code);
+    if (!Number.isFinite(code) || !row.team) continue;
+    const minutes = Math.max(0, num(row.minutes));
+    if (minutes <= 0) continue;
+    const teamKey = canonicalTeam(String(row.team));
+    const contribution = Math.max(0, num(row.npxg)) + Math.max(0, num(row.xa));
+    const playerTeamKey = code + "|" + teamKey;
+    teamNonPenaltyXgi.set(
+      teamKey,
+      (teamNonPenaltyXgi.get(teamKey) ?? 0) + contribution,
+    );
+    playerTeamNonPenaltyXgi.set(
+      playerTeamKey,
+      (playerTeamNonPenaltyXgi.get(playerTeamKey) ?? 0) + contribution,
+    );
+    playerTeamRoleMinutes.set(
+      playerTeamKey,
+      (playerTeamRoleMinutes.get(playerTeamKey) ?? 0) + minutes,
+    );
   }
 
   const output = new Map<number, PlayerProcessEvidence>();
@@ -1006,6 +1047,19 @@ async function footyPlayerProcesses() {
     const prior = priorByCode.get(playerCode) ?? null;
     const priorMinutes = prior ? Math.max(0, num(prior.minutes)) : 0;
     const currentTeam = latestRow?.team ?? null;
+    const currentTeamKey = currentTeam ? canonicalTeam(String(currentTeam)) : null;
+    const roleKey = currentTeamKey ? playerCode + "|" + currentTeamKey : null;
+    const playerNonPenaltyXgi = roleKey
+      ? playerTeamNonPenaltyXgi.get(roleKey) ?? 0
+      : 0;
+    const teamNpXgi = currentTeamKey
+      ? teamNonPenaltyXgi.get(currentTeamKey) ?? 0
+      : 0;
+    const nonPenaltyXgiShare =
+      teamNpXgi > 0 ? playerNonPenaltyXgi / teamNpXgi : null;
+    const nonPenaltyXgiShareMinutes = roleKey
+      ? playerTeamRoleMinutes.get(roleKey) ?? 0
+      : 0;
     const priorTeam = prior?.team ?? null;
     const clubChangedSincePrior =
       Boolean(currentTeam && priorTeam) &&
@@ -1109,7 +1163,10 @@ async function footyPlayerProcesses() {
       premierLeagueMinutes,
       premierLeagueMatches: leagueRows.length,
       recentXgPer90: playerRate90(recent, "xg"),
+      recentNpxgPer90: playerRate90(recent, "npxg"),
       recentXaPer90: playerRate90(recent, "xa"),
+      nonPenaltyXgiShare,
+      nonPenaltyXgiShareMinutes,
       recentXgotPer90: playerRate90(recent, "xgot"),
       chancesCreatedPer90: playerRate90(recent, "chances_created"),
       boxTouchesPer90: playerRate90(recent, "box_touches"),
@@ -1384,6 +1441,10 @@ function rankPlayers(
         availability: available,
         xgiPer90: xgi90,
         xgPer90: xg90,
+        npxgPer90: playerProcess?.recentNpxgPer90 ?? 0,
+        nonPenaltyXgiShare: playerProcess?.nonPenaltyXgiShare ?? null,
+        nonPenaltyXgiShareMinutes:
+          playerProcess?.nonPenaltyXgiShareMinutes ?? 0,
         xaPer90: xa90,
         xgcPer90: xgc90,
         minutes: player.minutes,
@@ -1948,6 +2009,7 @@ function buildPortfolioHealth(
     risks,
     underlying: [
       "Official FPL prices, ownership, availability, starts and minutes",
+      "Verified current-season NPxG/90 and team non-penalty xGI role share when provider penalty convention is validated",
       "Regressed player process and team attack/defence process",
       "Best-XI formation-constrained model score across 6GW and 8GW",
       "Actual FPL bench positions, current bench market value and current model-score leakage",
@@ -1955,7 +2017,6 @@ function buildPortfolioHealth(
     ],
     missing: [
       "True global effective ownership (official ownership is shown only as a field-ownership proxy)",
-      "Verified player NPxG/90 and player share of team non-penalty xGI",
       "Manager-specific selling prices are private; price-band routes use current market price and should be treated as indicative",
     ],
   };
@@ -2693,13 +2754,13 @@ export async function getLeagueManagerEdgeAnalysis(
         "Official field ownership plus actual connected mini-league squad/captain overlap",
         "Mini-league points gaps, chips, hits and estimated free transfers",
         "Portfolio structure: bank buffer, actual bench cover, price-band routes and 6GW/8GW best-XI model scores",
+        "Verified current-season player NPxG/90 and share of team non-penalty xGI from provider penalty-event lineage",
         volatilitySnapshot?.payload
           ? `Empirical FPL scoring volatility/tails calibrated from ${volatilitySnapshot.payload.sample_count.toLocaleString()} leakage-controlled prior-season player-Gameweek samples`
           : "CounterPlay volatility calibration snapshot pending; heuristic fallback remains active",
       ],
       notMeasured: [
         "True global effective ownership (EO); official ownership is not relabelled as EO",
-        "Verified player NPxG/90 and non-penalty xGI share of team output",
         "Player chemistry",
         "Confirmed tactical role changes without reliable public data",
         "True field tilt and defensive line height when not present in a verified feed",
@@ -2727,11 +2788,13 @@ export type PlayerDatabasePayload = {
 };
 
 export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
-  const [bootstrapSnapshot, fixturesSnapshot, process] = await Promise.all([
-    cachedFpl<Bootstrap>("bootstrap-static"),
-    cachedFpl<Fixture[]>("fixtures"),
-    footyProcesses(),
-  ]);
+  const [bootstrapSnapshot, fixturesSnapshot, process, playerProcesses] =
+    await Promise.all([
+      cachedFpl<Bootstrap>("bootstrap-static"),
+      cachedFpl<Fixture[]>("fixtures"),
+      footyProcesses(),
+      footyPlayerProcesses(),
+    ]);
 
   let bootstrap: Bootstrap | null = null;
   let fixtures: Fixture[] | null = null;
@@ -2767,6 +2830,7 @@ export async function getPlayerDatabase(): Promise<PlayerDatabasePayload> {
     process,
     true,
     true,
+    playerProcesses,
   );
 
   return {
@@ -3704,6 +3768,7 @@ export async function getScoutIntelligence(
       process,
       false,
       true,
+      playerProcesses,
     ),
   }));
   const maps = rankings.map(({ event, players }) => ({
@@ -3720,6 +3785,7 @@ export async function getScoutIntelligence(
       process,
       false,
       true,
+      playerProcesses,
     );
 
   const elementById = new Map(bootstrap.elements.map((item) => [item.id, item]));

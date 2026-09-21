@@ -864,6 +864,10 @@ create table if not exists public.footy_player_match_metrics (
   shots double precision,
   shots_on_target double precision,
   xg double precision,
+  npxg double precision,
+  penalties_scored double precision,
+  penalties_missed double precision,
+  penalty_xg_value double precision,
   xa double precision,
   xgot double precision,
   big_chances_missed double precision,
@@ -897,6 +901,12 @@ create table if not exists public.footy_player_match_metrics (
   retrieved_at timestamptz not null default now(),
   unique (provider_match_id, player_id, source)
 );
+
+alter table public.footy_player_match_metrics
+  add column if not exists npxg double precision,
+  add column if not exists penalties_scored double precision,
+  add column if not exists penalties_missed double precision,
+  add column if not exists penalty_xg_value double precision;
 
 create index if not exists idx_footy_player_metrics_player_kickoff
   on public.footy_player_match_metrics(player_id, kickoff_at desc);
