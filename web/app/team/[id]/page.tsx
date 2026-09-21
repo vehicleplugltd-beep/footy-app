@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { TeamPitch } from "@/components/team-pitch";
 import { TeamRoomDashboard } from "@/components/team-room-dashboard";
 import { ProductNav } from "@/components/product-nav";
+import { TeamRoomLeagueSwitcher } from "@/components/team-room-league-switcher";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
 
 export default async function TeamPage({
@@ -77,13 +78,15 @@ export default async function TeamPage({
           </p>
         </div>
         <div className="team-room-context">
-          <div>
-            <span>League</span>
-            <strong>{selectedLeague.name}</strong>
-            <small>
-              Rank #{selectedLeague.entry_rank ?? "—"}
-            </small>
-          </div>
+          <TeamRoomLeagueSwitcher
+            teamId={team.id}
+            currentLeagueId={selectedLeague.id}
+            leagues={leagues.map((league) => ({
+              id: league.id,
+              name: league.name,
+              rank: league.entry_rank ?? null,
+            }))}
+          />
           <div>
             <span>Points</span>
             <strong>{team.overallPoints.toLocaleString()}</strong>
