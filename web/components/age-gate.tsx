@@ -22,7 +22,8 @@ export function BettingAgeGate() {
         <span className="eyebrow">18+ betting-information area</span>
         <h2>Confirm you are 18 or over</h2>
         <p>
-          Footy&apos;s betting-information tools are for adults only. We provide analysis and tips; we do not accept or place bets.
+          Footy&apos;s betting-information tools are for adults only. We provide
+          analytics and decision support; we do not accept or place bets.
         </p>
         <button
           type="button"
@@ -33,7 +34,7 @@ export function BettingAgeGate() {
         >
           I am 18 or over
         </button>
-        <Link href="/fpl">Under 18? Use the free FPL assistant instead</Link>
+        <Link href="/">Under 18? Return to the FPL assistant</Link>
       </div>
     </div>
   );
