@@ -281,7 +281,10 @@ def command_fpl_core_ingest(args: argparse.Namespace) -> None:
     quarantined_player_rows = writer.quarantine_player_match_metrics(
         unprocessed_player_match_ids,
         source="fpl-core-insights",
-        reason="QUARANTINED_PROVIDER_PLAYER_STATS_UNPROCESSED",
+        # BLOCKED is the schema-approved state for provider evidence that
+        # must not enter the model. The data-quality payload below preserves
+        # the specific provider match ids and explains why they were blocked.
+        reason="BLOCKED",
     )
     writer.insert_data_quality_run(
         source="fpl-core-insights",
