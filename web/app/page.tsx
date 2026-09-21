@@ -3,7 +3,6 @@ import { TeamConnectForm } from "@/components/team-connect-form";
 import { FrontOffice } from "@/components/front-office";
 import { ProductNav } from "@/components/product-nav";
 import { getFplTeamDiscovery } from "@/lib/fpl-team";
-import { footyQuip } from "@/lib/footy-voice";
 
 export default async function Home({
   searchParams,
@@ -32,19 +31,30 @@ export default async function Home({
     <main className="league-edge-app footy-hq">
       <ProductNav active="hq" />
 
-      <section className="shell hq-connect">
+      <section className={"shell hq-connect " + (team ? "hq-connect-returning" : "")}>
         <div className="hq-connect-copy">
           <span>FPL HQ</span>
-          <h1>Connect your team. See what matters now — and why.</h1>
+          <h1>
+            {team
+              ? "Choose the league battle. Footy will build the plan."
+              : "Connect your team. Get to the decision faster."}
+          </h1>
           <p>
-            Footy turns live FPL state, mini-league pressure and underlying
-            football process into a clear decision, its evidence, and the
-            failure mode that could make it wrong.
+            {team
+              ? "Your team is connected. Pick the mini-league context below, then use Team Room to decide, plan, test and review."
+              : "Footy combines live FPL state, underlying football process and mini-league pressure into one decision workflow."}
           </p>
-          <blockquote className="footy-quip">{footyQuip("hq")}</blockquote>
         </div>
 
         <div className="hq-connect-form">
+          <div className="hq-connect-form-label">
+            <span>{team ? "SWITCH TEAM" : "CONNECT TEAM"}</span>
+            <small>
+              {team
+                ? "Use another public FPL team ID."
+                : "Public FPL team ID only — no password or login required."}
+            </small>
+          </div>
           <TeamConnectForm />
           {teamError ? (
             <div className="hq-team-error">{teamError}</div>
