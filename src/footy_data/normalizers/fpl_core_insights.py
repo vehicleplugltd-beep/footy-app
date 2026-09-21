@@ -27,7 +27,6 @@ def normalise_fpl_core_matches(
     matches: pd.DataFrame,
     teams: pd.DataFrame,
     retrieved_at: str | None = None,
-    penalty_xg_value: float | None = None,
 ) -> pd.DataFrame:
     """
     Convert finished Premier League FPL-Core-Insights match rows into
@@ -255,6 +254,7 @@ def normalise_fpl_core_player_match_stats(
     matches: pd.DataFrame,
     season: str,
     retrieved_at: str | None = None,
+    penalty_xg_value: float | None = None,
 ) -> pd.DataFrame:
     """
     Build one verified-enrichment row per positive-minute player appearance.
