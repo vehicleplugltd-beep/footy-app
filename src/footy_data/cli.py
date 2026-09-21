@@ -894,7 +894,10 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     )
     writer.insert_model_outputs(outputs)
 
-    validation = reader.model_market_validation(args.model_version)
+    validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
     status = "RESEARCH"
     if not validation.empty:
         row = validation[validation["market"] == "1X2"]
