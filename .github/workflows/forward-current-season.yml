@@ -13,6 +13,7 @@ on:
       - "src/footy_data/walk_forward.py"
       - "src/footy_data/features.py"
       - "src/footy_data/model.py"
+      - "src/footy_data/sources/official_fpl.py"
 
 jobs:
   forward:
