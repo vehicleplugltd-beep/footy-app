@@ -15,7 +15,8 @@ export default async function BettingToolsPage() {
     minimumTakePrice: selection.minimumTakePrice,
     validationStatus: selection.validationStatus,
     verdict: selection.verdict,
-    williamHillOdds: selection.williamHillPrice?.decimal_odds ?? null,
+    bestOdds: selection.bestPrice?.decimal_odds ?? null,
+    bestBookmaker: selection.bestPrice?.bookmaker_name ?? null,
   }));
 
   return (
