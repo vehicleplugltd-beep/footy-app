@@ -1399,9 +1399,44 @@ async function syncEspnFixtures(capturedAt) {
   };
 }
 
+async function processPriceOperations(capturedAt) {
+  const reconciledPriceRows = await reconcileUnmatchedPrices(capturedAt);
+  const freshCutoff = new Date(
+    new Date(capturedAt).getTime() - 2 * 60 * 60 * 1000,
+  ).toISOString();
+  const freshRows =
+    (await sb(
+      `footy_live_odds_current?select=price_key,provider,provider_event_id,match_id,sport_key,home_team,away_team,commence_time,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,provider_last_update,captured_at&captured_at=gte.${encodeURIComponent(freshCutoff)}&limit=30000`,
+    )) || [];
+  const alertsTriggered = await evaluateAlerts(freshRows, capturedAt);
+  const closingCapture = await captureUserClosingLines(capturedAt);
+
+  return {
+    reconciledPriceRows,
+    freshRows,
+    alertsTriggered,
+    closingCapture,
+  };
+}
+
 async function main() {
   const now = new Date();
   const capturedAt = now.toISOString();
+
+  if (process.env.PRICE_OPS_ONLY === "1") {
+    const priceOps = await processPriceOperations(capturedAt);
+    console.log(JSON.stringify({
+      status: "ok",
+      mode: "price-ops-only",
+      fresh_price_rows: priceOps.freshRows.length,
+      reconciled_price_rows: priceOps.reconciledPriceRows,
+      alerts_triggered: priceOps.alertsTriggered,
+      closing_bets_updated: priceOps.closingCapture.betsUpdated,
+      closing_legs_updated: priceOps.closingCapture.legsUpdated,
+      closing_accas_updated: priceOps.closingCapture.accasUpdated,
+    }, null, 2));
+    return;
+  }
 
   let openFootballSync = {
     discovered: 0,
@@ -1485,43 +1520,43 @@ async function main() {
     }
   }
 
-  const reconciledPriceRows = await reconcileUnmatchedPrices(capturedAt);
+  if (process.env.FIXTURES_ONLY === "1") {
+    console.log(JSON.stringify({
+      status: "ok",
+      mode: "fixtures-only",
+      fixture_sources: {
+        openfootball: openFootballSync,
+        espn: espnSync,
+      },
+      fixtures_discovered: fixtureSync.discovered,
+      fixtures_inserted: fixtureSync.inserted + freePriceSync.fixtureRows,
+    }, null, 2));
+    return;
+  }
 
-  const freshCutoff = new Date(
-    new Date(capturedAt).getTime() - 2 * 60 * 60 * 1000,
-  ).toISOString();
-  const freshRows =
-    (await sb(
-      `footy_live_odds_current?select=price_key,provider,provider_event_id,match_id,sport_key,home_team,away_team,commence_time,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,provider_last_update,captured_at&captured_at=gte.${encodeURIComponent(freshCutoff)}&limit=20000`,
-    )) || [];
-  const freeAlertsTriggered = await evaluateAlerts(freshRows, capturedAt);
-  const freeClosingCapture = await captureUserClosingLines(capturedAt);
+  const freePriceOps = await processPriceOperations(capturedAt);
 
   if (!ODDS_API_KEY) {
-    await recordFeedStatus({
-      last_error: "THE_ODDS_API_KEY is not configured",
-    });
     console.log(JSON.stringify({
-      status: freePriceSync.prices > 0 ? "free-prices" : "fixtures-only",
+      status: freePriceOps.freshRows.length > 0 ? "free-prices" : "fixtures-only",
       fixture_sources: {
         openfootball: openFootballSync,
         espn: espnSync,
       },
       free_prices: {
-        provider: FREE_PRICE_PROVIDER,
-        events: freePriceSync.events,
-        prices: freePriceSync.prices,
-        changed_prices: freePriceSync.changedPrices,
-        error: freePriceError,
+        providers: [...new Set(freePriceOps.freshRows.map((row) => row.provider))],
+        rows: freePriceOps.freshRows.length,
+        sofascore_attempted: ENABLE_SOFASCORE_FREE,
+        sofascore_error: freePriceError,
       },
       fixtures_discovered: fixtureSync.discovered,
       fixtures_inserted: fixtureSync.inserted + freePriceSync.fixtureRows,
-      alerts_triggered: freeAlertsTriggered,
-      closing_bets_updated: freeClosingCapture.betsUpdated,
-      closing_legs_updated: freeClosingCapture.legsUpdated,
-      closing_accas_updated: freeClosingCapture.accasUpdated,
-      reconciled_price_rows: reconciledPriceRows,
-      paid_odds: "optional: THE_ODDS_API_KEY is not configured",
+      alerts_triggered: freePriceOps.alertsTriggered,
+      closing_bets_updated: freePriceOps.closingCapture.betsUpdated,
+      closing_legs_updated: freePriceOps.closingCapture.legsUpdated,
+      closing_accas_updated: freePriceOps.closingCapture.accasUpdated,
+      reconciled_price_rows: freePriceOps.reconciledPriceRows,
+      paid_odds: "optional provider disabled",
     }, null, 2));
     return;
   }
