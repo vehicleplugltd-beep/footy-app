@@ -374,7 +374,7 @@ export async function getBettingWorkspaceData() {
   const nowDate = new Date();
   const now = nowDate.toISOString();
   const horizon = new Date(nowDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  const priceCutoff = new Date(nowDate.getTime() - 6 * 60 * 60 * 1000).toISOString();
+  const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
   const [matches, outputs, validations, liveOdds, feedRows, recentMatches] =
     await Promise.all([
