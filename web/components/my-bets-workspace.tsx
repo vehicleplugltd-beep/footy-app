@@ -13,6 +13,18 @@ type Profile = {
 type BetStatus = "OPEN" | "WON" | "LOST" | "PUSH" | "VOID" | "CASHED_OUT";
 type BetType = "SINGLE" | "DOUBLE" | "TREBLE" | "ACCA";
 
+type ModelMarket = {
+  id: string;
+  matchId: string;
+  eventName: string;
+  market: string;
+  selection: string;
+  modelVersion: string;
+  modelProbability: number;
+  fairOdds: number;
+  minimumTakePrice: number;
+};
+
 type Bet = {
   id: string;
   match_id: string | null;
@@ -169,7 +181,40 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
-export function MyBetsWorkspace() {
+function canonicalText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b(versus|vs|v)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function findModelMarket(
+  modelMarkets: ModelMarket[],
+  eventName: string,
+  market: string,
+  selection: string,
+) {
+  const eventKey = canonicalText(eventName);
+  const marketKey = canonicalText(market);
+  const selectionKey = canonicalText(selection);
+
+  return (
+    modelMarkets.find(
+      (item) =>
+        canonicalText(item.eventName) === eventKey &&
+        canonicalText(item.market) === marketKey &&
+        canonicalText(item.selection) === selectionKey,
+    ) ?? null
+  );
+}
+
+export function MyBetsWorkspace({
+  modelMarkets,
+}: {
+  modelMarkets: ModelMarket[];
+}) {
   const supabase = useMemo(() => getSupabaseBrowser(), []);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -327,11 +372,17 @@ export function MyBetsWorkspace() {
       return;
     }
 
+    const eventName = String(form.get("event_name") ?? "").trim();
+    const market = String(form.get("market") ?? "").trim();
+    const selection = String(form.get("selection") ?? "").trim();
+    const model = findModelMarket(modelMarkets, eventName, market, selection);
+
     const { error } = await supabase.from("footy_bets").insert({
       user_id: userId,
-      event_name: String(form.get("event_name") ?? "").trim(),
-      market: String(form.get("market") ?? "").trim(),
-      selection: String(form.get("selection") ?? "").trim(),
+      match_id: model?.matchId ?? null,
+      event_name: eventName,
+      market,
+      selection,
       bookmaker: String(form.get("bookmaker") ?? "").trim() || null,
       decimal_odds: decimalOdds,
       stake: n(form.get("stake")),
@@ -339,10 +390,20 @@ export function MyBetsWorkspace() {
       source: "USER_MANUAL",
       bet_type: "SINGLE",
       leg_count: 1,
+      model_version: model?.modelVersion ?? null,
+      model_probability: model?.modelProbability ?? null,
+      fair_odds: model?.fairOdds ?? null,
+      minimum_take_price: model?.minimumTakePrice ?? null,
     });
 
     if (!error) event.currentTarget.reset();
-    setMessage(error ? error.message : "Bet added.");
+    setMessage(
+      error
+        ? error.message
+        : model
+          ? "Bet added · Footy model and take price attached."
+          : "Bet added · no current Footy market matched this entry.",
+    );
     setBusy(false);
     await refresh();
   }
@@ -411,6 +472,29 @@ export function MyBetsWorkspace() {
         (product, value) => product * value,
         1,
       );
+      const matchedModels = legs.map((row) =>
+        findModelMarket(
+          modelMarkets,
+          row.event || row.event_name,
+          row.market,
+          row.selection,
+        ),
+      );
+      const allModelled = matchedModels.every(
+        (model): model is ModelMarket => model !== null,
+      );
+      const combinedModelProbability = allModelled
+        ? matchedModels.reduce(
+            (product, model) => product * model.modelProbability,
+            1,
+          )
+        : null;
+      const combinedMinimumTake = allModelled
+        ? matchedModels.reduce(
+            (product, model) => product * model.minimumTakePrice,
+            1,
+          ) * Math.pow(1.015, Math.max(0, legs.length - 1))
+        : null;
       const events = [...new Set(legs.map((row) => row.event || row.event_name))];
       const status = allowedStatus(legs[0].status || "OPEN");
       const parent = {
@@ -434,6 +518,25 @@ export function MyBetsWorkspace() {
         source: "USER_CSV",
         bet_type: type,
         leg_count: legs.length,
+        match_id: legs.length === 1 ? matchedModels[0]?.matchId ?? null : null,
+        model_version:
+          allModelled && matchedModels.every(
+            (model) => model.modelVersion === matchedModels[0].modelVersion,
+          )
+            ? matchedModels[0].modelVersion
+            : null,
+        model_probability:
+          legs.length === 1 ? matchedModels[0]?.modelProbability ?? null : null,
+        fair_odds:
+          legs.length === 1 ? matchedModels[0]?.fairOdds ?? null : null,
+        minimum_take_price:
+          legs.length === 1 ? matchedModels[0]?.minimumTakePrice ?? null : null,
+        combined_model_probability: combinedModelProbability,
+        combined_fair_odds:
+          combinedModelProbability && combinedModelProbability > 0
+            ? 1 / combinedModelProbability
+            : null,
+        combined_minimum_take_price: combinedMinimumTake,
         notes: `Imported ticket ${ticketRef}`,
       };
 
@@ -458,6 +561,11 @@ export function MyBetsWorkspace() {
           selection: row.selection,
           bookmaker: row.bookmaker || legs[0].bookmaker || null,
           decimal_odds: validLegPrices[index],
+          match_id: matchedModels[index]?.matchId ?? null,
+          model_version: matchedModels[index]?.modelVersion ?? null,
+          model_probability: matchedModels[index]?.modelProbability ?? null,
+          fair_odds: matchedModels[index]?.fairOdds ?? null,
+          minimum_take_price: matchedModels[index]?.minimumTakePrice ?? null,
         })),
       );
 
@@ -684,6 +792,24 @@ export function MyBetsWorkspace() {
                   <span className="ticket-type">{bet.bet_type} · {bet.leg_count} leg{bet.leg_count === 1 ? "" : "s"}</span>
                   <strong>{bet.event_name}</strong>
                   <small>{bet.market} · {bet.selection} · {bet.bookmaker || "Bookmaker not set"}</small>
+                  {bet.minimum_take_price && bet.model_probability ? (
+                    <div
+                      className={`user-price-grade ${
+                        n(bet.decimal_odds) >= n(bet.minimum_take_price)
+                          ? "user-price-good"
+                          : "user-price-short"
+                      }`}
+                    >
+                      <span>
+                        Footy {Math.round(n(bet.model_probability) * 100)}% · fair {decimalToFractional(n(bet.fair_odds))}
+                      </span>
+                      <strong>
+                        {n(bet.decimal_odds) >= n(bet.minimum_take_price)
+                          ? `GOOD PRICE · took ${decimalToFractional(n(bet.decimal_odds))} vs take ${decimalToFractional(n(bet.minimum_take_price))}+`
+                          : `TOO SHORT · took ${decimalToFractional(n(bet.decimal_odds))} vs take ${decimalToFractional(n(bet.minimum_take_price))}+`}
+                      </strong>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="ticket-numbers">
                   <strong>{decimalToFractional(n(bet.decimal_odds))}</strong>
