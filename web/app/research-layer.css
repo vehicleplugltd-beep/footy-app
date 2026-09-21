@@ -2482,3 +2482,80 @@
     padding-inline: 6px;
   }
 }
+
+
+/* Team context stays compact so the decision workflow owns the page. */
+.team-room-header {
+  position: relative;
+  gap: 24px;
+  padding-top: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e4e8ec;
+}
+.team-room-header h1 {
+  margin-top: 3px;
+  font-size: clamp(28px, 4vw, 38px);
+}
+.team-room-context {
+  align-items: stretch;
+}
+.team-room-context > div,
+.team-room-league-switcher {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+.team-room-context > div {
+  min-height: 48px;
+}
+.team-room-league-switcher select {
+  max-width: none;
+}
+@media (max-width: 700px) {
+  .team-room-header {
+    padding-top: 11px;
+    padding-bottom: 10px;
+  }
+  .team-room-header > div:first-child > span {
+    font-size: 8px;
+  }
+  .team-room-header h1 {
+    font-size: 23px;
+    line-height: 1.05;
+  }
+  .team-room-header p {
+    font-size: 9px;
+  }
+  .team-room-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    border-top: 1px solid #e5e9ed;
+    padding-top: 7px;
+  }
+  .team-room-league-switcher {
+    grid-column: 1 / -1;
+    min-height: 48px;
+    margin-bottom: 5px;
+    padding: 0 0 7px;
+    border-bottom: 1px solid #edf0f2;
+  }
+  .team-room-league-switcher select {
+    min-height: 32px;
+    font-size: 12px;
+  }
+  .team-room-context > div {
+    min-height: 42px;
+    padding-left: 0;
+  }
+  .team-room-context > div + div {
+    padding-left: 10px;
+    border-left: 1px solid #e8ebef;
+  }
+  .team-room-context strong {
+    font-size: 13px;
+  }
+  .team-room-context small {
+    font-size: 8px;
+  }
+}
