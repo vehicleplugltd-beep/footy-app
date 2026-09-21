@@ -171,7 +171,7 @@ def publish_model_calls(
 
     matches["kickoff_at"] = pd.to_datetime(matches["kickoff_at"], utc=True, errors="coerce")
     latest = latest.merge(
-        matches[["match_id", "kickoff_at", "home_team", "away_team"]],
+        matches[["match_id", "kickoff_at", "home_team", "away_team", "league"]],
         on="match_id",
         how="inner",
     )
@@ -183,11 +183,13 @@ def publish_model_calls(
         return 0
 
     validation = reader.model_market_validation(model_version)
-    validation_status = "RESEARCH"
+    validation_by_league: dict[str, str] = {}
     if not validation.empty:
-        one_x_two = validation[validation["market"] == "1X2"]
-        if not one_x_two.empty:
-            validation_status = str(one_x_two.iloc[0]["status"])
+        one_x_two = validation[validation["market"] == "1X2"].copy()
+        validation_by_league = {
+            str(row["league"]): str(row["status"])
+            for _, row in one_x_two.iterrows()
+        }
 
     existing = {
         str(row["call_key"])
@@ -218,7 +220,10 @@ def publish_model_calls(
                 if pd.notna(top["minimum_take_price"])
                 else None
             ),
-            "validation_status": validation_status,
+            "validation_status": validation_by_league.get(
+                str(top.get("league", "")),
+                "RESEARCH",
+            ),
             "home_team": str(top["home_team"]),
             "away_team": str(top["away_team"]),
             "kickoff_at": top["kickoff_at"].isoformat(),
