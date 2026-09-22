@@ -10,7 +10,11 @@ export function BettingAgeGate() {
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
-    setAccepted(window.localStorage.getItem(STORAGE_KEY) === "yes");
+    try {
+      setAccepted(window.localStorage.getItem(STORAGE_KEY) === "yes");
+    } catch {
+      // Private browsing / storage restrictions must not trap the user.
+    }
     setChecked(true);
   }, []);
 
@@ -28,7 +32,11 @@ export function BettingAgeGate() {
         <button
           type="button"
           onClick={() => {
-            window.localStorage.setItem(STORAGE_KEY, "yes");
+            try {
+              window.localStorage.setItem(STORAGE_KEY, "yes");
+            } catch {
+              // Accept for this view if the browser blocks persistence.
+            }
             setAccepted(true);
           }}
         >
