@@ -24,6 +24,12 @@ Initial expansion-critical markets are:
 
 Other markets can use the same gate as historical sample sizes become credible.
 
+The expansion lock uses Footy's canonical stored competition keys:
+`ENG-Premier League`, `ENG-Championship`, `ESP-La Liga`,
+`ESP-La Liga 2`, `GER-Bundesliga`, `GER-2. Bundesliga`,
+`ITA-Serie A`, `ITA-Serie B`, `FRA-Ligue 1`, and `FRA-Ligue 2`.
+The totals market key is `TOTAL_2.5`, matching the existing odds/backtest layer.
+
 ## Gate states
 
 **READY** maps to production validation status `APPROVED`. Live BET/FADE
