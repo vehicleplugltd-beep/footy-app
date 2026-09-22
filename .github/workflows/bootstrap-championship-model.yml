@@ -1,0 +1,102 @@
+name: bootstrap-championship-model
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bootstrap-championship-model.yml"
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      LEAGUE: ENG-Championship
+      MODEL_VERSION: v7-r16-p50-v20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Gate on independently verified FotMob history
+        run: |
+          python - <<'PY'
+          from footy_data.storage import SupabaseRESTReader
+
+          frame = SupabaseRESTReader().historical_match_team_metrics()
+          frame = frame[frame["league"] == "ENG-Championship"].copy()
+          counts = frame.groupby(frame["season"].astype(str)).size().to_dict()
+          print("VERIFIED_CHAMPIONSHIP_TEAM_ROWS", counts)
+
+          minimums = {
+              "2223": 1100,
+              "2324": 1100,
+              "2425": 1100,
+              "2526": 1100,
+              "2627": 180,
+          }
+          missing = {
+              season: {"required": minimum, "actual": int(counts.get(season, 0))}
+              for season, minimum in minimums.items()
+              if int(counts.get(season, 0)) < minimum
+          }
+          if missing:
+              raise SystemExit(f"Verified Championship history incomplete: {missing}")
+          PY
+
+      - name: Walk-forward calibrate Championship v7
+        run: |
+          footy-data calibrate \
+            --league "$LEAGUE" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --season "2526" \
+            --season "2627" \
+            --model-version "$MODEL_VERSION" \
+            --process-mode "xg" \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20 \
+            --lambda-beta 1.0 \
+            --home-lambda-scale 1.0 \
+            --away-lambda-scale 1.0
+
+      - name: Import Championship historical closing prices
+        run: |
+          footy-data football-data-odds-ingest \
+            --league "$LEAGUE" \
+            --season "2223" \
+            --season "2324" \
+            --season "2425" \
+            --season "2526" \
+            --min-match-rate 0.90
+
+      - name: Backtest Championship 1X2 vs market close
+        run: |
+          footy-data value-backtest \
+            --league "$LEAGUE" \
+            --model-version "$MODEL_VERSION" \
+            --bookmaker "Market Average" \
+            --price-kind "close" \
+            --source "football-data.co.uk" \
+            --market "1X2" \
+            --target-ev 0.02
+
+      - name: Backtest Championship totals vs market close
+        run: |
+          footy-data value-backtest \
+            --league "$LEAGUE" \
+            --model-version "$MODEL_VERSION" \
+            --bookmaker "Market Average" \
+            --price-kind "close" \
+            --source "football-data.co.uk" \
+            --market "TOTAL_2.5" \
+            --target-ev 0.02
