@@ -830,6 +830,17 @@ def command_quality_evaluate(args: argparse.Namespace) -> None:
     if scored.empty:
         raise RuntimeError("No predictions overlap verified outcomes.")
 
+    scored_match_ids = set(scored["match_id"].astype(str))
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+
     if args.market == "1X2":
         actual = pd.Series(
             [
