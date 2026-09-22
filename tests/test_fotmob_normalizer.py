@@ -94,7 +94,7 @@ def test_normalise_fotmob_match_maps_verified_process_fields():
     assert home["xgot_faced"] == 0.95
     assert home["crosses"] == 3
     assert home["opposition_half_passes"] == 203
-    assert home["verified"] is True
+    assert bool(home["verified"]) is True
 
     assert away["xg"] == 0.84
     assert away["xga"] == 1.97
