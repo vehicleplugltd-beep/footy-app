@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - ".github/workflows/fotmob-championship-smoke.yml"
+      - "web/scripts/diagnose-fotmob-championship.mjs"
   workflow_dispatch:
 
 jobs:
