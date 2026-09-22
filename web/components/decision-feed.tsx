@@ -21,12 +21,8 @@ function monogram(team: string) {
   return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-function strongestSelection(
-  todayGames: DailyGamePrediction[],
-  selections: BettingSelection[],
-) {
-  const today = todayGames.flatMap((game) => game.outcomes);
-  const pool = today.length ? today : selections;
+function strongestSelection(todayGames: DailyGamePrediction[]) {
+  const pool = todayGames.flatMap((game) => game.outcomes);
   const verdictWeight = { BET: 4, WATCH: 3, PASS: 2, FADE: 1 };
 
   return [...pool].sort(
@@ -101,19 +97,32 @@ function signalLabel(selection: BettingSelection) {
 
 export function DecisionFeed({
   todayGames,
-  selections,
   accas,
 }: {
   todayGames: DailyGamePrediction[];
-  selections: BettingSelection[];
   accas: AccaCandidate[];
 }) {
   const [mode, setMode] = useState<"daily" | "acca">("daily");
   const signal = useMemo(
-    () => strongestSelection(todayGames, selections),
-    [todayGames, selections],
+    () => strongestSelection(todayGames),
+    [todayGames],
   );
-  const bestAcca = accas[0] ?? null;
+  const todayKey = todayGames[0]
+    ? new Date(todayGames[0].kickoffAt).toLocaleDateString("en-CA", {
+        timeZone: "Europe/London",
+      })
+    : null;
+  const bestAcca =
+    accas.find(
+      (acca) =>
+        todayKey != null &&
+        acca.legs.every(
+          (leg) =>
+            new Date(leg.kickoffAt).toLocaleDateString("en-CA", {
+              timeZone: "Europe/London",
+            }) === todayKey,
+        ),
+    ) ?? null;
 
   return (
     <section className="decision-feed shell">
@@ -158,7 +167,9 @@ export function DecisionFeed({
               <small>
                 {game.modelPick
                   ? `${pct(game.modelPick.modelProbability)} · take ${minimumTakeToFractional(game.modelPick.minimumTakePrice)}+`
-                  : "Awaiting price"}
+                  : game.coveragePrices.length
+                    ? "1X2 market live"
+                    : "Market not verified"}
               </small>
             </article>
           ))}
@@ -259,8 +270,8 @@ export function DecisionFeed({
           </article>
         ) : (
           <div className="betting-empty">
-            <strong>No current model signal.</strong>
-            <p>The feed stays empty rather than recycling stale predictions.</p>
+            <strong>No Footy model signal on today&apos;s slate.</strong>
+            <p>Live market prices remain visible below; Footy will not substitute a future prediction.</p>
           </div>
         )
       ) : bestAcca ? (
@@ -295,8 +306,8 @@ export function DecisionFeed({
         </article>
       ) : (
         <div className="betting-empty">
-          <strong>No accumulator qualifies.</strong>
-          <p>Footy will not add a filler favourite just to produce a multiple.</p>
+          <strong>No accumulator qualifies for today.</strong>
+          <p>Footy will not pull future legs or add a filler favourite just to produce a multiple.</p>
         </div>
       )}
     </section>
