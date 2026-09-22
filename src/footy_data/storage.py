@@ -481,7 +481,11 @@ class SupabaseRESTReader:
             end = start + self.page_size - 1
             response = requests.get(
                 f"{self.url}/rest/v1/{table}",
-                params={"select": select},
+                params={
+                    "select": select,
+                    **({"order": "match_id.asc"} if table == "footy_matches" else {}),
+                    **({"order": "id.asc"} if table == "footy_match_team_metrics" else {}),
+                },
                 headers={
                     "apikey": self.key,
                     "Authorization": f"Bearer {self.key}",
@@ -508,6 +512,10 @@ class SupabaseRESTReader:
         while True:
             end = start + self.page_size - 1
             params = {"select": select}
+            if table == "footy_matches":
+                params["order"] = "match_id.asc"
+            elif table == "footy_match_team_metrics":
+                params["order"] = "id.asc"
             if filters:
                 params.update(filters)
             response = requests.get(
@@ -727,6 +735,13 @@ class SupabaseRESTReader:
         if matches.empty:
             return pd.DataFrame()
 
+        # Range-pagination without stable ordering can repeat a row while a
+        # live ingest updates the dataset. Exact repeats are harmless; a single
+        # match ID with conflicting metadata is never safe to model.
+        matches = matches.drop_duplicates().copy()
+        if matches["match_id"].duplicated().any():
+            raise RuntimeError("Conflicting match records in historical read.")
+
         if match_filters:
             metric_rows: list[dict[str, Any]] = []
             match_ids = matches["match_id"].astype(str).tolist()
@@ -771,6 +786,10 @@ class SupabaseRESTReader:
             if metrics.empty:
                 return pd.DataFrame()
 
+        # Remove exact pagination repeats before provider consensus so an
+        # duplicated response does not inflate source agreement/confidence.
+        metrics = metrics.drop_duplicates().copy()
+
         # The storage table intentionally keeps provider-specific observations.
         # The model must consume exactly one canonical row per team/match.
         metrics = synthesize_match_team_metrics(metrics)
@@ -780,6 +799,7 @@ class SupabaseRESTReader:
             matches[["match_id", "league", "season", "match_date"]],
             on="match_id",
             how="inner",
+            validate="many_to_one",
         )
 
         if not include_ratings:
