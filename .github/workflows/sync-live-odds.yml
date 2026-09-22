@@ -2,7 +2,7 @@ name: sync-live-odds
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "5 * * * *"
   push:
     branches: ["main", "feature/betting-edge-workspace"]
     paths:
