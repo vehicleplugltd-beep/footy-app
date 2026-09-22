@@ -68,6 +68,7 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
       league,
       games: rows.sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt)),
       modelled: rows.filter((game) => game.outcomes.length > 0).length,
+      priced: rows.filter((game) => game.coveragePrices.length > 0).length,
     }))
     .sort(
       (a, b) =>
@@ -77,6 +78,7 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
     );
 
   const modelledCount = games.filter((game) => game.outcomes.length > 0).length;
+  const pricedCount = games.filter((game) => game.coveragePrices.length > 0).length;
 
   return (
     <section className="betting-section daily-board" id="today">
@@ -86,8 +88,8 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
           <h2>{games.length} fixtures across {grouped.length} competitions</h2>
         </div>
         <p>
-          {modelledCount} modelled · {games.length - modelledCount} coverage-only.
-          Fixture discovery never implies a betting recommendation.
+          {modelledCount} modelled · {pricedCount} with fresh prices · {games.length - modelledCount} coverage-only.
+          Market visibility never implies a betting recommendation.
         </p>
       </div>
 
@@ -106,8 +108,10 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
                 </div>
                 <span>
                   {group.modelled
-                    ? `${group.modelled} modelled`
-                    : "coverage only"}
+                    ? `${group.modelled} modelled · ${group.priced} priced`
+                    : group.priced
+                      ? `${group.priced} priced`
+                      : "coverage only"}
                 </span>
               </summary>
 
@@ -123,12 +127,39 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
                     return (
                       <article className="coverage-fixture-row" key={game.matchId}>
                         <time>{displayTime(game.kickoffAt)}</time>
-                        <div>
+                        <div className="coverage-fixture-teams">
                           <strong>{game.homeTeam}</strong>
                           <span>vs</span>
                           <strong>{game.awayTeam}</strong>
                         </div>
-                        <em>MODEL PENDING</em>
+
+                        {game.coveragePrices.length ? (
+                          <div
+                            className="coverage-live-prices"
+                            aria-label="Best fresh 1X2 market prices"
+                          >
+                            {game.coveragePrices.map((quote) => (
+                              <p key={quote.selection}>
+                                <span>
+                                  {quote.selection === "home"
+                                    ? "H"
+                                    : quote.selection === "draw"
+                                      ? "D"
+                                      : "A"}
+                                </span>
+                                <strong>
+                                  {decimalToFractional(quote.decimalOdds)}
+                                </strong>
+                                <small>{quote.bookmakerName}</small>
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <em>
+                          MODEL PENDING
+                          {game.coveragePrices.length ? " · MARKET LIVE" : ""}
+                        </em>
                       </article>
                     );
                   }
