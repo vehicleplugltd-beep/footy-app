@@ -185,9 +185,9 @@ def normalise_fotmob_match(
         "match_id": match_id,
         "source": SOURCE,
         "retrieved_at": stamp,
-        "verified": True,
+        "verified": False,
         "verification_status": "WARN",
-        "verified_at": stamp,
+        "verified_at": None,
     }
 
     metrics = pd.DataFrame([
