@@ -144,6 +144,7 @@ export function DecisionFeed({
           {[...todayGames]
             .sort((a, b) =>
               Number(b.outcomes.length > 0) - Number(a.outcomes.length > 0) ||
+              Number(b.coveragePrices.length > 0) - Number(a.coveragePrices.length > 0) ||
               a.kickoffAt.localeCompare(b.kickoffAt)
             )
             .slice(0, 12)
