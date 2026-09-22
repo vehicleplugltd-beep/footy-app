@@ -21,9 +21,6 @@ function feedUrls(dayOffset) {
 const PRICE_LEAGUES = new Set([
   "ENG-Premier League",
   "ENG-Championship",
-  "ENG-League One",
-  "ENG-League Two",
-  "SCO-Premiership",
   "ESP-La Liga",
   "ESP-La Liga 2",
   "GER-Bundesliga",
@@ -32,18 +29,6 @@ const PRICE_LEAGUES = new Set([
   "ITA-Serie B",
   "FRA-Ligue 1",
   "FRA-Ligue 2",
-  "NED-Eredivisie",
-  "POR-Primeira Liga",
-  "BEL-First Division A",
-  "TUR-Super Lig",
-  "GRE-Super League",
-  "UEFA-Champions League",
-  "UEFA-Europa League",
-  "UEFA-Conference League",
-  "USA-MLS",
-  "BRA-Serie A",
-  "ARG-Primera Division",
-  "MEX-Liga MX",
 ]);
 const ODDS_URLS = [
   "https://global.ds.lsapp.eu/odds/pq_graphql",
