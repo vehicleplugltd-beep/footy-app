@@ -9,9 +9,12 @@ const MODEL_VERSION = "v7-r16-p50-v20";
 
 function feedUrls(dayOffset) {
   return [
-    `https://2.flashscore.ninja/2/x/feed/f_1_${dayOffset}_2_en_1`,
+    `https://2.flashscore.ninja/2/x/feed/f_1_${dayOffset}_3_en_1`,
     `https://local-global.flashscore.ninja/2/x/feed/f_1_${dayOffset}_3_en_1`,
     `https://global.flashscore.ninja/2/x/feed/f_1_${dayOffset}_3_en_1`,
+    // Legacy fallback only. The _3 feed carries tournament/country context
+    // more reliably and is therefore always preferred for fixture identity.
+    `https://2.flashscore.ninja/2/x/feed/f_1_${dayOffset}_2_en_1`,
   ];
 }
 
