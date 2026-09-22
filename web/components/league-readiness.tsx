@@ -5,6 +5,7 @@ function stageLabel(stage: LeagueReadiness["stage"]) {
   if (stage === "PRICE_WATCH") return "PRICE WATCH";
   if (stage === "MODEL_RESEARCH") return "MODEL RESEARCH";
   if (stage === "PROCESS_READY") return "PROCESS READY";
+  if (stage === "MARKET_LIVE") return "MARKET LIVE · MODEL PENDING";
   return "FIXTURES ONLY";
 }
 
