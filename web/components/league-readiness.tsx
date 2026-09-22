@@ -48,7 +48,8 @@ export function LeagueReadinessMap({
             <div className="readiness-league">
               <strong>{row.league}</strong>
               <small>
-                {row.fixtures} today · {row.modelledFixtures} modelled
+                {row.fixtures} today · {row.modelledFixtures} modelled ·{" "}
+                {row.modelScope === "CORE" ? "core model" : "coverage only"}
               </small>
             </div>
 
@@ -116,9 +117,10 @@ export function LeagueReadinessMap({
       </div>
 
       <p className="readiness-note">
-        A fixture can appear on Today before Footy has enough process history to
-        price it. Coverage-only games are deliberately excluded from value bets
-        and accas until the full chain is present.
+        Footy&apos;s modelling core is limited to the top two domestic divisions
+        in England, Spain, Germany, Italy and France. Other competitions can still
+        show fixtures and live prices, but remain coverage-only and cannot enter
+        value bets or accas.
       </p>
     </section>
   );
