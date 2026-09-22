@@ -30,5 +30,6 @@ jobs:
       - run: node --check scripts/sync-free-oddsportal.mjs
       - run: node --check scripts/sync-free-flashscore.mjs
       - run: node scripts/test-flashscore-parser.mjs
+      - run: node scripts/diagnose-flashscore-context.mjs
       - run: python -m py_compile scripts/fetch-sofascore.py
       - run: npm run build
