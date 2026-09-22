@@ -73,6 +73,7 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
     .sort(
       (a, b) =>
         b.modelled - a.modelled ||
+        b.priced - a.priced ||
         b.games.length - a.games.length ||
         a.league.localeCompare(b.league),
     );
