@@ -188,6 +188,55 @@ class SupabaseRESTWriter:
             MATCH_TEAM_METRIC_FIELDS,
         )
 
+    def update_match_team_verification(
+        self,
+        match_ids: Iterable[str],
+        *,
+        source: str,
+        status: str,
+        verified: bool = True,
+        chunk_size: int = 100,
+    ) -> int:
+        if status not in {"UNVERIFIED", "PASS", "WARN", "BLOCKED"}:
+            raise ValueError(f"Unsupported verification status: {status}")
+
+        ids = sorted({str(value) for value in match_ids if str(value)})
+        if not ids:
+            return 0
+
+        changed = 0
+        stamp = datetime.now(timezone.utc).isoformat()
+        for start in range(0, len(ids), max(1, int(chunk_size))):
+            chunk = ids[start:start + max(1, int(chunk_size))]
+            quoted = ",".join(f'"{value}"' for value in chunk)
+            response = requests.patch(
+                f"{self.url}/rest/v1/footy_match_team_metrics",
+                params={
+                    "match_id": f"in.({quoted})",
+                    "source": f"eq.{source}",
+                },
+                headers={
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {self.key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
+                json={
+                    "verified": bool(verified),
+                    "verification_status": status,
+                    "verified_at": stamp,
+                },
+                timeout=self.timeout,
+            )
+            if not response.ok:
+                raise RuntimeError(
+                    "Supabase verification update failed "
+                    f"({response.status_code}): {response.text[:1200]}"
+                )
+            payload = response.json()
+            changed += len(payload) if isinstance(payload, list) else 0
+        return changed
+
     def upsert_player_match_metrics(
         self,
         rows: Iterable[Mapping[str, Any]],
