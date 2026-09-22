@@ -96,3 +96,115 @@ def test_model_validation_filters_model_and_league(monkeypatch):
     assert len(frame) == 1
     assert frame.iloc[0]["status"] == "RESEARCH"
     assert frame.iloc[0]["league"] == "ITA-Serie A"
+
+
+def test_historical_metrics_require_pass_for_fotmob(monkeypatch):
+    matches = [
+        {
+            "match_id": "m-pass",
+            "league": "ENG-Championship",
+            "season": "2526",
+            "kickoff_at": "2026-03-01T15:00:00Z",
+            "home_team": "A",
+            "away_team": "B",
+        },
+        {
+            "match_id": "m-warn",
+            "league": "ENG-Championship",
+            "season": "2526",
+            "kickoff_at": "2026-03-02T15:00:00Z",
+            "home_team": "C",
+            "away_team": "D",
+        },
+    ]
+    metrics = [
+        {
+            "match_id": "m-pass",
+            "team": "A",
+            "opponent": "B",
+            "home_away": "H",
+            "goals": 1,
+            "goals_conceded": 0,
+            "xg": 1.2,
+            "source": "fotmob",
+            "retrieved_at": "2026-03-01T18:00:00Z",
+            "verified": True,
+            "verification_status": "PASS",
+            "verified_at": "2026-03-01T18:00:00Z",
+        },
+        {
+            "match_id": "m-warn",
+            "team": "C",
+            "opponent": "D",
+            "home_away": "H",
+            "goals": 1,
+            "goals_conceded": 1,
+            "xg": 0.9,
+            "source": "fotmob",
+            "retrieved_at": "2026-03-02T18:00:00Z",
+            "verified": True,
+            "verification_status": "fotmob_match_detail_verified",
+            "verified_at": "2026-03-02T18:00:00Z",
+        },
+    ]
+
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    def fake_get_all(table, select="*"):
+        if table == "footy_matches":
+            return matches
+        if table == "footy_match_team_metrics":
+            return metrics
+        return []
+
+    monkeypatch.setattr(reader, "_get_all", fake_get_all)
+
+    frame = reader.historical_match_team_metrics()
+
+    assert set(frame["match_id"]) == {"m-pass"}
+    assert frame.iloc[0]["xg"] == 1.2
+
+
+def test_historical_metrics_can_include_unverified_for_diagnostics(monkeypatch):
+    matches = [{
+        "match_id": "m-warn",
+        "league": "ENG-Championship",
+        "season": "2526",
+        "kickoff_at": "2026-03-02T15:00:00Z",
+        "home_team": "C",
+        "away_team": "D",
+    }]
+    metrics = [{
+        "match_id": "m-warn",
+        "team": "C",
+        "opponent": "D",
+        "home_away": "H",
+        "goals": 1,
+        "goals_conceded": 1,
+        "xg": 0.9,
+        "source": "fotmob",
+        "retrieved_at": "2026-03-02T18:00:00Z",
+        "verified": True,
+        "verification_status": "fotmob_match_detail_verified",
+        "verified_at": "2026-03-02T18:00:00Z",
+    }]
+
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    def fake_get_all(table, select="*"):
+        if table == "footy_matches":
+            return matches
+        if table == "footy_match_team_metrics":
+            return metrics
+        return []
+
+    monkeypatch.setattr(reader, "_get_all", fake_get_all)
+
+    frame = reader.historical_match_team_metrics(include_unverified=True)
+    assert set(frame["match_id"]) == {"m-warn"}
