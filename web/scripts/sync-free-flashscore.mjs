@@ -644,7 +644,7 @@ async function main() {
   const end = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
   const matches =
     (await sb(
-      `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=10000`,
+      `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=10000`,
     )) || [];
 
   const existing =
@@ -687,7 +687,36 @@ async function main() {
   // to know that a match exists.
   for (const event of fixtureEvents) {
     let match = findMatch(event, matches);
-    if (match) continue;
+    const status =
+      event.status === "3"
+        ? "finished"
+        : event.status === "2"
+          ? "in_progress"
+          : "scheduled";
+
+    if (match) {
+      // Flashscore-owned fixture identities should self-heal when parser
+      // normalization improves. Do not overwrite official/Understat rows.
+      if (
+        String(match.match_id || "").startsWith("flashscore:") ||
+        match.source === "flashscore-feed"
+      ) {
+        const refreshed = {
+          match_id: match.match_id,
+          league: event.league,
+          season: seasonCode(event.kickoffAt),
+          kickoff_at: event.kickoffAt,
+          home_team: event.homeTeam,
+          away_team: event.awayTeam,
+          status,
+          source: "flashscore-feed",
+          retrieved_at: capturedAt,
+        };
+        fixtureRows.push(refreshed);
+        Object.assign(match, refreshed);
+      }
+      continue;
+    }
 
     match = {
       match_id: `flashscore:${event.eventId}`,
@@ -695,6 +724,7 @@ async function main() {
       league: event.league,
       home_team: event.homeTeam,
       away_team: event.awayTeam,
+      source: "flashscore-feed",
     };
     matches.push(match);
     fixtureRows.push({
@@ -704,12 +734,7 @@ async function main() {
       kickoff_at: event.kickoffAt,
       home_team: event.homeTeam,
       away_team: event.awayTeam,
-      status:
-        event.status === "3"
-          ? "finished"
-          : event.status === "2"
-            ? "in_progress"
-            : "scheduled",
+      status,
       source: "flashscore-feed",
       retrieved_at: capturedAt,
     });
