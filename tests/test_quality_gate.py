@@ -4,6 +4,7 @@ from footy_data.quality_gate import (
     QualitySnapshot,
     evaluate_quality_gate,
     expansion_decision,
+    quality_snapshot_record,
 )
 
 
@@ -87,3 +88,17 @@ def test_league_eleven_is_blocked_until_core_ten_are_ready():
     decision = expansion_decision(results)
     assert decision.allowed is False
     assert any("ENG-Championship TOTAL_2.5" in reason for reason in decision.reasons)
+
+
+
+def test_quality_snapshot_record_is_storage_ready():
+    snapshot = ready_snapshot()
+    result = evaluate_quality_gate(snapshot)
+    record = quality_snapshot_record(snapshot, result)
+
+    assert record["league"] == "ENG-Championship"
+    assert record["market"] == "1X2"
+    assert record["gate_status"] == "READY"
+    assert record["validation_status"] == "APPROVED"
+    assert record["reasons"] == ["all READY quality gates passed"]
+    assert record["policy"]["min_model_sample"] == 250
