@@ -131,11 +131,13 @@ class SoccerDataSource:
         self,
         stat_type: str = "schedule",
         opponent_stats: bool = False,
+        team: str | list[str] | None = None,
     ) -> pd.DataFrame:
         return self._frame(
             self.fbref().read_team_match_stats(
                 stat_type=stat_type,
                 opponent_stats=opponent_stats,
+                team=team,
             )
         )
 
