@@ -258,6 +258,12 @@ function normalizeLeague(country, league) {
     if (c === "greece" && l.includes("super league")) return "GRE-Super League";
   }
 
+  if (womensCompetition && l.includes("champions league")) {
+    return "UEFA-Womens Champions League";
+  }
+  if (womensCompetition && l.includes("europa")) {
+    return "UEFA-Womens Europa Cup";
+  }
   if (l.includes("champions league")) return "UEFA-Champions League";
   if (l.includes("europa league")) return "UEFA-Europa League";
   if (l.includes("conference league")) return "UEFA-Conference League";
