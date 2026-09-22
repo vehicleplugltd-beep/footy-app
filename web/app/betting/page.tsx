@@ -99,7 +99,7 @@ export default async function BettingPage() {
       ) : null}
       <UpcomingModelResearch selections={data.selections} />
       <DecisionFeed
-        todayGames={data.todayGames}
+        todayGames={coreTodayGames}
         accas={data.accas}
         upcomingModelledCount={new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size}
       />
@@ -109,15 +109,14 @@ export default async function BettingPage() {
           <div className="betting-data-warning">
             <strong>Fixture coverage and betting qualification are separate.</strong>
             <p>
-              Footy can show the global daily slate even when some competitions
-              do not yet have a current model or verified bookmaker price. Those
-              games stay labelled as coverage-only; stale model outputs are never
-              promoted as live bets.
+              Today focuses on the ten model leagues. A fixture without a complete
+              current forecast or a fresh matched quote remains research-only;
+              stale model outputs are never promoted as live bets.
             </p>
           </div>
         ) : null}
 
-        <DailyPredictions games={data.todayGames} />
+        <DailyPredictions games={coreTodayGames} />
         <details className="today-coverage-drawer">
           <summary>See data coverage and readiness across the ten model leagues</summary>
           <LeagueReadinessMap leagues={data.leagueReadiness.filter((row) => row.modelScope === "CORE")} />
