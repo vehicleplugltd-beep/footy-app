@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -57,6 +58,7 @@ from .upcoming import (
     model_output_records,
 )
 from .results_ledger import refresh_results_ledger
+from .reconciliation import reconcile_fixture_id
 
 
 def command_sources() -> None:
@@ -237,6 +239,133 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
         "metric_columns": list(metrics.columns),
         "sample_metric_rows": metrics.head(4).to_dict(orient="records"),
     }, indent=2, default=str))
+
+
+def command_fotmob_ingest(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=args.season_name,
+    )
+    finished = [
+        row
+        for row in raw_matches
+        if isinstance(row.get("status"), dict)
+        and bool(row["status"].get("finished"))
+        and row.get("id") is not None
+    ]
+
+    if not finished:
+        raise RuntimeError(
+            f"No finished FotMob matches found for "
+            f"{args.league} / {args.season_name}."
+        )
+
+    offset = max(0, int(args.offset))
+    limit = max(1, int(args.limit))
+    batch = finished[offset:offset + limit]
+    if not batch:
+        raise RuntimeError(
+            f"FotMob batch is empty at offset {offset} / limit {limit}."
+        )
+
+    reader = SupabaseRESTReader()
+    existing = reader.season_matches(args.league, args.season_code)
+    match_rows: list[dict] = []
+    metric_frames: list[pd.DataFrame] = []
+    reconciled = 0
+
+    for index, row in enumerate(batch):
+        details = source.match_details(row["id"])
+        matches, metrics = normalise_fotmob_match(
+            row,
+            details,
+            league=args.league,
+            season=args.season_code,
+        )
+
+        normalized_match = matches.iloc[0].to_dict()
+        existing_id = reconcile_fixture_id(
+            str(normalized_match["home_team"]),
+            str(normalized_match["away_team"]),
+            normalized_match["kickoff_at"],
+            existing,
+        )
+        if existing_id:
+            metrics = metrics.copy()
+            metrics["match_id"] = existing_id
+            reconciled += 1
+        else:
+            match_rows.append(normalized_match)
+
+        metric_frames.append(metrics)
+
+        if args.sleep_ms > 0 and index < len(batch) - 1:
+            time.sleep(float(args.sleep_ms) / 1000.0)
+
+    metrics = pd.concat(metric_frames, ignore_index=True)
+    report = assess_match_team_metrics(metrics)
+    if not report.usable:
+        raise RuntimeError(
+            f"FotMob payload failed quality checks; no rows written: {report}"
+        )
+
+    payload = {
+        "status": "ok",
+        "source": "fotmob",
+        "league": args.league,
+        "season_name": args.season_name,
+        "season_code": args.season_code,
+        "offset": offset,
+        "requested_limit": limit,
+        "batch_matches": len(batch),
+        "new_matches": len(match_rows),
+        "reconciled_matches": reconciled,
+        "metric_rows": len(metrics),
+        "quality": {
+            "rows": report.rows,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+            "usable": report.usable,
+        },
+        "write": bool(args.write),
+    }
+
+    if not args.write:
+        payload["mode"] = "dry-run"
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_matches(
+        frame_records(pd.DataFrame(match_rows), MATCH_FIELDS)
+        if match_rows
+        else []
+    )
+    writer.upsert_match_team_metrics(
+        frame_records(metrics, MATCH_TEAM_METRIC_FIELDS)
+    )
+    writer.insert_data_quality_run(
+        source="fotmob",
+        league=args.league,
+        season=args.season_code,
+        status="WARN",
+        report={
+            "basis": (
+                "FotMob match-detail structural/invariant gate; "
+                "independent cross-provider result verification pending"
+            ),
+            "batch_offset": offset,
+            "batch_matches": len(batch),
+            "metric_rows": report.rows,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+        },
+    )
+    payload["mode"] = "written"
+    print(json.dumps(payload, indent=2, default=str))
 
 
 def command_understat_ingest(args: argparse.Namespace) -> None:
@@ -1708,6 +1837,30 @@ def main() -> None:
         help="Finished matches to normalize during this read-only probe.",
     )
 
+    fotmob_ingest = sub.add_parser(
+        "fotmob-ingest",
+        help="Batch and quality-gate FotMob process data before optional write",
+    )
+    fotmob_ingest.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_ingest.add_argument("--season-name", required=True)
+    fotmob_ingest.add_argument("--season-code", required=True)
+    fotmob_ingest.add_argument("--offset", type=int, default=0)
+    fotmob_ingest.add_argument("--limit", type=int, default=50)
+    fotmob_ingest.add_argument(
+        "--sleep-ms",
+        type=int,
+        default=150,
+        help="Polite delay between match-detail requests.",
+    )
+    fotmob_ingest.add_argument(
+        "--write",
+        action="store_true",
+        help="Persist only after the batch passes the quality gate.",
+    )
+
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
         help="Verify and ingest FPL-Core-Insights enrichment rows",
@@ -2037,6 +2190,8 @@ def main() -> None:
         command_fbref_smoke(args)
     elif args.command == "fotmob-preview":
         command_fotmob_preview(args)
+    elif args.command == "fotmob-ingest":
+        command_fotmob_ingest(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
     elif args.command == "fpl-core-priors-ingest":
