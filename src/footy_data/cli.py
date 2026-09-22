@@ -130,6 +130,46 @@ def command_understat(args: argparse.Namespace) -> None:
     }, indent=2))
 
 
+def _serializable_columns(frame: pd.DataFrame) -> list[str]:
+    names: list[str] = []
+    for column in frame.columns:
+        if isinstance(column, tuple):
+            parts = [
+                str(part)
+                for part in column
+                if str(part) not in {"", "nan", "None"}
+                and not str(part).startswith("Unnamed:")
+            ]
+            names.append(" | ".join(parts))
+        else:
+            names.append(str(column))
+    return names
+
+
+def command_fbref_smoke(args: argparse.Namespace) -> None:
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season],
+    )
+    schedule = source.fbref_schedule()
+    logs = source.fbref_team_match_stats(
+        stat_type=args.stat_type,
+        team=args.team,
+    )
+
+    print(json.dumps({
+        "status": "ok",
+        "league": args.league,
+        "season": args.season,
+        "team": args.team,
+        "stat_type": args.stat_type,
+        "schedule_rows": int(len(schedule)),
+        "schedule_columns": _serializable_columns(schedule),
+        "match_log_rows": int(len(logs)),
+        "match_log_columns": _serializable_columns(logs),
+    }, indent=2, default=str))
+
+
 def command_understat_ingest(args: argparse.Namespace) -> None:
     matches, metrics = _understat_frames(args)
     report = assess_match_team_metrics(metrics)
@@ -1556,6 +1596,19 @@ def main() -> None:
     )
     _add_understat_args(ingest)
 
+    fbref_smoke = sub.add_parser(
+        "fbref-smoke",
+        help="Probe a custom FBref league without writing any data",
+    )
+    fbref_smoke.add_argument("--league", required=True)
+    fbref_smoke.add_argument("--season", required=True)
+    fbref_smoke.add_argument(
+        "--stat-type",
+        choices=["schedule", "shooting", "keeper", "misc"],
+        default="schedule",
+    )
+    fbref_smoke.add_argument("--team")
+
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
         help="Verify and ingest FPL-Core-Insights enrichment rows",
@@ -1881,6 +1934,8 @@ def main() -> None:
         command_understat(args)
     elif args.command == "understat-ingest":
         command_understat_ingest(args)
+    elif args.command == "fbref-smoke":
+        command_fbref_smoke(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
     elif args.command == "fpl-core-priors-ingest":
