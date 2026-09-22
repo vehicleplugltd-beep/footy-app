@@ -325,6 +325,8 @@ function fotMobLeagueName(name: string, countryCode?: string | null) {
     "premiership": countryCode === "SCO" ? "SCO-Premiership" : raw,
     "la liga": "ESP-La Liga",
     "laliga": "ESP-La Liga",
+    "laliga2": "ESP-La Liga 2",
+    "la liga 2": "ESP-La Liga 2",
     "serie a": countryCode === "ITA" ? "ITA-Serie A" : raw,
     "serie b": countryCode === "ITA" ? "ITA-Serie B" : raw,
     "bundesliga": countryCode === "GER" ? "GER-Bundesliga" : raw,
