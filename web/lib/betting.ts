@@ -824,13 +824,16 @@ export async function getBettingWorkspaceData() {
     verifiedEventMatch.set(eventId, matches[0]);
   }
 
+  const verifiedOdds: LivePriceRow[] = [];
   const pricesByKey = new Map<string, LivePriceRow[]>();
   for (const row of liveOdds) {
     const matchId = row.match_id ? verifiedEventMatch.get(row.match_id) : null;
     if (!matchId) continue;
+    const verified = { ...row, match_id: matchId };
+    verifiedOdds.push(verified);
     const key = `${matchId}:${row.market}:${row.selection}`;
     const list = pricesByKey.get(key) ?? [];
-    list.push(row);
+    list.push(verified);
     pricesByKey.set(key, list);
   }
 
@@ -917,7 +920,7 @@ export async function getBettingWorkspaceData() {
   const todayGames = buildDailyGames(
     scopeMatches,
     selections,
-    liveOdds,
+    verifiedOdds,
     nowDate,
   );
 
