@@ -8,3 +8,5 @@ def test_historical_championship_aliases():
     assert resolver.resolve("Rotherham United") == "Rotherham"
     assert resolver.resolve("Wigan Athletic") == "Wigan"
     assert resolver.resolve("Plymouth Argyle") == "Plymouth"
+    assert resolver.resolve("Bolton Wanderers") == "Bolton"
+    assert resolver.resolve("Lincoln City") == "Lincoln"
