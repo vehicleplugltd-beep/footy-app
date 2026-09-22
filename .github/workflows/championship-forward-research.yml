@@ -1,0 +1,82 @@
+name: championship-forward-research
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/betting-edge-workspace
+    paths:
+      - ".github/workflows/championship-forward-research.yml"
+      - "src/footy_data/upcoming.py"
+      - "src/footy_data/normalizers/fotmob.py"
+      - "src/footy_data/sources/fotmob_source.py"
+      - "src/footy_data/cli.py"
+  schedule:
+    - cron: "40 5,17 * * *"
+
+concurrency:
+  group: championship-forward-research
+  cancel-in-progress: true
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Sync future fixtures from FotMob
+        run: |
+          footy-data fotmob-fixtures-ingest \
+            --league "ENG-Championship" \
+            --season-name "current" \
+            --season-code "2627"
+
+      - name: Build Championship research probabilities using calibrated raw xG
+        run: |
+          footy-data predict-upcoming \
+            --league "ENG-Championship" \
+            --season "2627" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
+            --model-version "v7-r16-p50-v20" \
+            --process-mode "xg" \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20 \
+            --lambda-beta 1.0 \
+            --home-lambda-scale 1.0 \
+            --away-lambda-scale 1.0 \
+            --horizon-days 30 \
+            --target-ev 0.02
+
+      - name: Confirm Championship remains behind validation gate
+        run: |
+          python - <<'PY'
+          from footy_data.storage import SupabaseRESTReader
+
+          reader = SupabaseRESTReader()
+          validation = reader.model_market_validation(
+              "v7-r16-p50-v20",
+              league="ENG-Championship",
+          )
+          if validation.empty:
+              print("No validation record; research only.")
+          else:
+              print(validation[[
+                  "league", "market", "status",
+                  "model_log_loss", "benchmark_log_loss",
+              ]].to_string(index=False))
+          PY
