@@ -59,7 +59,7 @@ jobs:
             --lambda-beta 1.0 \
             --home-lambda-scale 1.0 \
             --away-lambda-scale 1.0 \
-            --horizon-days 10 \
+            --horizon-days 30 \
             --target-ev 0.02
 
       - name: Confirm Championship remains behind validation gate
