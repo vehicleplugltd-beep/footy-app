@@ -208,3 +208,100 @@ def test_historical_metrics_can_include_unverified_for_diagnostics(monkeypatch):
 
     frame = reader.historical_match_team_metrics(include_unverified=True)
     assert set(frame["match_id"]) == {"m-warn"}
+
+
+def test_historical_reader_collapses_exact_paginated_repeats(monkeypatch):
+    match = {
+        "match_id": "m-pass",
+        "league": "ENG-Championship",
+        "season": "2526",
+        "kickoff_at": "2026-03-01T15:00:00Z",
+        "home_team": "A",
+        "away_team": "B",
+    }
+    metrics = [
+        {
+            "match_id": "m-pass",
+            "team": team,
+            "opponent": opponent,
+            "home_away": side,
+            "goals": goals,
+            "goals_conceded": conceded,
+            "xg": xg,
+            "xga": xga,
+            "source": "fotmob",
+            "verified": True,
+            "verification_status": "PASS",
+        }
+        for team, opponent, side, goals, conceded, xg, xga in [
+            ("A", "B", "H", 1, 0, 1.2, 0.7),
+            ("B", "A", "A", 0, 1, 0.7, 1.2),
+        ]
+    ]
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    def fake_get_all(table, select="*"):
+        if table == "footy_matches":
+            return [match, dict(match)]
+        if table == "footy_match_team_metrics":
+            return metrics + [dict(metrics[0]), dict(metrics[1])]
+        return []
+
+    monkeypatch.setattr(reader, "_get_all", fake_get_all)
+    frame = reader.historical_match_team_metrics()
+    assert len(frame) == 2
+    assert set(frame["team"]) == {"A", "B"}
+    assert frame["match_id"].nunique() == 1
+    assert set(frame["source_count"]) == {1}
+
+
+def test_historical_reader_rejects_conflicting_match_identity(monkeypatch):
+    match = {
+        "match_id": "m-pass",
+        "league": "ENG-Championship",
+        "season": "2526",
+        "kickoff_at": "2026-03-01T15:00:00Z",
+        "home_team": "A",
+        "away_team": "B",
+    }
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+    monkeypatch.setattr(
+        reader,
+        "_get_all",
+        lambda table, select="*": [match, {**match, "away_team": "C"}]
+        if table == "footy_matches" else [],
+    )
+    import pytest
+    with pytest.raises(RuntimeError, match="Conflicting match records"):
+        reader.historical_match_team_metrics()
+
+
+def test_paginated_match_reads_are_deterministically_ordered(monkeypatch):
+    requests_seen = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        requests_seen.append((url, dict(params), dict(headers)))
+        return Response()
+
+    monkeypatch.setattr("footy_data.storage.requests.get", fake_get)
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+    reader._get_all_filtered("footy_matches", "match_id", {"league": "eq.ENG-Championship"})
+    reader._get_all_filtered("footy_match_team_metrics", "match_id")
+    assert requests_seen[0][1]["order"] == "match_id.asc"
+    assert requests_seen[1][1]["order"] == "id.asc"
+    assert all(row[2]["Range"] == "0-999" for row in requests_seen)

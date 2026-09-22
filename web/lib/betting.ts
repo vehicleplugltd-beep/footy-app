@@ -698,7 +698,7 @@ function buildAccas(selections: BettingSelection[]): AccaCandidate[] {
 export async function getBettingWorkspaceData() {
   const nowDate = new Date();
   const now = nowDate.toISOString();
-  const horizon = new Date(nowDate.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const horizon = new Date(nowDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const scopeStart = new Date(nowDate.getTime() - 30 * 60 * 60 * 1000).toISOString();
   const priceCutoff = new Date(nowDate.getTime() - 2 * 60 * 60 * 1000).toISOString();
 
@@ -990,7 +990,7 @@ export async function getBettingWorkspaceData() {
         ? "NO_UPCOMING_FIXTURES"
         : futureSelections.length === 0
           ? "NO_CURRENT_MODEL"
-          : liveOdds.length === 0
+          : !futureSelections.some((selection) => selection.bestPrice != null)
             ? "NO_FRESH_PRICES"
             : "LIVE",
   } as const;

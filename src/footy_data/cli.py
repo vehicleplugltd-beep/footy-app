@@ -1873,7 +1873,10 @@ def _load_upcoming_schedule(
 
 def command_predict_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
-    history = reader.historical_match_team_metrics()
+    history = reader.historical_match_team_metrics(
+        league=args.league,
+        seasons=args.history_season,
+    )
     if history.empty:
         raise RuntimeError("No historical Footy data found in Supabase.")
 
