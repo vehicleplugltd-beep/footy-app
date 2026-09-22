@@ -617,22 +617,66 @@ class SupabaseRESTReader:
         self,
         include_ratings: bool = False,
         include_unverified: bool = False,
+        league: str | None = None,
+        seasons: Iterable[str] | None = None,
     ) -> pd.DataFrame:
-        matches = pd.DataFrame(self._get_all(
-            "footy_matches",
-            "match_id,league,season,kickoff_at,home_team,away_team",
-        ))
-        metrics = pd.DataFrame(self._get_all(
-            "footy_match_team_metrics",
-            (
-                "match_id,team,opponent,home_away,goals,goals_conceded,"
-                "xg,npxg,xga,npxga,shots,shots_on_target,"
-                "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
-                "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
-                "possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,"
-                "source,retrieved_at,verified,verification_status,verified_at"
-            ),
-        ))
+        match_select = (
+            "match_id,league,season,kickoff_at,home_team,away_team"
+        )
+        metric_select = (
+            "match_id,team,opponent,home_away,goals,goals_conceded,"
+            "xg,npxg,xga,npxga,shots,shots_on_target,"
+            "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
+            "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
+            "possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,"
+            "source,retrieved_at,verified,verification_status,verified_at"
+        )
+
+        requested_seasons = (
+            sorted({str(value) for value in seasons})
+            if seasons is not None
+            else []
+        )
+        match_filters: dict[str, str] = {}
+        if league is not None:
+            match_filters["league"] = f"eq.{league}"
+        if requested_seasons:
+            match_filters["season"] = (
+                "in.(" + ",".join(requested_seasons) + ")"
+            )
+
+        if match_filters:
+            matches = pd.DataFrame(self._get_all_filtered(
+                "footy_matches",
+                match_select,
+                match_filters,
+            ))
+        else:
+            matches = pd.DataFrame(self._get_all(
+                "footy_matches",
+                match_select,
+            ))
+
+        if matches.empty:
+            return pd.DataFrame()
+
+        if match_filters:
+            metric_rows: list[dict[str, Any]] = []
+            match_ids = matches["match_id"].astype(str).tolist()
+            for start in range(0, len(match_ids), 200):
+                chunk = match_ids[start:start + 200]
+                quoted = ",".join(f'"{value}"' for value in chunk)
+                metric_rows.extend(self._get_all_filtered(
+                    "footy_match_team_metrics",
+                    metric_select,
+                    {"match_id": f"in.({quoted})"},
+                ))
+            metrics = pd.DataFrame(metric_rows)
+        else:
+            metrics = pd.DataFrame(self._get_all(
+                "footy_match_team_metrics",
+                metric_select,
+            ))
         if matches.empty or metrics.empty:
             return pd.DataFrame()
 
