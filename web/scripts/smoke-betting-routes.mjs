@@ -8,9 +8,10 @@ const routes = [
   ["/betting/tools", "Know the price. Know the risk."],
   ["/betting/my-bets", "Your bets become evidence."],
 ];
+// Launch Next directly rather than via npm, so SIGTERM also ends the server.
 const server = spawn(
-  "npm",
-  ["run", "start", "--", "-p", String(port)],
+  process.execPath,
+  ["node_modules/next/dist/bin/next", "start", "-p", String(port)],
   {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
@@ -57,5 +58,9 @@ async function run() {
 try {
   await run();
 } finally {
-  server.kill("SIGTERM");
+  if (server.exitCode === null && server.signalCode === null) {
+    server.kill("SIGTERM");
+  }
+  server.stdout.destroy();
+  server.stderr.destroy();
 }
