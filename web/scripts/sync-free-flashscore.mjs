@@ -204,6 +204,60 @@ function normalizeLeague(country, league) {
   ]);
   if (aliases.has(key)) return aliases.get(key);
 
+  const womensCompetition =
+    l.includes("women") ||
+    l.includes("wsl") ||
+    l.includes("femin") ||
+    l.includes("frauen");
+
+  if (!womensCompetition) {
+    if (c === "england" && l.includes("premier league")) return "ENG-Premier League";
+    if (c === "england" && l.includes("championship")) return "ENG-Championship";
+    if (c === "england" && l.includes("league one")) return "ENG-League One";
+    if (c === "england" && l.includes("league two")) return "ENG-League Two";
+    if (c === "scotland" && l.includes("premiership")) return "SCO-Premiership";
+
+    if (
+      c === "spain" &&
+      (l.includes("laliga2") || l.includes("la liga 2") || l.includes("segunda"))
+    ) {
+      return "ESP-La Liga 2";
+    }
+    if (c === "spain" && (l.includes("laliga") || l.includes("la liga"))) {
+      return "ESP-La Liga";
+    }
+
+    if (
+      c === "germany" &&
+      (l.includes("2 bundesliga") || l.includes("2. bundesliga"))
+    ) {
+      return "GER-2. Bundesliga";
+    }
+    if (c === "germany" && l.includes("bundesliga")) return "GER-Bundesliga";
+
+    if (c === "italy" && l.includes("serie b")) return "ITA-Serie B";
+    if (c === "italy" && l.includes("serie a")) return "ITA-Serie A";
+
+    if (c === "france" && l.includes("ligue 2")) return "FRA-Ligue 2";
+    if (c === "france" && l.includes("ligue 1")) return "FRA-Ligue 1";
+
+    if (c === "netherlands" && l.includes("eredivisie")) return "NED-Eredivisie";
+    if (
+      c === "portugal" &&
+      (l.includes("liga portugal") || l.includes("primeira liga"))
+    ) {
+      return "POR-Primeira Liga";
+    }
+    if (
+      c === "belgium" &&
+      (l.includes("jupiler") || l.includes("pro league"))
+    ) {
+      return "BEL-First Division A";
+    }
+    if (c === "turkey" && l.includes("super lig")) return "TUR-Super Lig";
+    if (c === "greece" && l.includes("super league")) return "GRE-Super League";
+  }
+
   if (l.includes("champions league")) return "UEFA-Champions League";
   if (l.includes("europa league")) return "UEFA-Europa League";
   if (l.includes("conference league")) return "UEFA-Conference League";
@@ -281,7 +335,7 @@ async function fetchDayFeed(dayOffset) {
   throw new Error(errors.join(" | ").slice(0, 1200));
 }
 
-async function fetchUpcomingFeeds(days = 14) {
+async function fetchUpcomingFeeds(days = 8) {
   const results = await Promise.allSettled(
     Array.from({ length: days }, (_, dayOffset) => fetchDayFeed(dayOffset)),
   );
@@ -595,7 +649,7 @@ async function main() {
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
   const nowMs = Date.now();
-  const fixtureCutoff = nowMs + 14 * 24 * 60 * 60 * 1000;
+  const fixtureCutoff = nowMs + 8 * 24 * 60 * 60 * 1000;
   const priceCutoff = nowMs + 48 * 60 * 60 * 1000;
 
   const fixtureEvents = events
