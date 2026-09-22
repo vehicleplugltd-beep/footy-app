@@ -58,6 +58,9 @@ type ValidationRow = {
 
 type LivePriceRow = {
   match_id: string | null;
+  home_team: string;
+  away_team: string;
+  commence_time: string;
   bookmaker_key: string;
   bookmaker_name: string;
   market: string;
@@ -726,7 +729,7 @@ export async function getBettingWorkspaceData() {
         `footy_model_market_validation?select=model_version,league,market,status,sample_size,model_log_loss,benchmark_log_loss,close_roi,clv_proxy,bookmaker_reference,notes,evaluated_at&model_version=eq.${MODEL_VERSION}`,
       ),
       rest<LivePriceRow>(
-        `footy_live_odds_current?select=match_id,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,captured_at&captured_at=gte.${encodeURIComponent(priceCutoff)}&limit=30000`,
+        `footy_live_odds_current?select=match_id,home_team,away_team,commence_time,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,captured_at&captured_at=gte.${encodeURIComponent(priceCutoff)}&limit=30000`,
       ),
       rest<FeedRow>(
         "footy_odds_feed_status?select=provider,last_success_at,last_attempt_at,events_received,prices_received,last_error&provider=eq.flashscore-free&order=last_attempt_at.desc&limit=1",
@@ -790,12 +793,47 @@ export async function getBettingWorkspaceData() {
     history.sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
+  // Provider event IDs differ from our fixture IDs. Match by both teams and
+  // kickoff only when the mapping is unique in BOTH directions. Never guess.
+  const candidateMatches = scopeMatches.filter((match) =>
+    new Date(match.kickoff_at).getTime() > nowDate.getTime(),
+  );
+  const oddsEvents = new Map<string, LivePriceRow>();
+  for (const quote of liveOdds) {
+    if (quote.match_id) oddsEvents.set(quote.match_id, quote);
+  }
+  const candidates = new Map<string, string[]>();
+  const reverseCandidates = new Map<string, string[]>();
+  for (const [eventId, quote] of oddsEvents) {
+    const possible = candidateMatches.filter((match) =>
+      canonicalFixtureTeam(match.home_team) === canonicalFixtureTeam(quote.home_team) &&
+      canonicalFixtureTeam(match.away_team) === canonicalFixtureTeam(quote.away_team) &&
+      Math.abs(new Date(match.kickoff_at).getTime() - new Date(quote.commence_time).getTime()) <= 90 * 60 * 1000,
+    );
+    candidates.set(eventId, possible.map((match) => match.match_id));
+    for (const match of possible) {
+      const ids = reverseCandidates.get(match.match_id) ?? [];
+      ids.push(eventId);
+      reverseCandidates.set(match.match_id, ids);
+    }
+  }
+  const verifiedEventMatch = new Map<string, string>();
+  for (const [eventId, matches] of candidates) {
+    if (matches.length !== 1) continue;
+    if (reverseCandidates.get(matches[0])?.length !== 1) continue;
+    verifiedEventMatch.set(eventId, matches[0]);
+  }
+
+  const verifiedOdds: LivePriceRow[] = [];
   const pricesByKey = new Map<string, LivePriceRow[]>();
   for (const row of liveOdds) {
-    if (!row.match_id) continue;
-    const key = `${row.match_id}:${row.market}:${row.selection}`;
+    const matchId = row.match_id ? verifiedEventMatch.get(row.match_id) : null;
+    if (!matchId) continue;
+    const verified = { ...row, match_id: matchId };
+    verifiedOdds.push(verified);
+    const key = `${matchId}:${row.market}:${row.selection}`;
     const list = pricesByKey.get(key) ?? [];
-    list.push(row);
+    list.push(verified);
     pricesByKey.set(key, list);
   }
 
@@ -882,7 +920,7 @@ export async function getBettingWorkspaceData() {
   const todayGames = buildDailyGames(
     scopeMatches,
     selections,
-    liveOdds,
+    verifiedOdds,
     nowDate,
   );
 
