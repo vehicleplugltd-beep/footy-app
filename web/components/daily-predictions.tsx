@@ -95,12 +95,18 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
       </div>
 
       {games.length ? (
+        <details className="today-coverage-drawer" open={modelledCount > 0}>
+          <summary>
+            {modelledCount > 0
+              ? `Browse today's ${modelledCount} modelled fixtures and remaining coverage`
+              : `Browse today's ${games.length} coverage-only fixtures`}
+          </summary>
         <div className="league-board-list">
           {grouped.map((group, groupIndex) => (
             <details
               className="league-board"
               key={group.league}
-              open={groupIndex < 5 || group.modelled > 0}
+              open={group.modelled > 0 || (group.priced > 0 && groupIndex < 2)}
             >
               <summary>
                 <div>
@@ -226,6 +232,7 @@ export function DailyPredictions({ games }: { games: DailyGamePrediction[] }) {
             </details>
           ))}
         </div>
+        </details>
       ) : (
         <div className="betting-empty">
           <strong>No football fixtures were discovered for today.</strong>

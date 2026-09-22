@@ -98,11 +98,16 @@ function signalLabel(selection: BettingSelection) {
 export function DecisionFeed({
   todayGames,
   accas,
+  upcomingModelledCount,
 }: {
   todayGames: DailyGamePrediction[];
   accas: AccaCandidate[];
+  upcomingModelledCount: number;
 }) {
   const [mode, setMode] = useState<"daily" | "acca">("daily");
+  const actionableToday = todayGames.filter(
+    (game) => game.outcomes.length > 0 || game.coveragePrices.length > 0,
+  );
   const signal = useMemo(
     () => strongestSelection(todayGames),
     [todayGames],
@@ -138,10 +143,11 @@ export function DecisionFeed({
         <>
         <div className="today-coverage-count">
           <strong>{todayGames.length}</strong>
-          <span>fixtures discovered today · showing the first 12 here</span>
+          <span>fixtures discovered today · {actionableToday.length} with a model or verified price</span>
         </div>
-        <div className="today-match-strip" aria-label="Today's matches">
-          {[...todayGames]
+        {actionableToday.length ? (
+        <div className="today-match-strip" aria-label="Today's modelled or priced matches">
+          {[...actionableToday]
             .sort((a, b) =>
               Number(b.outcomes.length > 0) - Number(a.outcomes.length > 0) ||
               Number(b.coveragePrices.length > 0) - Number(a.coveragePrices.length > 0) ||
@@ -175,6 +181,11 @@ export function DecisionFeed({
             </article>
           ))}
         </div>
+        ) : (
+          <p className="today-slate-note">
+            Today's fixtures are coverage-only. The next modelled research fixtures are listed above.
+          </p>
+        )}
         </>
       ) : null}
 
@@ -271,8 +282,13 @@ export function DecisionFeed({
           </article>
         ) : (
           <div className="betting-empty">
-            <strong>No Footy model signal on today&apos;s slate.</strong>
-            <p>Live market prices remain visible below; Footy will not substitute a future prediction.</p>
+            <strong>No model-qualified selection for today's fixtures.</strong>
+            <p>
+              {upcomingModelledCount > 0
+                ? `${upcomingModelledCount} upcoming fixtures have research probabilities above. Today's global fixtures remain coverage-only until a verified model and price exist.`
+                : "Footy will not invent a forecast or claim that a market is verified."}
+            </p>
+            <a href="#next-modelled">View the next modelled fixtures →</a>
           </div>
         )
       ) : bestAcca ? (
