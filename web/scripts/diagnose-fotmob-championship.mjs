@@ -145,4 +145,41 @@ if (sampleMatch?.id) {
   }
   collectProcessStats(details);
   console.log("PROCESS_STATS", JSON.stringify(processStats.slice(0, 50), null, 2));
+
+  const shotArrays = [];
+  function collectShotArrays(value, path = "") {
+    if (shotArrays.length >= 20 || value == null) return;
+    if (Array.isArray(value)) {
+      const shotLike = value.filter(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          item.expectedGoals != null &&
+          item.teamId != null,
+      );
+      if (shotLike.length) {
+        shotArrays.push({
+          path,
+          length: value.length,
+          shotLike: shotLike.length,
+          first: shotLike[0],
+        });
+      }
+      value.forEach((item, index) =>
+        collectShotArrays(item, `${path}[${index}]`),
+      );
+      return;
+    }
+    if (typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      collectShotArrays(child, path ? `${path}.${key}` : key);
+      if (shotArrays.length >= 20) break;
+    }
+  }
+  collectShotArrays(details);
+  console.log("SHOT_ARRAYS", JSON.stringify(shotArrays, null, 2).slice(0, 16000));
+  console.log(
+    "TEAM_STATS_BLOCK",
+    JSON.stringify(details?.content?.stats ?? null, null, 2).slice(0, 16000),
+  );
 }
