@@ -184,6 +184,13 @@ export type AccaCandidate = {
   verdict: "BET";
 };
 
+export type FixtureMarketQuote = {
+  selection: "home" | "draw" | "away";
+  bookmakerName: string;
+  decimalOdds: number;
+  capturedAt: string;
+};
+
 export type DailyGamePrediction = {
   matchId: string;
   kickoffAt: string;
@@ -194,6 +201,7 @@ export type DailyGamePrediction = {
   awayXg: number | null;
   outcomes: BettingSelection[];
   modelPick: BettingSelection | null;
+  coveragePrices: FixtureMarketQuote[];
 };
 
 type PublicCallRow = {
@@ -472,6 +480,7 @@ function londonDateKey(value: string | Date) {
 function buildDailyGames(
   matches: MatchRow[],
   selections: BettingSelection[],
+  liveOdds: LivePriceRow[],
   nowDate: Date,
 ): DailyGamePrediction[] {
   const today = londonDateKey(nowDate);
@@ -490,6 +499,29 @@ function buildDailyGames(
         (a, b) => b.modelProbability - a.modelProbability,
       );
       const modelPick = outcomes[0] ?? null;
+
+      const fixturePrices = liveOdds
+        .filter(
+          (row) =>
+            row.match_id === match.match_id &&
+            row.market === "1X2" &&
+            ["home", "draw", "away"].includes(row.selection),
+        )
+        .sort((a, b) => Number(b.decimal_odds) - Number(a.decimal_odds));
+
+      const coveragePrices = (["home", "draw", "away"] as const).flatMap(
+        (selection) => {
+          const best = fixturePrices.find((row) => row.selection === selection);
+          if (!best) return [];
+          return [{
+            selection,
+            bookmakerName: best.bookmaker_name,
+            decimalOdds: Number(best.decimal_odds),
+            capturedAt: best.captured_at,
+          }];
+        },
+      );
+
       return {
         matchId: match.match_id,
         kickoffAt: match.kickoff_at,
@@ -500,6 +532,7 @@ function buildDailyGames(
         awayXg: modelPick?.awayXg ?? null,
         outcomes,
         modelPick,
+        coveragePrices,
       };
     })
     .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
@@ -815,7 +848,12 @@ export async function getBettingWorkspaceData() {
   const futureSelections = selections.filter(
     (selection) => new Date(selection.kickoffAt).getTime() > nowDate.getTime(),
   );
-  const todayGames = buildDailyGames(scopeMatches, selections, nowDate);
+  const todayGames = buildDailyGames(
+    scopeMatches,
+    selections,
+    liveOdds,
+    nowDate,
+  );
 
   const latestQualityByLeague = new Map<string, QualityRow>();
   for (const row of qualityRows) {
@@ -836,9 +874,10 @@ export async function getBettingWorkspaceData() {
     const modelledFixtures = new Set(
       leagueSelections.map((selection) => selection.matchId),
     ).size;
-    const freshPricedSelections = leagueSelections.filter(
-      (selection) => selection.bestPrice != null,
-    ).length;
+    const freshPricedSelections = leagueGames.reduce(
+      (count, game) => count + game.coveragePrices.length,
+      0,
+    );
     const quality = latestQualityByLeague.get(league) ?? null;
     const validation =
       validations.find(
