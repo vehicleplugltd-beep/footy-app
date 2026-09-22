@@ -2,6 +2,15 @@ name: fotmob-championship-current-ingest
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/betting-edge-workspace
+    paths:
+      - ".github/workflows/fotmob-championship-current-ingest.yml"
+      - "src/footy_data/cli.py"
+      - "src/footy_data/normalizers/fotmob.py"
+      - "src/footy_data/sources/fotmob_source.py"
 
 jobs:
   current:
