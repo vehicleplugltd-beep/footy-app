@@ -3,12 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .backtest import multiclass_log_loss
-from .value_backtest import (
-    closing_line_value,
-    devig_1x2,
-    devig_two_way,
-)
+from .backtest import closing_line_value, multiclass_log_loss
+from .value_backtest import devig_1x2, devig_two_way
 
 
 def expected_calibration_error(
