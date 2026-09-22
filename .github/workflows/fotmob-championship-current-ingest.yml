@@ -1,0 +1,28 @@
+name: fotmob-championship-current-ingest
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/fotmob-championship-current-ingest.yml"
+
+jobs:
+  current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Install FotMob-only dependencies
+        run: |
+          pip install --no-deps -e .
+          pip install pandas numpy requests pyarrow
+      - name: Ingest finished current-season Championship process
+        run: |
+          footy-data fotmob-ingest             --league "ENG-Championship"             --season-name "current"             --season-code "2627"             --offset 0             --limit 100             --sleep-ms 150             --write
