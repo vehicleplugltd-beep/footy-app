@@ -1,6 +1,10 @@
 name: bootstrap-championship-model
 
 on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/bootstrap-championship-model.yml"
   workflow_dispatch:
 
 jobs:
@@ -26,8 +30,10 @@ jobs:
           python - <<'PY'
           from footy_data.storage import SupabaseRESTReader
 
-          frame = SupabaseRESTReader().historical_match_team_metrics()
-          frame = frame[frame["league"] == "ENG-Championship"].copy()
+          frame = SupabaseRESTReader().historical_match_team_metrics(
+              league="ENG-Championship",
+              seasons=["2223", "2324", "2425", "2526", "2627"],
+          )
           counts = frame.groupby(frame["season"].astype(str)).size().to_dict()
           print("VERIFIED_CHAMPIONSHIP_TEAM_ROWS", counts)
 
