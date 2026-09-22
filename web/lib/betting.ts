@@ -1,6 +1,21 @@
 const MODEL_VERSION = "v7-r16-p50-v20";
 const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
 
+export const CORE_MODEL_LEAGUES = [
+  "ENG-Premier League",
+  "ENG-Championship",
+  "ESP-La Liga",
+  "ESP-La Liga 2",
+  "GER-Bundesliga",
+  "GER-2. Bundesliga",
+  "ITA-Serie A",
+  "ITA-Serie B",
+  "FRA-Ligue 1",
+  "FRA-Ligue 2",
+] as const;
+
+const CORE_MODEL_LEAGUE_SET = new Set<string>(CORE_MODEL_LEAGUES);
+
 export type BettingVerdict = "BET" | "WATCH" | "PASS" | "FADE";
 
 type MatchRow = {
@@ -78,6 +93,7 @@ export type LeagueReadiness = {
   latestProcessAt: string | null;
   validationStatus: ValidationRow["status"] | "MISSING";
   freshPricedSelections: number;
+  modelScope: "CORE" | "COVERAGE";
   stage:
     | "BETTING_READY"
     | "PRICE_WATCH"
@@ -866,12 +882,15 @@ export async function getBettingWorkspaceData() {
   const leagueReadiness: LeagueReadiness[] = [...new Set(
     todayGames.map((game) => game.league),
   )].map<LeagueReadiness>((league) => {
+    const coreModelLeague = CORE_MODEL_LEAGUE_SET.has(league);
     const leagueGames = todayGames.filter((game) => game.league === league);
-    const leagueSelections = selections.filter(
-      (selection) =>
-        selection.league === league &&
-        londonDateKey(selection.kickoffAt) === londonDateKey(nowDate),
-    );
+    const leagueSelections = coreModelLeague
+      ? selections.filter(
+          (selection) =>
+            selection.league === league &&
+            londonDateKey(selection.kickoffAt) === londonDateKey(nowDate),
+        )
+      : [];
     const modelledFixtures = new Set(
       leagueSelections.map((selection) => selection.matchId),
     ).size;
@@ -879,11 +898,14 @@ export async function getBettingWorkspaceData() {
       (count, game) => count + game.coveragePrices.length,
       0,
     );
-    const quality = latestQualityByLeague.get(league) ?? null;
-    const validation =
-      validations.find(
-        (row) => row.league === league && row.market === "1X2",
-      ) ?? null;
+    const quality = coreModelLeague
+      ? latestQualityByLeague.get(league) ?? null
+      : null;
+    const validation = coreModelLeague
+      ? validations.find(
+          (row) => row.league === league && row.market === "1X2",
+        ) ?? null
+      : null;
 
     let stage: LeagueReadiness["stage"] = "FIXTURES_ONLY";
     if (freshPricedSelections > 0) stage = "MARKET_LIVE";
@@ -913,6 +935,7 @@ export async function getBettingWorkspaceData() {
       latestProcessAt: quality?.checked_at ?? null,
       validationStatus: validation?.status ?? "MISSING",
       freshPricedSelections,
+      modelScope: coreModelLeague ? "CORE" : "COVERAGE",
       stage,
     };
   }).sort((a, b) => {
