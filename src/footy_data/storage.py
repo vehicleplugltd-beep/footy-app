@@ -76,6 +76,16 @@ HISTORICAL_PREDICTION_FIELDS = {
 }
 
 
+MODEL_QUALITY_SNAPSHOT_FIELDS = {
+    "league", "market", "model_version", "sample_size",
+    "data_completeness", "model_log_loss", "benchmark_log_loss",
+    "calibration_error", "price_sample_size", "mean_clv", "realized_roi",
+    "previous_model_log_loss", "previous_calibration_error",
+    "previous_mean_clv", "gate_status", "validation_status",
+    "reasons", "policy",
+}
+
+
 def _clean_value(value: Any):
     if value is None:
         return None
@@ -333,6 +343,30 @@ class SupabaseRESTWriter:
         )
         response.raise_for_status()
 
+
+    def insert_model_quality_snapshots(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        payload = [
+            _project_row(row, MODEL_QUALITY_SNAPSHOT_FIELDS)
+            for row in rows
+        ]
+        if not payload:
+            return
+        response = requests.post(
+            f"{self.url}/rest/v1/footy_model_quality_snapshots",
+            headers={
+                "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+
     def upsert_bookmaker_prices(
         self,
         rows: Iterable[Mapping[str, Any]],
@@ -491,6 +525,42 @@ class SupabaseRESTReader:
         return frame[
             frame["model_version"].astype(str) == str(model_version)
         ].reset_index(drop=True)
+
+
+    def model_quality_snapshots(
+        self,
+        league: str | None = None,
+        market: str | None = None,
+        model_version: str | None = None,
+    ) -> pd.DataFrame:
+        filters: dict[str, str] = {}
+        if league is not None:
+            filters["league"] = f"eq.{league}"
+        if market is not None:
+            filters["market"] = f"eq.{market}"
+        if model_version is not None:
+            filters["model_version"] = f"eq.{model_version}"
+
+        rows = self._get_all_filtered(
+            "footy_model_quality_snapshots",
+            (
+                "id,league,market,model_version,evaluated_at,sample_size,"
+                "data_completeness,model_log_loss,benchmark_log_loss,"
+                "calibration_error,price_sample_size,mean_clv,realized_roi,"
+                "previous_model_log_loss,previous_calibration_error,"
+                "previous_mean_clv,gate_status,validation_status,reasons,policy"
+            ),
+            filters or None,
+        )
+        frame = pd.DataFrame(rows)
+        if frame.empty:
+            return frame
+        frame["evaluated_at"] = pd.to_datetime(
+            frame["evaluated_at"], errors="coerce", utc=True
+        )
+        return frame.sort_values(
+            "evaluated_at", ascending=False
+        ).reset_index(drop=True)
 
     def upcoming_matches(
         self,
