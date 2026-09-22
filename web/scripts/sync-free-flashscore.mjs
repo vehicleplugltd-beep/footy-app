@@ -281,11 +281,10 @@ async function fetchDayFeed(dayOffset) {
   throw new Error(errors.join(" | ").slice(0, 1200));
 }
 
-async function fetchUpcomingFeeds() {
-  const results = await Promise.allSettled([
-    fetchDayFeed(0),
-    fetchDayFeed(1),
-  ]);
+async function fetchUpcomingFeeds(days = 14) {
+  const results = await Promise.allSettled(
+    Array.from({ length: days }, (_, dayOffset) => fetchDayFeed(dayOffset)),
+  );
   const errors = [];
   const sources = [];
   const eventMap = new Map();
@@ -596,19 +595,27 @@ async function main() {
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
   const nowMs = Date.now();
-  const futureCutoff = nowMs + 48 * 60 * 60 * 1000;
-  const targetEvents = events
+  const fixtureCutoff = nowMs + 14 * 24 * 60 * 60 * 1000;
+  const priceCutoff = nowMs + 48 * 60 * 60 * 1000;
+
+  const fixtureEvents = events
     .filter((event) => {
       const kickoff = new Date(event.kickoffAt).getTime();
       return (
         event.status === "1" &&
         Number.isFinite(kickoff) &&
         kickoff >= nowMs - 5 * 60 * 1000 &&
-        kickoff <= futureCutoff &&
+        kickoff <= fixtureCutoff &&
         (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league))
       );
     })
     .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
+
+  const targetEvents = fixtureEvents.filter((event) => {
+    const kickoff = new Date(event.kickoffAt).getTime();
+    return kickoff <= priceCutoff;
+  });
+
   const fixtureRows = [];
   const currentRows = [];
   const historyRows = [];
@@ -617,7 +624,7 @@ async function main() {
   // Persist the near-term fixture spine independently of whether an odds
   // request succeeds. The model must never depend on a bookmaker response
   // to know that a match exists.
-  for (const event of targetEvents) {
+  for (const event of fixtureEvents) {
     let match = findMatch(event, matches);
     if (match) continue;
 
@@ -766,6 +773,8 @@ async function main() {
           : [
               "Feed worked but no supported-league prices were returned",
               `events=${events.length}`,
+              `fixtures=${fixtureEvents.length}`,
+              `fixtures=${fixtureEvents.length}`,
               `targets=${targetEvents.length}`,
               `oddsResponses=${oddsResponses}`,
               `marketEntries=${marketEntries}`,
@@ -783,6 +792,7 @@ async function main() {
         provider: PROVIDER,
         feeds: feedUrlsUsed,
         events_discovered: events.length,
+        fixture_events: fixtureEvents.length,
         priced_league_events: targetEvents.length,
         odds_responses: oddsResponses,
         market_entries: marketEntries,
