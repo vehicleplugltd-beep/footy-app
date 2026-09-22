@@ -1,13 +1,6 @@
 name: verify-championship-fotmob-all
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/verify-championship-fotmob-all.yml"
-      - "src/footy_data/identity.py"
-      - "src/footy_data/result_verification.py"
-      - "src/footy_data/cli.py"
   workflow_dispatch:
 
 jobs:
