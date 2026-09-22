@@ -170,7 +170,7 @@ def normalise_fotmob_match(
         "source": SOURCE,
         "retrieved_at": stamp,
         "verified": True,
-        "verification_status": "fotmob_match_detail_verified",
+        "verification_status": "WARN",
         "verified_at": stamp,
     }
 
