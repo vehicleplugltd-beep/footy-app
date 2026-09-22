@@ -998,7 +998,9 @@ export async function getBettingWorkspaceData() {
     livePrices: liveOdds.length,
     discoveredFixtures: discoveredMatches.length,
     dataState:
-      futureMatches.length === 0
+      !config()
+        ? "DATABASE_NOT_CONFIGURED"
+        : futureMatches.length === 0
         ? "NO_UPCOMING_FIXTURES"
         : futureSelections.length === 0
           ? "NO_CURRENT_MODEL"
