@@ -183,7 +183,11 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
     source = FotMobSource()
     raw_matches = source.matches(
         args.league,
-        season=args.season_name,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
     )
     finished = [
         row
@@ -246,7 +250,11 @@ def command_fotmob_ingest(args: argparse.Namespace) -> None:
     source = FotMobSource()
     raw_matches = source.matches(
         args.league,
-        season=args.season_name,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
     )
     finished = [
         row
@@ -1931,7 +1939,7 @@ def main() -> None:
     fotmob_preview.add_argument(
         "--season-name",
         required=True,
-        help="FotMob historical season id, e.g. 2025/2026.",
+        help='FotMob season id (e.g. 2025/2026) or "current".',
     )
     fotmob_preview.add_argument(
         "--season-code",
