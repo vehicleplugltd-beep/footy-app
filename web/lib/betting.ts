@@ -83,6 +83,7 @@ export type LeagueReadiness = {
     | "PRICE_WATCH"
     | "MODEL_RESEARCH"
     | "PROCESS_READY"
+    | "MARKET_LIVE"
     | "FIXTURES_ONLY";
 };
 
@@ -885,6 +886,7 @@ export async function getBettingWorkspaceData() {
       ) ?? null;
 
     let stage: LeagueReadiness["stage"] = "FIXTURES_ONLY";
+    if (freshPricedSelections > 0) stage = "MARKET_LIVE";
     if (quality) stage = "PROCESS_READY";
     if (modelledFixtures > 0) stage = "MODEL_RESEARCH";
     if (modelledFixtures > 0 && freshPricedSelections > 0) {
@@ -919,7 +921,8 @@ export async function getBettingWorkspaceData() {
       PRICE_WATCH: 1,
       MODEL_RESEARCH: 2,
       PROCESS_READY: 3,
-      FIXTURES_ONLY: 4,
+      MARKET_LIVE: 4,
+      FIXTURES_ONLY: 5,
     };
     return (
       rank[a.stage] - rank[b.stage] ||
