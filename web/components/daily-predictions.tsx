@@ -30,12 +30,12 @@ function priceCoach(selection: BettingSelection | null) {
   const take = selection.minimumTakePrice;
 
   if (!current) {
-    return `Take ${minimumTakeToFractional(take)} or bigger. No fresh verified market price is available.`;
+    return `No fresh fixture-matched bookmaker quote. Model take line ${minimumTakeToFractional(take)}+ is research only until the market is approved.`;
   }
-  if (current >= take) {
-    return `Price clears the line: ${decimalToFractional(current)} is acceptable versus ${minimumTakeToFractional(take)}+.`;
+  if (selection.verdict !== "BET") {
+    return `${selection.verdict} · ${selection.verdictReason} Best quote ${decimalToFractional(current)}; model take line ${minimumTakeToFractional(take)}+.`;
   }
-  return `Do not chase. Wait for ${minimumTakeToFractional(take)} or bigger; best verified is ${decimalToFractional(current)}.`;
+  return `BET-qualified at ${decimalToFractional(current)} versus the uncertainty-adjusted minimum ${minimumTakeToFractional(take)}+.`;
 }
 
 function OutcomeRow({ outcome }: { outcome: BettingSelection }) {
