@@ -206,24 +206,35 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
     sample = finished[: max(1, int(args.limit))]
     match_frames: list[pd.DataFrame] = []
     metric_frames: list[pd.DataFrame] = []
+    skipped_matches: list[dict[str, str]] = []
 
     for row in sample:
-        details = source.match_details(row["id"])
-        matches, metrics = normalise_fotmob_match(
-            row,
-            details,
-            league=args.league,
-            season=args.season_code,
-        )
+        try:
+            details = source.match_details(row["id"])
+            matches, metrics = normalise_fotmob_match(
+                row,
+                details,
+                league=args.league,
+                season=args.season_code,
+            )
+        except (ValueError, RuntimeError) as exc:
+            skipped_matches.append({
+                "match_id": str(row.get("id", "")),
+                "home_team": str((row.get("home") or {}).get("name", "")),
+                "away_team": str((row.get("away") or {}).get("name", "")),
+                "reason": str(exc)[:500],
+            })
+            continue
         match_frames.append(matches)
         metric_frames.append(metrics)
 
-    matches = pd.concat(match_frames, ignore_index=True)
-    if not metric_frames:
+    if not match_frames or not metric_frames:
         raise RuntimeError(
-            "FotMob batch contained no matches with usable process data."
+            "FotMob sample contained no matches with usable process data: "
+            + json.dumps(skipped_matches[:10])
         )
 
+    matches = pd.concat(match_frames, ignore_index=True)
     metrics = pd.concat(metric_frames, ignore_index=True)
     report = assess_match_team_metrics(metrics)
 
@@ -330,6 +341,12 @@ def command_fotmob_ingest(args: argparse.Namespace) -> None:
 
         if args.sleep_ms > 0 and index < len(batch) - 1:
             time.sleep(float(args.sleep_ms) / 1000.0)
+
+    if not metric_frames:
+        raise RuntimeError(
+            "FotMob batch contained no matches with usable process data: "
+            + json.dumps(skipped_matches[:10])
+        )
 
     metrics = pd.concat(metric_frames, ignore_index=True)
     report = assess_match_team_metrics(metrics)
