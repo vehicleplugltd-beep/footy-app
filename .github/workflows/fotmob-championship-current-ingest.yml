@@ -1,10 +1,7 @@
 name: fotmob-championship-current-ingest
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/fotmob-championship-current-ingest.yml"
+  workflow_dispatch:
 
 jobs:
   current:
