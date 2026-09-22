@@ -3,7 +3,9 @@
   "git": {
     "deploymentEnabled": {
       "*": false,
-      "main": true
+      "main": true,
+      "feature/betting-edge-workspace": true,
+      "fix/enable-betting-preview-deployments": true
     }
   }
 }
