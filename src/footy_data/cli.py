@@ -1422,6 +1422,46 @@ def command_quality_evaluate(args: argparse.Namespace) -> None:
             "Both snapshot and closing price histories are required."
         )
 
+    required_selections = (
+        {"home", "draw", "away"}
+        if args.market == "1X2"
+        else {"over", "under"}
+    )
+
+    def complete_price_matches(frame: pd.DataFrame) -> set[str]:
+        selections = (
+            frame.groupby("match_id")["selection"]
+            .agg(lambda values: set(values.astype(str)))
+        )
+        return {
+            str(match_id)
+            for match_id, values in selections.items()
+            if required_selections.issubset(values)
+        }
+
+    comparable_match_ids = (
+        scored_match_ids
+        & complete_price_matches(snapshot_prices)
+        & complete_price_matches(close_prices)
+    )
+    if not comparable_match_ids:
+        raise RuntimeError(
+            "No matches have complete model, snapshot and closing-price data."
+        )
+
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+
     scored = predictions.merge(
         outcomes,
         on="match_id",
