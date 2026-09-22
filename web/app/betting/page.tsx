@@ -6,7 +6,7 @@ import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
 import { LeagueReadinessMap } from "@/components/league-readiness";
 import { UpcomingModelResearch } from "@/components/upcoming-model-research";
-import { getBettingWorkspaceData } from "@/lib/betting";
+import { CORE_MODEL_LEAGUES, getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
   if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
@@ -18,6 +18,8 @@ function statusCopy(state: string) {
 
 export default async function BettingPage() {
   const data = await getBettingWorkspaceData();
+  const coreLeagues = new Set<string>(CORE_MODEL_LEAGUES);
+  const coreTodayGames = data.todayGames.filter((game) => coreLeagues.has(game.league));
   const betCount = data.selections.filter((row) => row.verdict === "BET").length;
   const modelledFixtures = new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size;
 
@@ -84,6 +86,14 @@ export default async function BettingPage() {
           <div className="betting-data-warning">
             <strong>Model data is temporarily unavailable.</strong>
             <p>The server has no configured database connection. Fixture discovery alone cannot provide probabilities or verified betting prices. This is a service configuration issue, not a model verdict.</p>
+          </div>
+        </section>
+      ) : null}
+      {data.configured && modelledFixtures === 0 ? (
+        <section className="betting-section shell" role="status">
+          <div className="betting-data-warning">
+            <strong>No forward forecasts are reaching this deployment.</strong>
+            <p>The ten-league fixture feed is not a substitute for verified model output. The data pipeline or server-side read needs attention; no market will be promoted to BET from coverage-only fixtures.</p>
           </div>
         </section>
       ) : null}
