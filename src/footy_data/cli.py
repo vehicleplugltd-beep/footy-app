@@ -59,6 +59,7 @@ from .upcoming import (
 )
 from .results_ledger import refresh_results_ledger
 from .reconciliation import reconcile_fixture_id
+from .result_verification import verify_external_results
 
 
 def command_sources() -> None:
@@ -366,6 +367,113 @@ def command_fotmob_ingest(args: argparse.Namespace) -> None:
     )
     payload["mode"] = "written"
     print(json.dumps(payload, indent=2, default=str))
+
+
+def command_fotmob_verify_results(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    matches = reader.season_matches(args.league, args.season_code)
+    if matches.empty:
+        raise RuntimeError("No stored Footy matches found for verification.")
+
+    metrics = reader.match_team_metrics_for_ids(
+        matches["match_id"].astype(str).tolist(),
+        source="fotmob",
+    )
+    if metrics.empty:
+        raise RuntimeError("No FotMob team-process rows found for verification.")
+
+    fotmob_ids = set(metrics["match_id"].astype(str).unique().tolist())
+    matches = matches[
+        matches["match_id"].astype(str).isin(fotmob_ids)
+    ].copy()
+
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season_code],
+    )
+    external = source.football_data_matches()
+
+    home_goals_col = next(
+        (col for col in ("FTHG", "home_score", "HomeScore") if col in external.columns),
+        None,
+    )
+    away_goals_col = next(
+        (col for col in ("FTAG", "away_score", "AwayScore") if col in external.columns),
+        None,
+    )
+    if home_goals_col is None or away_goals_col is None:
+        raise RuntimeError(
+            "Football-Data result columns unavailable: "
+            + json.dumps(list(external.columns))
+        )
+
+    report = verify_external_results(
+        matches,
+        metrics,
+        external,
+        date_col="date",
+        home_team_col="home_team",
+        away_team_col="away_team",
+        home_goals_col=home_goals_col,
+        away_goals_col=away_goals_col,
+        minimum_match_rate=args.min_match_rate,
+    )
+
+    promoted_rows = 0
+    if args.promote:
+        if report.score_mismatches:
+            raise RuntimeError(
+                "FotMob promotion blocked by exact score mismatches: "
+                + json.dumps(report.__dict__)
+            )
+        if report.match_rate < args.min_match_rate:
+            raise RuntimeError(
+                "FotMob promotion blocked by low reconciliation: "
+                + json.dumps(report.__dict__)
+            )
+
+        writer = SupabaseRESTWriter()
+        promoted_rows = writer.update_match_team_verification(
+            report.matched_match_ids,
+            source="fotmob",
+            status="PASS",
+            verified=True,
+        )
+        writer.insert_data_quality_run(
+            source="fotmob",
+            league=args.league,
+            season=args.season_code,
+            status=(
+                "PASS"
+                if report.unmatched_matches == 0
+                else "WARN"
+            ),
+            report={
+                "basis": "Football-Data.co.uk identity + exact final-score cross-check",
+                "provider_matches": report.provider_matches,
+                "matched_matches": report.matched_matches,
+                "unmatched_matches": report.unmatched_matches,
+                "match_rate": report.match_rate,
+                "score_mismatches": report.score_mismatches,
+                "promoted_team_rows": promoted_rows,
+            },
+        )
+
+    print(json.dumps({
+        "status": report.status,
+        "source": "fotmob",
+        "reference": "football-data.co.uk",
+        "league": args.league,
+        "season_code": args.season_code,
+        "provider_matches": report.provider_matches,
+        "matched_matches": report.matched_matches,
+        "unmatched_matches": report.unmatched_matches,
+        "match_rate": report.match_rate,
+        "score_mismatches": report.score_mismatches,
+        "matched_match_ids": len(report.matched_match_ids),
+        "promote": bool(args.promote),
+        "promoted_team_rows": promoted_rows,
+    }, indent=2))
 
 
 def command_understat_ingest(args: argparse.Namespace) -> None:
@@ -1861,6 +1969,26 @@ def main() -> None:
         help="Persist only after the batch passes the quality gate.",
     )
 
+    fotmob_verify = sub.add_parser(
+        "fotmob-verify-results",
+        help="Cross-check FotMob results against Football-Data.co.uk",
+    )
+    fotmob_verify.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_verify.add_argument("--season-code", required=True)
+    fotmob_verify.add_argument(
+        "--min-match-rate",
+        type=float,
+        default=0.97,
+    )
+    fotmob_verify.add_argument(
+        "--promote",
+        action="store_true",
+        help="Promote exactly reconciled FotMob rows to PASS.",
+    )
+
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
         help="Verify and ingest FPL-Core-Insights enrichment rows",
@@ -2192,6 +2320,8 @@ def main() -> None:
         command_fotmob_preview(args)
     elif args.command == "fotmob-ingest":
         command_fotmob_ingest(args)
+    elif args.command == "fotmob-verify-results":
+        command_fotmob_verify_results(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
     elif args.command == "fpl-core-priors-ingest":
