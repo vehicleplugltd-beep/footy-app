@@ -100,3 +100,73 @@ def test_writer_inserts_model_quality_snapshot(monkeypatch):
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["json"][0]["league"] == "ENG-Championship"
     assert "ignored" not in captured["json"][0]
+
+
+
+def test_historical_reader_excludes_unverified_rows_by_default(monkeypatch):
+    from footy_data.storage import SupabaseRESTReader
+
+    matches = [
+        {
+            "match_id": "good",
+            "league": "ENG-Championship",
+            "season": "2526",
+            "kickoff_at": "2025-12-02T19:45:00Z",
+            "home_team": "A",
+            "away_team": "B",
+        },
+        {
+            "match_id": "abandoned",
+            "league": "ENG-Championship",
+            "season": "2526",
+            "kickoff_at": "2025-09-20T14:00:00Z",
+            "home_team": "A",
+            "away_team": "B",
+        },
+    ]
+    metrics = [
+        {
+            "match_id": "good", "team": "A", "opponent": "B",
+            "home_away": "H", "goals": 1, "goals_conceded": 1,
+            "xg": 1.1, "xga": 0.9, "source": "fotmob",
+            "verified": True, "verification_status": "PASS",
+        },
+        {
+            "match_id": "good", "team": "B", "opponent": "A",
+            "home_away": "A", "goals": 1, "goals_conceded": 1,
+            "xg": 0.9, "xga": 1.1, "source": "fotmob",
+            "verified": True, "verification_status": "PASS",
+        },
+        {
+            "match_id": "abandoned", "team": "A", "opponent": "B",
+            "home_away": "H", "goals": 1, "goals_conceded": 0,
+            "xg": 1.26, "xga": 0.51, "source": "fotmob",
+            "verified": False, "verification_status": "WARN",
+        },
+        {
+            "match_id": "abandoned", "team": "B", "opponent": "A",
+            "home_away": "A", "goals": 0, "goals_conceded": 1,
+            "xg": 0.51, "xga": 1.26, "source": "fotmob",
+            "verified": False, "verification_status": "WARN",
+        },
+    ]
+
+    reader = SupabaseRESTReader(
+        url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    def fake_get_all(table, select="*"):
+        if table == "footy_matches":
+            return matches
+        if table == "footy_match_team_metrics":
+            return metrics
+        return []
+
+    monkeypatch.setattr(reader, "_get_all", fake_get_all)
+
+    clean = reader.historical_match_team_metrics()
+    assert set(clean["match_id"]) == {"good"}
+
+    all_rows = reader.historical_match_team_metrics(include_unverified=True)
+    assert set(all_rows["match_id"]) == {"good", "abandoned"}

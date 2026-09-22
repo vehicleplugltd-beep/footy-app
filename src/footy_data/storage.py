@@ -613,6 +613,17 @@ class SupabaseRESTReader:
         if matches.empty or metrics.empty:
             return pd.DataFrame()
 
+        if not include_unverified:
+            if "verified" not in metrics.columns:
+                raise ValueError(
+                    "Historical metric rows are missing the verified flag."
+                )
+            metrics = metrics[
+                metrics["verified"].fillna(False).astype(bool)
+            ].copy()
+            if metrics.empty:
+                return pd.DataFrame()
+
         # The storage table intentionally keeps provider-specific observations.
         # The model must consume exactly one canonical row per team/match.
         metrics = synthesize_match_team_metrics(metrics)
