@@ -171,7 +171,11 @@ class SupabaseRESTWriter:
             json=payload,
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        if not response.ok:
+            raise RuntimeError(
+                f"Supabase upsert failed for {table} "
+                f"({response.status_code}): {response.text[:1200]}"
+            )
 
     def upsert_matches(self, rows: Iterable[Mapping[str, Any]]) -> None:
         self._upsert("footy_matches", rows, "match_id", MATCH_FIELDS)
