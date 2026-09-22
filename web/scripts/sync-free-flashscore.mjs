@@ -277,15 +277,14 @@ function parseTodayFeed(raw) {
     const row = parseRecord(rawRecord);
     if (!Object.keys(row).length) continue;
 
-    if (row.ZA || row.ZK || row.ZY) {
+    if (row.ZA || row.ZE || row.ZY || row.ZC) {
+      const tournament = row.ZA || row.ZE || context.league;
       context = {
-        country: row.ZY || row.ZAF || context.country,
+        country: row.ZY || row.ZC || context.country,
         league:
-          row.ZK ||
-          (row.ZA && row.ZA.includes(":")
-            ? row.ZA.split(":").slice(1).join(":").trim()
-            : row.ZA) ||
-          context.league,
+          tournament && tournament.includes(":")
+            ? tournament.split(":").slice(1).join(":").trim()
+            : tournament,
       };
     }
 
