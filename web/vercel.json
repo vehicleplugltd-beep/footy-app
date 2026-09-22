@@ -4,8 +4,7 @@
     "deploymentEnabled": {
       "*": false,
       "main": true,
-      "feature/betting-edge-workspace": true,
-      "fix/enable-betting-preview-deployments": true
+      "feature/betting-edge-workspace": true
     }
   }
 }
