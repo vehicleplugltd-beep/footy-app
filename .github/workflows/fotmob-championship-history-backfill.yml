@@ -1,10 +1,7 @@
 name: fotmob-championship-history-backfill
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/fotmob-championship-history-backfill.yml"
+  workflow_dispatch:
 
 jobs:
   batch:
