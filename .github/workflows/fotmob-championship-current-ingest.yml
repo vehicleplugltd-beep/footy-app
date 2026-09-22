@@ -2,6 +2,15 @@ name: fotmob-championship-current-ingest
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/betting-edge-workspace
+    paths:
+      - ".github/workflows/fotmob-championship-current-ingest.yml"
+      - "src/footy_data/cli.py"
+      - "src/footy_data/normalizers/fotmob.py"
+      - "src/footy_data/sources/fotmob_source.py"
 
 jobs:
   current:
@@ -23,3 +32,10 @@ jobs:
       - name: Ingest finished current-season Championship process
         run: |
           footy-data fotmob-ingest             --league "ENG-Championship"             --season-name "current"             --season-code "2627"             --offset 0             --limit 100             --sleep-ms 150             --write
+
+      - name: Sync future Championship fixtures
+        run: |
+          footy-data fotmob-fixtures-ingest \
+            --league "ENG-Championship" \
+            --season-name "current" \
+            --season-code "2627"

@@ -248,3 +248,70 @@ def normalise_fotmob_match(
     ])
 
     return match_frame, metrics
+
+
+def normalise_fotmob_fixtures(
+    matches: list[Mapping[str, Any]],
+    *,
+    league: str,
+    season: str,
+    now: pd.Timestamp | None = None,
+    retrieved_at: str | None = None,
+) -> pd.DataFrame:
+    """Normalize future, non-finished FotMob fixtures for stored scheduling."""
+    current = now or pd.Timestamp.now(tz="UTC")
+    if current.tzinfo is None:
+        current = current.tz_localize("UTC")
+    else:
+        current = current.tz_convert("UTC")
+
+    stamp = retrieved_at or datetime.now(timezone.utc).isoformat()
+    rows: list[dict[str, Any]] = []
+
+    for match in matches:
+        event_id = match.get("id")
+        status = match.get("status") or {}
+        if not isinstance(status, Mapping):
+            status = {}
+        if bool(status.get("finished")):
+            continue
+
+        home_team = _team_name(match, "home")
+        away_team = _team_name(match, "away")
+        kickoff_at = _kickoff(match)
+        kickoff = pd.to_datetime(kickoff_at, errors="coerce", utc=True)
+
+        if (
+            event_id is None
+            or not home_team
+            or not away_team
+            or pd.isna(kickoff)
+            or kickoff <= current
+        ):
+            continue
+
+        rows.append({
+            "match_id": f"fotmob:{event_id}",
+            "league": league,
+            "season": str(season),
+            "match_date": kickoff,
+            "kickoff_at": kickoff,
+            "home_team": home_team,
+            "away_team": away_team,
+            "status": "scheduled",
+            "source": SOURCE,
+            "retrieved_at": stamp,
+        })
+
+    columns = [
+        "match_id", "league", "season", "match_date", "kickoff_at",
+        "home_team", "away_team", "status", "source", "retrieved_at",
+    ]
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return (
+        pd.DataFrame(rows, columns=columns)
+        .sort_values("match_date")
+        .drop_duplicates("match_id")
+        .reset_index(drop=True)
+    )

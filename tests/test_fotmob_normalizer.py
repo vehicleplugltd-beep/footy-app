@@ -1,4 +1,9 @@
-from footy_data.normalizers.fotmob import normalise_fotmob_match
+import pandas as pd
+
+from footy_data.normalizers.fotmob import (
+    normalise_fotmob_match,
+    normalise_fotmob_fixtures,
+)
 from footy_data.quality import assess_match_team_metrics
 
 
@@ -141,3 +146,51 @@ def test_fotmob_normalizer_rejects_missing_score():
         assert "final score" in str(exc)
     else:
         raise AssertionError("expected missing final score to be rejected")
+
+
+
+def test_normalise_fotmob_fixtures_keeps_only_future_unfinished_matches():
+    raw = [
+        {
+            "id": 200,
+            "home": {"name": "Coventry City"},
+            "away": {"name": "Hull City"},
+            "status": {
+                "finished": False,
+                "utcTime": "2026-09-26T14:00:00.000Z",
+            },
+        },
+        {
+            "id": 201,
+            "home": {"name": "Derby County"},
+            "away": {"name": "Norwich City"},
+            "status": {
+                "finished": True,
+                "utcTime": "2026-09-20T14:00:00.000Z",
+            },
+        },
+        {
+            "id": 202,
+            "home": {"name": "Millwall"},
+            "away": {"name": "Bristol City"},
+            "status": {
+                "finished": False,
+                "utcTime": "2026-09-21T14:00:00.000Z",
+            },
+        },
+    ]
+
+    fixtures = normalise_fotmob_fixtures(
+        raw,
+        league="ENG-Championship",
+        season="2627",
+        now=pd.Timestamp("2026-09-22T08:00:00Z"),
+        retrieved_at="2026-09-22T08:00:00+00:00",
+    )
+
+    assert len(fixtures) == 1
+    row = fixtures.iloc[0]
+    assert row["match_id"] == "fotmob:200"
+    assert row["home_team"] == "Coventry City"
+    assert row["status"] == "scheduled"
+    assert row["season"] == "2627"

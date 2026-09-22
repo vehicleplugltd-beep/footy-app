@@ -9,7 +9,10 @@ import pandas as pd
 
 from .sources.soccerdata_source import SoccerDataSource
 from .sources.fotmob_source import FotMobSource
-from .normalizers.fotmob import normalise_fotmob_match
+from .normalizers.fotmob import (
+    normalise_fotmob_match,
+    normalise_fotmob_fixtures,
+)
 from .normalizers.understat import (
     normalise_understat,
     normalise_understat_matches,
@@ -273,6 +276,64 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
         "match_columns": list(matches.columns),
         "metric_columns": list(metrics.columns),
         "sample_metric_rows": metrics.head(4).to_dict(orient="records"),
+    }, indent=2, default=str))
+
+
+def command_fotmob_fixtures_ingest(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
+    )
+    fixtures = normalise_fotmob_fixtures(
+        raw_matches,
+        league=args.league,
+        season=args.season_code,
+    )
+    if fixtures.empty:
+        print(json.dumps({
+            "status": "ok",
+            "source": "fotmob",
+            "league": args.league,
+            "season_code": args.season_code,
+            "fixtures": 0,
+            "message": "No future FotMob fixtures found.",
+        }, indent=2))
+        return
+
+    reader = SupabaseRESTReader()
+    existing = reader.season_matches(args.league, args.season_code)
+    reconciled = 0
+    rows = []
+    for row in fixtures.to_dict(orient="records"):
+        existing_id = reconcile_fixture_id(
+            str(row["home_team"]),
+            str(row["away_team"]),
+            row["kickoff_at"],
+            existing,
+        )
+        if existing_id:
+            row["match_id"] = existing_id
+            reconciled += 1
+        rows.append(row)
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_matches(frame_records(pd.DataFrame(rows), MATCH_FIELDS))
+
+    print(json.dumps({
+        "status": "ok",
+        "source": "fotmob",
+        "league": args.league,
+        "season_code": args.season_code,
+        "fixtures": len(rows),
+        "reconciled": reconciled,
+        "new_fixture_ids": len(rows) - reconciled,
+        "first_kickoff": str(fixtures["match_date"].min()),
+        "last_kickoff": str(fixtures["match_date"].max()),
     }, indent=2, default=str))
 
 
@@ -1866,6 +1927,8 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         process_span=args.process_span,
         process_prior_weight=args.process_prior_weight,
         venue_split_weight=args.venue_split_weight,
+        process_mode=args.process_mode,
+        npxg_weight=args.npxg_weight,
     )
     if predictions.empty:
         raise RuntimeError("Upcoming fixtures produced no model predictions.")
@@ -2329,6 +2392,17 @@ def main() -> None:
         help="Finished matches to normalize during this read-only probe.",
     )
 
+    fotmob_fixtures = sub.add_parser(
+        "fotmob-fixtures-ingest",
+        help="Store future FotMob fixtures for lower-league forward pricing",
+    )
+    fotmob_fixtures.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_fixtures.add_argument("--season-name", required=True)
+    fotmob_fixtures.add_argument("--season-code", required=True)
+
     fotmob_ingest = sub.add_parser(
         "fotmob-ingest",
         help="Batch and quality-gate FotMob process data before optional write",
@@ -2631,6 +2705,18 @@ def main() -> None:
         type=float,
         default=0.20,
     )
+    predict_upcoming.add_argument(
+        "--process-mode",
+        choices=["xg", "npxg_blend", "schedule_adjusted"],
+        default="xg",
+        help="Must match the process mode used by the calibrated model.",
+    )
+    predict_upcoming.add_argument(
+        "--npxg-weight",
+        type=float,
+        default=0.70,
+        help="npxG weight when process-mode is npxg_blend.",
+    )
 
 
     results_refresh = sub.add_parser(
@@ -2746,6 +2832,8 @@ def main() -> None:
         command_fbref_smoke(args)
     elif args.command == "fotmob-preview":
         command_fotmob_preview(args)
+    elif args.command == "fotmob-fixtures-ingest":
+        command_fotmob_fixtures_ingest(args)
     elif args.command == "fotmob-ingest":
         command_fotmob_ingest(args)
     elif args.command == "fotmob-verify-results":

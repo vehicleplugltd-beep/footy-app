@@ -47,6 +47,7 @@ jobs:
             --history-season "2526" \
             --history-season "2627" \
             --model-version "baseline-v6-schedule-calibrated" \
+            --process-mode "schedule_adjusted" \
             --horizon-days 10 \
             --target-ev 0.02 \
             --lambda-beta 1.05 \
@@ -64,6 +65,7 @@ jobs:
             --history-season "2526" \
             --history-season "2627" \
             --model-version "v7-r16-p50-v20" \
+            --process-mode "xg" \
             --horizon-days 10 \
             --target-ev 0.02 \
             --lambda-beta 1.0 \
