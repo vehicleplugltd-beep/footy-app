@@ -49,7 +49,13 @@ function evidence(selection: BettingSelection) {
     );
   }
 
-  if (home?.goals != null && home.xg != null && home.sample >= 3) {\n    const difference = home.goals - home.xg;\n    if (difference > 0.35) items.push(`${selection.homeTeam} have scored more than their chance quality suggests (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); that finishing may not continue.`);\n    if (difference < -0.35) items.push(`${selection.homeTeam} have scored fewer than their chances suggest (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); recent results may understate their attacking play.`);\n  }\n\n  if (selection.bookmakerQuotes.length) {
+  if (home?.goals != null && home.xg != null && home.sample >= 3) {
+    const difference = home.goals - home.xg;
+    if (difference > 0.35) items.push(`${selection.homeTeam} have scored more than their chance quality suggests (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); that finishing may not continue.`);
+    if (difference < -0.35) items.push(`${selection.homeTeam} have scored fewer than their chances suggest (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); recent results may understate their attacking play.`);
+  }
+
+  if (selection.bookmakerQuotes.length) {
     const best = selection.bookmakerQuotes[0];
     items.push(
       `Best current bookmaker price: ${best.bookmakerName} ${decimalToFractional(best.decimalOdds)}; minimum price ${minimumTakeToFractional(selection.minimumTakePrice)}+.`,
