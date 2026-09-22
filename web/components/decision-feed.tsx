@@ -45,11 +45,11 @@ function evidence(selection: BettingSelection) {
   const away = selection.awayProcess;
   if (home?.xg != null && away?.xga != null) {
     items.push(
-      `Recent chance quality: ${selection.homeTeam} ${home.xg.toFixed(2)} xG vs ${selection.awayTeam} ${away.xga.toFixed(2)} xGA across the available sample.`,
+      `${selection.homeTeam} have averaged ${home.xg.toFixed(2)} xG in the available matches; ${selection.awayTeam} have allowed ${away.xga.toFixed(2)} xG per match. This is the chance-quality matchup, not a guarantee of goals.`,
     );
   }
 
-  if (selection.bookmakerQuotes.length) {
+  if (home?.goals != null && home.xg != null && home.sample >= 3) {\n    const difference = home.goals - home.xg;\n    if (difference > 0.35) items.push(`${selection.homeTeam} have scored more than their chance quality suggests (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); that finishing may not continue.`);\n    if (difference < -0.35) items.push(`${selection.homeTeam} have scored fewer than their chances suggest (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); recent results may understate their attacking play.`);\n  }\n\n  if (selection.bookmakerQuotes.length) {
     const best = selection.bookmakerQuotes[0];
     items.push(
       `Best current bookmaker price: ${best.bookmakerName} ${decimalToFractional(best.decimalOdds)}; minimum price ${minimumTakeToFractional(selection.minimumTakePrice)}+.`,
@@ -58,7 +58,7 @@ function evidence(selection: BettingSelection) {
     items.push(selection.verdictReason);
   }
 
-  return items.slice(0, 3);
+  return items.slice(0, 4);
 }
 
 function changeLine(selection: BettingSelection) {
