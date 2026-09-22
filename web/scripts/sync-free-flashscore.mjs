@@ -451,19 +451,15 @@ function seasonCode(kickoffAt) {
 
 function findMatch(event, matches) {
   const eventTime = new Date(event.kickoffAt).getTime();
-  const candidates = matches
-    .filter(
-      (match) =>
-        teamMatches(match.home_team, event.homeTeam) &&
-        teamMatches(match.away_team, event.awayTeam),
-    )
-    .map((match) => ({
-      match,
-      diff: Math.abs(new Date(match.kickoff_at).getTime() - eventTime),
-    }))
-    .filter((row) => row.diff <= 8 * 60 * 60 * 1000)
-    .sort((a, b) => a.diff - b.diff);
-  return candidates[0]?.match || null;
+  if (!Number.isFinite(eventTime)) return null;
+  const candidates = matches.filter((match) =>
+    match.league === event.league &&
+    teamMatches(match.home_team, event.homeTeam) &&
+    teamMatches(match.away_team, event.awayTeam) &&
+    Math.abs(new Date(match.kickoff_at).getTime() - eventTime) <= 90 * 60 * 1000,
+  );
+  // Never attach an odds event to an arbitrary nearest fixture.
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function priceNumber(value) {
