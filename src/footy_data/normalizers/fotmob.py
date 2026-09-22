@@ -30,13 +30,11 @@ def _number(value: Any) -> float | None:
 
 
 def _stat_pairs(details: Mapping[str, Any]) -> dict[str, tuple[Any, Any]]:
-    root = (
-        details.get("content", {})
-        .get("stats", {})
-        .get("Periods", {})
-        .get("All", {})
-        .get("stats", [])
-    )
+    content = details.get("content") or {}
+    stats_root = content.get("stats") or {}
+    periods = stats_root.get("Periods") or {}
+    all_periods = periods.get("All") or {}
+    root = all_periods.get("stats") or []
     pairs: dict[str, tuple[Any, Any]] = {}
 
     def walk(value: Any) -> None:
@@ -144,6 +142,24 @@ def normalise_fotmob_match(
     home_npxg, away_npxg = _pair(pairs, "expected_goals_non_penalty")
     home_shots, away_shots = _pair(pairs, "total_shots")
     home_sot, away_sot = _pair(pairs, "ShotsOnTarget")
+
+    required_process = {
+        "home_xg": home_xg,
+        "away_xg": away_xg,
+        "home_shots": home_shots,
+        "away_shots": away_shots,
+        "home_sot": home_sot,
+        "away_sot": away_sot,
+    }
+    missing_process = [
+        key for key, value in required_process.items()
+        if value is None
+    ]
+    if missing_process:
+        raise ValueError(
+            f"FotMob match {event_id} missing required process stats: "
+            + ", ".join(missing_process)
+        )
     home_big, away_big = _pair(pairs, "big_chance")
     home_box, away_box = _pair(pairs, "touches_opp_box")
     home_set, away_set = _pair(pairs, "expected_goals_set_play")
