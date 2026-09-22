@@ -37,6 +37,23 @@ async function run() {
   }
   if (!ready) throw new Error("Next server did not become healthy.");
 
+  const readinessResponse = await fetch(base + "/betting/api/readiness", {
+    signal: AbortSignal.timeout(15000),
+  });
+  const readiness = await readinessResponse.json();
+  if (
+    !["ready", "missing_configuration", "database_unavailable", "no_forward_model"].includes(readiness.state) ||
+    typeof readiness.forwardModelledFixtures !== "number" ||
+    readiness.modelVersion !== "v7-r16-p50-v20" ||
+    ![200, 503].includes(readinessResponse.status)
+  ) {
+    throw new Error("Readiness probe did not return a valid fail-closed diagnostic.");
+  }
+  if ((readiness.state === "ready") !== (readinessResponse.status === 200)) {
+    throw new Error("Readiness HTTP status disagrees with diagnostic state.");
+  }
+  console.log(`PASS /betting/api/readiness: ${readiness.state}, ${readiness.forwardModelledFixtures} forward fixtures`);
+
   for (const [path, expected] of routes) {
     const response = await fetch(base + path, {
       signal: AbortSignal.timeout(45000),
