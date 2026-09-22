@@ -7,7 +7,7 @@ from footy_data.quality_gate import (
 )
 
 
-def ready_snapshot(league="Championship", market="1X2"):
+def ready_snapshot(league="ENG-Championship", market="1X2"):
     return QualitySnapshot(
         league=league,
         market=market,
@@ -35,7 +35,7 @@ def test_ready_requires_probability_and_price_quality():
 
 def test_missing_price_validation_cannot_authorize_bets():
     snapshot = QualitySnapshot(
-        league="Championship",
+        league="ENG-Championship",
         market="1X2",
         model_version="wf-v1",
         sample_size=600,
@@ -53,7 +53,7 @@ def test_missing_price_validation_cannot_authorize_bets():
 
 def test_material_probability_regression_blocks_market():
     snapshot = QualitySnapshot(
-        league="Championship",
+        league="ENG-Championship",
         market="1X2",
         model_version="wf-v2",
         sample_size=600,
@@ -82,8 +82,8 @@ def test_league_eleven_is_blocked_until_core_ten_are_ready():
 
     results = [
         r for r in results
-        if not (r.league == "Championship" and r.market == "TOTAL_2_5")
+        if not (r.league == "ENG-Championship" and r.market == "TOTAL_2.5")
     ]
     decision = expansion_decision(results)
     assert decision.allowed is False
-    assert any("Championship TOTAL_2_5" in reason for reason in decision.reasons)
+    assert any("ENG-Championship TOTAL_2.5" in reason for reason in decision.reasons)
