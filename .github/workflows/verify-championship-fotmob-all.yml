@@ -1,0 +1,38 @@
+name: verify-championship-fotmob-all
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/verify-championship-fotmob-all.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        season: ["2223", "2324", "2425", "2526", "2627"]
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Install verification dependencies
+        run: |
+          pip install --no-deps -e .
+          pip install pandas numpy requests pyarrow soccerdata
+      - name: Verify FotMob results against Football-Data
+        run: |
+          footy-data fotmob-verify-results \
+            --league "ENG-Championship" \
+            --season-code "${{ matrix.season }}" \
+            --min-match-rate 0.97 \
+            --promote
