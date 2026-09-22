@@ -79,8 +79,70 @@ const matches =
   [];
 
 console.log("MATCH_COUNT", Array.isArray(matches) ? matches.length : 0);
+const sampleMatch = Array.isArray(matches)
+  ? matches.find((match) => match?.status?.finished && match?.id) ?? matches[0] ?? null
+  : null;
+
 console.log(
   "SAMPLE_MATCH",
-  JSON.stringify(Array.isArray(matches) ? matches[0] ?? null : null, null, 2)
-    .slice(0, 6000),
+  JSON.stringify(sampleMatch, null, 2).slice(0, 6000),
 );
+
+if (sampleMatch?.id) {
+  const details = await get(
+    `https://www.fotmob.com/api/data/matchDetails?matchId=${encodeURIComponent(sampleMatch.id)}`,
+  );
+  console.log("MATCH_DETAIL_KEYS", Object.keys(details));
+
+  const processStats = [];
+  function collectProcessStats(value, path = "") {
+    if (processStats.length >= 50 || value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) =>
+        collectProcessStats(item, `${path}[${index}]`),
+      );
+      return;
+    }
+    if (typeof value !== "object") return;
+
+    const label = String(
+      value.title ||
+        value.header ||
+        value.name ||
+        value.key ||
+        value.stat ||
+        "",
+    );
+    if (/expected|\bxg\b|xg|shots on target|big chances/i.test(label)) {
+      processStats.push({
+        path,
+        label,
+        value: value.stats ?? value.value ?? value.statValue ?? null,
+        keys: Object.keys(value).slice(0, 20),
+      });
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (/expected|xg|bigchance|shot/i.test(key)) {
+        processStats.push({
+          path: path ? `${path}.${key}` : key,
+          label: key,
+          value:
+            child && typeof child === "object"
+              ? JSON.stringify(child).slice(0, 800)
+              : child,
+          keys:
+            child && typeof child === "object"
+              ? Object.keys(child).slice(0, 20)
+              : [],
+        });
+      }
+      collectProcessStats(
+        child,
+        path ? `${path}.${key}` : key,
+      );
+      if (processStats.length >= 50) break;
+    }
+  }
+  collectProcessStats(details);
+  console.log("PROCESS_STATS", JSON.stringify(processStats.slice(0, 50), null, 2));
+}
