@@ -1,0 +1,66 @@
+name: free-oddsportal-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feature/betting-edge-workspace"]
+    paths:
+      - ".github/workflows/free-oddsportal-smoke.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install scraper
+        run: |
+          npm install --no-save odds-portal-scraper@2.10.6
+          npx playwright install --with-deps chromium
+
+      - name: Scrape upcoming EPL prices
+        run: |
+          mkdir -p /tmp/footy-odds-smoke
+          npx odds-portal next-matches premier-league \
+            --local /tmp/footy-odds-smoke \
+            --odds-format eu
+
+      - name: Verify structured output
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const dir = '/tmp/footy-odds-smoke';
+          const files = fs.existsSync(dir)
+            ? fs.readdirSync(dir).filter((name) => name.endsWith('.json'))
+            : [];
+          if (!files.length) {
+            throw new Error('No OddsPortal JSON files were produced');
+          }
+
+          let matches = 0;
+          let bookmakerRows = 0;
+          for (const file of files) {
+            const payload = JSON.parse(fs.readFileSync(`${dir}/${file}`, 'utf8'));
+            const rows = Array.isArray(payload) ? payload : [payload];
+            for (const row of rows) {
+              if (!row?.homeTeam || !row?.awayTeam) continue;
+              matches += 1;
+              bookmakerRows += Array.isArray(row.mlFullTime)
+                ? row.mlFullTime.filter((quote) =>
+                    quote?.bookMakerName && quote?.hw && quote?.d && quote?.aw
+                  ).length
+                : 0;
+            }
+          }
+
+          console.log(JSON.stringify({ files: files.length, matches, bookmakerRows }, null, 2));
+          if (!matches || !bookmakerRows) {
+            throw new Error('Structured match/bookmaker prices were not found');
+          }
+          NODE
