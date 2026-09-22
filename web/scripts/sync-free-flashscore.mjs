@@ -1,3 +1,6 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -44,8 +47,10 @@ const ODDS_URLS = [
   "https://2.ds.lsapp.eu/pq_graphql",
 ];
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Missing Supabase server credentials");
+function assertSupabaseConfig() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing Supabase server credentials");
+  }
 }
 
 const supabaseHeaders = {
@@ -630,6 +635,7 @@ function priceKey(eventId, bookmakerId, market, selection, line) {
 }
 
 async function main() {
+  assertSupabaseConfig();
   const capturedAt = new Date().toISOString();
   const { events, sources: feedUrlsUsed, errors: feedErrors } =
     await fetchUpcomingFeeds();
@@ -860,7 +866,6 @@ async function main() {
               "Feed worked but no supported-league prices were returned",
               `events=${events.length}`,
               `fixtures=${fixtureEvents.length}`,
-              `fixtures=${fixtureEvents.length}`,
               `targets=${targetEvents.length}`,
               `oddsResponses=${oddsResponses}`,
               `marketEntries=${marketEntries}`,
@@ -895,23 +900,33 @@ async function main() {
   );
 }
 
-main().catch(async (error) => {
-  const capturedAt = new Date().toISOString();
-  try {
-    await upsert(
-      "footy_odds_feed_status",
-      [{
-        provider: PROVIDER,
-        sport_key: "football",
-        last_attempt_at: capturedAt,
-        last_success_at: null,
-        events_received: 0,
-        prices_received: 0,
-        last_error: String(error?.message || error).slice(0, 1000),
-        updated_at: capturedAt,
-      }],
-      "provider",
-    );
-  } catch {}
-  throw error;
-});
+export { normalizeLeague, parseTodayFeed };
+
+const directRun =
+  Boolean(process.argv[1]) &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (directRun) {
+  main().catch(async (error) => {
+    const capturedAt = new Date().toISOString();
+    try {
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        await upsert(
+          "footy_odds_feed_status",
+          [{
+            provider: PROVIDER,
+            sport_key: "football",
+            last_attempt_at: capturedAt,
+            last_success_at: null,
+            events_received: 0,
+            prices_received: 0,
+            last_error: String(error?.message || error).slice(0, 1000),
+            updated_at: capturedAt,
+          }],
+          "provider",
+        );
+      }
+    } catch {}
+    throw error;
+  });
+}
