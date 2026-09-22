@@ -636,6 +636,30 @@ class SupabaseRESTReader:
         if matches.empty or metrics.empty:
             return pd.DataFrame()
 
+        if not include_unverified:
+            verified = metrics.get(
+                "verified",
+                pd.Series(False, index=metrics.index),
+            ).fillna(False).astype(bool)
+            status = metrics.get(
+                "verification_status",
+                pd.Series("", index=metrics.index),
+            ).fillna("").astype(str)
+            source = metrics["source"].fillna("").astype(str).str.lower()
+
+            # FotMob rows are structurally checked at ingestion, but Footy only
+            # admits them to modelling after the independent result verifier has
+            # promoted the exact matched fixture to PASS. Other established
+            # sources retain the existing verified-row policy.
+            fotmob = source.eq("fotmob")
+            admitted = (
+                (fotmob & status.eq("PASS"))
+                | (~fotmob & verified & ~status.eq("BLOCKED"))
+            )
+            metrics = metrics[admitted].copy()
+            if metrics.empty:
+                return pd.DataFrame()
+
         # The storage table intentionally keeps provider-specific observations.
         # The model must consume exactly one canonical row per team/match.
         metrics = synthesize_match_team_metrics(metrics)
