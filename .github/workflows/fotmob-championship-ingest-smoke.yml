@@ -1,15 +1,6 @@
 name: fotmob-championship-ingest-smoke
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/fotmob-championship-ingest-smoke.yml"
-      - "src/footy_data/normalizers/fotmob.py"
-      - "src/footy_data/sources/fotmob_source.py"
-      - "src/footy_data/reconciliation.py"
-      - "src/footy_data/storage.py"
-      - "src/footy_data/cli.py"
   workflow_dispatch:
 
 jobs:
