@@ -45,6 +45,26 @@ CUSTOM_LEAGUES = {
         "season_start": "Aug",
         "season_end": "May",
     },
+    "ESP-La Liga 2": {
+        "MatchHistory": "SP2",
+        "season_start": "Aug",
+        "season_end": "May",
+    },
+    "GER-2. Bundesliga": {
+        "MatchHistory": "D2",
+        "season_start": "Aug",
+        "season_end": "May",
+    },
+    "ITA-Serie B": {
+        "MatchHistory": "I2",
+        "season_start": "Aug",
+        "season_end": "May",
+    },
+    "FRA-Ligue 2": {
+        "MatchHistory": "F2",
+        "season_start": "Aug",
+        "season_end": "May",
+    },
 }
 
 
