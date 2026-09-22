@@ -9,6 +9,7 @@ import { UpcomingModelResearch } from "@/components/upcoming-model-research";
 import { getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
+  if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
   if (state === "LIVE") return "Model + fresh bookmaker prices";
   if (state === "NO_FRESH_PRICES") return "Model ready · prices not fresh";
   if (state === "NO_CURRENT_MODEL") return "Fixtures found · model refresh required";
@@ -18,6 +19,7 @@ function statusCopy(state: string) {
 export default async function BettingPage() {
   const data = await getBettingWorkspaceData();
   const betCount = data.selections.filter((row) => row.verdict === "BET").length;
+  const modelledFixtures = new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size;
 
   return (
     <main className="betting-app">
@@ -41,7 +43,7 @@ export default async function BettingPage() {
           <span>LIVE DECISION STATE</span>
           <strong>{statusCopy(data.dataState)}</strong>
           <div>
-            <p><b>{data.matches.length}</b><small>upcoming fixtures</small></p>
+            <p><b>{modelledFixtures}</b><small>modelled fixtures</small></p>
             <p><b>{betCount}</b><small>BET singles</small></p>
             <p><b>{data.accas.length}</b><small>qualifying accas</small></p>
           </div>
@@ -77,6 +79,14 @@ export default async function BettingPage() {
         </article>
       </section>
 
+      {!data.configured ? (
+        <section className="betting-section shell" role="status">
+          <div className="betting-data-warning">
+            <strong>Model data is temporarily unavailable.</strong>
+            <p>The server has no configured database connection. Fixture discovery alone cannot provide probabilities or verified betting prices. This is a service configuration issue, not a model verdict.</p>
+          </div>
+        </section>
+      ) : null}
       <UpcomingModelResearch selections={data.selections} />
       <DecisionFeed
         todayGames={data.todayGames}
@@ -98,10 +108,14 @@ export default async function BettingPage() {
         ) : null}
 
         <DailyPredictions games={data.todayGames} />
-        <LeagueReadinessMap leagues={data.leagueReadiness} />
+        <details className="today-coverage-drawer">
+          <summary>See data coverage and readiness across the ten model leagues</summary>
+          <LeagueReadinessMap leagues={data.leagueReadiness.filter((row) => row.modelScope === "CORE")} />
+        </details>
         <BettingBoard selections={data.selections} accas={data.accas} />
 
-        <section className="betting-section">
+        <details className="betting-section today-coverage-drawer">
+          <summary>Model governance · see validation evidence and limitations</summary>
           <div className="betting-section-head">
             <div>
               <span>05 / MODEL GOVERNANCE</span>
@@ -124,7 +138,7 @@ export default async function BettingPage() {
               </article>
             )}
           </div>
-        </section>
+        </details>
 
         <section className="betting-section betting-feedback-cta">
           <div>
