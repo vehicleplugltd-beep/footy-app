@@ -636,7 +636,7 @@ async function main() {
   const modelLeagues = new Set(validation.map((row) => row.league));
 
   const start = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-  const end = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const end = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
   const matches =
     (await sb(
       `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=10000`,
@@ -659,15 +659,17 @@ async function main() {
         event.status === "1" &&
         Number.isFinite(kickoff) &&
         kickoff >= nowMs - 5 * 60 * 1000 &&
-        kickoff <= fixtureCutoff &&
-        (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league))
+        kickoff <= fixtureCutoff
       );
     })
     .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
 
   const targetEvents = fixtureEvents.filter((event) => {
     const kickoff = new Date(event.kickoffAt).getTime();
-    return kickoff <= priceCutoff;
+    return (
+      kickoff <= priceCutoff &&
+      (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league))
+    );
   });
 
   const fixtureRows = [];
