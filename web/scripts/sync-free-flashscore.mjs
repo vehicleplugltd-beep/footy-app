@@ -227,7 +227,14 @@ function normalizeLeague(country, league) {
 
     if (
       c === "spain" &&
-      (l.includes("laliga2") || l.includes("la liga 2") || l.includes("segunda"))
+      (
+        l.includes("laliga2") ||
+        l.includes("la liga 2") ||
+        l.includes("laliga hypermotion") ||
+        l.includes("la liga hypermotion") ||
+        l === "segunda division" ||
+        l.startsWith("segunda division ")
+      )
     ) {
       return "ESP-La Liga 2";
     }
