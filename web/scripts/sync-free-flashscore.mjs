@@ -435,6 +435,21 @@ async function fetchEventOdds(eventId) {
   throw new Error(errors.slice(0, 8).join(" | "));
 }
 
+function londonDateKey(value) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const row = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${row.year}-${row.month}-${row.day}`;
+}
+
 function seasonCode(kickoffAt) {
   const date = new Date(kickoffAt);
   const year = date.getUTCFullYear();
@@ -678,11 +693,17 @@ async function main() {
     })
     .sort((a, b) => a.kickoffAt.localeCompare(b.kickoffAt));
 
+  const todayKey = londonDateKey(nowMs);
   const targetEvents = fixtureEvents.filter((event) => {
     const kickoff = new Date(event.kickoffAt).getTime();
+    const isToday = londonDateKey(event.kickoffAt) === todayKey;
     return (
       kickoff <= priceCutoff &&
-      (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league))
+      (
+        isToday ||
+        modelLeagues.has(event.league) ||
+        PRICE_LEAGUES.has(event.league)
+      )
     );
   });
 
@@ -787,7 +808,12 @@ async function main() {
         const bookmakerName =
           books.get(bookmakerId) || `Bookmaker ${bookmakerId}`;
 
+        const deepMarketCoverage =
+          modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league);
+
         for (const quote of normalizeMarket(entry)) {
+          if (!deepMarketCoverage && quote.market !== "1X2") continue;
+
           const key = priceKey(
             event.eventId,
             bookmakerId,
@@ -897,7 +923,10 @@ async function main() {
         feeds: feedUrlsUsed,
         events_discovered: events.length,
         fixture_events: fixtureEvents.length,
-        priced_league_events: targetEvents.length,
+        priced_events: targetEvents.length,
+        today_events_priced: targetEvents.filter(
+          (event) => londonDateKey(event.kickoffAt) === todayKey,
+        ).length,
         odds_responses: oddsResponses,
         market_entries: marketEntries,
         new_fixture_rows: uniqueFixtureRows.length,
