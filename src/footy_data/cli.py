@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from .sources.soccerdata_source import SoccerDataSource
+from .sources.fotmob_source import FotMobSource
+from .normalizers.fotmob import normalise_fotmob_match
 from .normalizers.understat import (
     normalise_understat,
     normalise_understat_matches,
@@ -171,6 +173,69 @@ def command_fbref_smoke(args: argparse.Namespace) -> None:
         "match_logs_requested": bool(args.include_match_logs),
         "match_log_rows": int(len(logs)),
         "match_log_columns": _serializable_columns(logs),
+    }, indent=2, default=str))
+
+
+def command_fotmob_preview(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=args.season_name,
+    )
+    finished = [
+        row
+        for row in raw_matches
+        if isinstance(row.get("status"), dict)
+        and bool(row["status"].get("finished"))
+        and row.get("id") is not None
+    ]
+
+    if not finished:
+        raise RuntimeError(
+            f"No finished FotMob matches found for "
+            f"{args.league} / {args.season_name}."
+        )
+
+    sample = finished[: max(1, int(args.limit))]
+    match_frames: list[pd.DataFrame] = []
+    metric_frames: list[pd.DataFrame] = []
+
+    for row in sample:
+        details = source.match_details(row["id"])
+        matches, metrics = normalise_fotmob_match(
+            row,
+            details,
+            league=args.league,
+            season=args.season_code,
+        )
+        match_frames.append(matches)
+        metric_frames.append(metrics)
+
+    matches = pd.concat(match_frames, ignore_index=True)
+    metrics = pd.concat(metric_frames, ignore_index=True)
+    report = assess_match_team_metrics(metrics)
+
+    print(json.dumps({
+        "status": "ok",
+        "mode": "read-only",
+        "source": "fotmob",
+        "league": args.league,
+        "season_name": args.season_name,
+        "season_code": args.season_code,
+        "season_matches": len(raw_matches),
+        "finished_matches": len(finished),
+        "sample_matches": len(matches),
+        "metric_rows": len(metrics),
+        "quality": {
+            "rows": report.rows,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+            "usable": report.usable,
+        },
+        "match_columns": list(matches.columns),
+        "metric_columns": list(metrics.columns),
+        "sample_metric_rows": metrics.head(4).to_dict(orient="records"),
     }, indent=2, default=str))
 
 
@@ -1618,6 +1683,31 @@ def main() -> None:
         help="Also crawl team match-log pages after the schedule probe.",
     )
 
+    fotmob_preview = sub.add_parser(
+        "fotmob-preview",
+        help="Read-only FotMob process preview for a verified league/season",
+    )
+    fotmob_preview.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_preview.add_argument(
+        "--season-name",
+        required=True,
+        help="FotMob historical season id, e.g. 2025/2026.",
+    )
+    fotmob_preview.add_argument(
+        "--season-code",
+        required=True,
+        help="Footy stored season code, e.g. 2526.",
+    )
+    fotmob_preview.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="Finished matches to normalize during this read-only probe.",
+    )
+
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
         help="Verify and ingest FPL-Core-Insights enrichment rows",
@@ -1945,6 +2035,8 @@ def main() -> None:
         command_understat_ingest(args)
     elif args.command == "fbref-smoke":
         command_fbref_smoke(args)
+    elif args.command == "fotmob-preview":
+        command_fotmob_preview(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
     elif args.command == "fpl-core-priors-ingest":
