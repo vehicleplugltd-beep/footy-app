@@ -9,6 +9,8 @@ const PROVIDER = "the-odds-api";
 const FEED_KEY = "multi-soccer";
 const FREE_PRICE_PROVIDER = "sofascore";
 const ENABLE_SOFASCORE_FREE = process.env.ENABLE_SOFASCORE_FREE === "1";
+const FLASHSCORE_PRICE_PROVIDER = "flashscore-lsapp";
+const ENABLE_FLASHSCORE_FREE = process.env.ENABLE_FLASHSCORE_FREE !== "0";
 const SOFASCORE_API_URLS = [
   "https://api.sofascore.com/api/v1",
   "https://www.sofascore.com/api/v1",
@@ -607,6 +609,162 @@ async function syncSofascorePrices(capturedAt) {
     prices: currentRows.length,
     changedPrices: historyRows.length,
     rows: currentRows,
+  };
+}
+
+
+async function syncFlashscorePrices(capturedAt) {
+  let payload;
+  try {
+    const output = execFileSync(
+      "python",
+      [join(SCRIPT_DIR, "fetch-flashscore-prices.py")],
+      {
+        encoding: "utf8",
+        timeout: 120000,
+        maxBuffer: 32 * 1024 * 1024,
+      },
+    );
+    payload = output ? JSON.parse(output) : {};
+  } catch (error) {
+    const detail = String(error?.stdout || error?.stderr || error?.message || error);
+    throw new Error(
+      `Flashscore collector failed: ${detail.slice(0, 1200)}`,
+    );
+  }
+
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const prices = Array.isArray(payload?.prices) ? payload.prices : [];
+  const collectorErrors = Array.isArray(payload?.errors) ? payload.errors : [];
+
+  const dayStart = new Date(
+    new Date(capturedAt).getTime() - 18 * 60 * 60 * 1000,
+  ).toISOString();
+  const dayEnd = new Date(
+    new Date(capturedAt).getTime() + 36 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const matches =
+    (await sb(
+      `footy_matches?select=match_id,kickoff_at,home_team,away_team,league&kickoff_at=gte.${encodeURIComponent(dayStart)}&kickoff_at=lte.${encodeURIComponent(dayEnd)}&limit=10000`,
+    )) || [];
+
+  const existing =
+    (await sb(
+      `footy_live_odds_current?select=price_key,decimal_odds,previous_decimal_odds&provider=eq.${encodeURIComponent(FLASHSCORE_PRICE_PROVIDER)}&captured_at=gte.${encodeURIComponent(new Date(new Date(capturedAt).getTime() - 7 * 24 * 60 * 60 * 1000).toISOString())}&limit=30000`,
+    )) || [];
+  const existingMap = new Map(existing.map((row) => [row.price_key, row]));
+
+  const currentRows = [];
+  const historyRows = [];
+  let unmatchedPrices = 0;
+
+  for (const price of prices) {
+    const candidate = {
+      home_team: price.home_team,
+      away_team: price.away_team,
+      commence_time: price.commence_time,
+    };
+    const match = reconcileMatch(candidate, matches);
+    if (!match) {
+      unmatchedPrices += 1;
+      continue;
+    }
+
+    const decimalOdds = Number(price.decimal_odds);
+    if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) continue;
+    if (!["home", "draw", "away"].includes(price.selection)) continue;
+
+    const bookmakerKey = `flashscore:${price.bookmaker_id}`;
+    const priceKey = [
+      FLASHSCORE_PRICE_PROVIDER,
+      String(price.event_id),
+      bookmakerKey,
+      "1X2",
+      price.selection,
+    ].join("|");
+    const before = existingMap.get(priceKey);
+    const changed =
+      !before ||
+      Math.abs(Number(before.decimal_odds) - decimalOdds) > 1e-9;
+
+    const row = {
+      price_key: priceKey,
+      provider: FLASHSCORE_PRICE_PROVIDER,
+      provider_event_id: String(price.event_id),
+      match_id: match.match_id,
+      sport_key: "football",
+      home_team: match.home_team,
+      away_team: match.away_team,
+      commence_time: match.kickoff_at,
+      bookmaker_key: bookmakerKey,
+      bookmaker_name: String(price.bookmaker_name),
+      market: "1X2",
+      selection: price.selection,
+      line: null,
+      decimal_odds: decimalOdds,
+      previous_decimal_odds: changed
+        ? Number(before?.decimal_odds) || null
+        : Number(before?.previous_decimal_odds) || null,
+      provider_last_update: null,
+      captured_at: capturedAt,
+    };
+    currentRows.push(row);
+
+    if (changed) {
+      historyRows.push({
+        price_key: priceKey,
+        provider: FLASHSCORE_PRICE_PROVIDER,
+        provider_event_id: String(price.event_id),
+        match_id: match.match_id,
+        bookmaker_key: bookmakerKey,
+        bookmaker_name: String(price.bookmaker_name),
+        market: "1X2",
+        selection: price.selection,
+        line: null,
+        decimal_odds: decimalOdds,
+        captured_at: capturedAt,
+      });
+    }
+  }
+
+  await upsert("footy_live_odds_current", currentRows, "price_key");
+  await insert("footy_live_odds_history", historyRows);
+
+  const lastError =
+    collectorErrors.length || unmatchedPrices
+      ? [
+          collectorErrors.length
+            ? `${collectorErrors.length} event request error${collectorErrors.length === 1 ? "" : "s"}`
+            : null,
+          unmatchedPrices
+            ? `${unmatchedPrices} price row${unmatchedPrices === 1 ? "" : "s"} could not be reconciled`
+            : null,
+        ].filter(Boolean).join(" · ")
+      : null;
+
+  await upsert(
+    "footy_odds_feed_status",
+    [{
+      provider: FLASHSCORE_PRICE_PROVIDER,
+      sport_key: "football",
+      last_attempt_at: capturedAt,
+      last_success_at: currentRows.length ? capturedAt : null,
+      events_received: events.length,
+      prices_received: currentRows.length,
+      last_error: lastError,
+      updated_at: capturedAt,
+    }],
+    "provider",
+  );
+
+  return {
+    events: events.length,
+    sourcePrices: prices.length,
+    prices: currentRows.length,
+    changedPrices: historyRows.length,
+    unmatchedPrices,
+    collectorErrors: collectorErrors.length,
   };
 }
 
@@ -1490,6 +1648,37 @@ async function main() {
     leagues: Math.max(openFootballSync.leagues, espnSync.leagues),
   };
 
+  let flashscoreSync = {
+    events: 0,
+    sourcePrices: 0,
+    prices: 0,
+    changedPrices: 0,
+    unmatchedPrices: 0,
+    collectorErrors: 0,
+  };
+  let flashscoreError = null;
+  if (ENABLE_FLASHSCORE_FREE) {
+    try {
+      flashscoreSync = await syncFlashscorePrices(capturedAt);
+    } catch (error) {
+      flashscoreError = String(error?.message || error);
+      await upsert(
+        "footy_odds_feed_status",
+        [{
+          provider: FLASHSCORE_PRICE_PROVIDER,
+          sport_key: "football",
+          last_attempt_at: capturedAt,
+          last_success_at: null,
+          events_received: 0,
+          prices_received: 0,
+          last_error: flashscoreError.slice(0, 1000),
+          updated_at: capturedAt,
+        }],
+        "provider",
+      );
+    }
+  }
+
   let freePriceSync = {
     events: 0,
     fixtureRows: 0,
@@ -1546,6 +1735,8 @@ async function main() {
       free_prices: {
         providers: [...new Set(freePriceOps.freshRows.map((row) => row.provider))],
         rows: freePriceOps.freshRows.length,
+        flashscore: flashscoreSync,
+        flashscore_error: flashscoreError,
         sofascore_attempted: ENABLE_SOFASCORE_FREE,
         sofascore_error: freePriceError,
       },
@@ -1827,10 +2018,12 @@ async function main() {
     espn: espnSync,
     fixtures_discovered: fixtureSync.discovered,
     fixtures_inserted: fixtureSync.inserted + freePriceSync.fixtureRows,
-    free_price_provider: FREE_PRICE_PROVIDER,
-    free_price_events: freePriceSync.events,
-    free_prices: freePriceSync.prices,
-    free_changed_prices: freePriceSync.changedPrices,
+    free_price_provider: FLASHSCORE_PRICE_PROVIDER,
+    flashscore: flashscoreSync,
+    flashscore_error: flashscoreError,
+    sofascore_events: freePriceSync.events,
+    sofascore_prices: freePriceSync.prices,
+    sofascore_changed_prices: freePriceSync.changedPrices,
     reconciled_price_rows: reconciledPriceRows,
     fixture_leagues: fixtureSync.leagues,
     active_competitions: activeCompetitions.length,
