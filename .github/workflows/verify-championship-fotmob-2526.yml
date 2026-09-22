@@ -1,0 +1,27 @@
+name: verify-championship-fotmob-2526
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/verify-championship-fotmob-2526.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: Run result verification unit tests
+        run: pytest -q tests/test_result_verification.py
+      - name: Verify and selectively promote FotMob rows
+        run: |
+          footy-data fotmob-verify-results             --league "ENG-Championship"             --season-code "2526"             --min-match-rate 0.97             --promote
