@@ -152,10 +152,13 @@ def command_fbref_smoke(args: argparse.Namespace) -> None:
         seasons=[args.season],
     )
     schedule = source.fbref_schedule()
-    logs = source.fbref_team_match_stats(
-        stat_type=args.stat_type,
-        team=args.team,
-    )
+
+    logs = pd.DataFrame()
+    if args.include_match_logs:
+        logs = source.fbref_team_match_stats(
+            stat_type=args.stat_type,
+            team=args.team,
+        )
 
     print(json.dumps({
         "status": "ok",
@@ -165,6 +168,7 @@ def command_fbref_smoke(args: argparse.Namespace) -> None:
         "stat_type": args.stat_type,
         "schedule_rows": int(len(schedule)),
         "schedule_columns": _serializable_columns(schedule),
+        "match_logs_requested": bool(args.include_match_logs),
         "match_log_rows": int(len(logs)),
         "match_log_columns": _serializable_columns(logs),
     }, indent=2, default=str))
@@ -1608,6 +1612,11 @@ def main() -> None:
         default="schedule",
     )
     fbref_smoke.add_argument("--team")
+    fbref_smoke.add_argument(
+        "--include-match-logs",
+        action="store_true",
+        help="Also crawl team match-log pages after the schedule probe.",
+    )
 
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
