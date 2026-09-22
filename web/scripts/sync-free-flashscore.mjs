@@ -667,7 +667,8 @@ async function main() {
 
   const nowMs = Date.now();
   const fixtureCutoff = nowMs + 8 * 24 * 60 * 60 * 1000;
-  const priceCutoff = nowMs + 48 * 60 * 60 * 1000;
+  const generalPriceCutoff = nowMs + 48 * 60 * 60 * 1000;
+  const modelPriceCutoff = fixtureCutoff;
 
   const fixtureEvents = events
     .filter((event) => {
@@ -686,12 +687,10 @@ async function main() {
     const kickoff = new Date(event.kickoffAt).getTime();
     const isToday = londonDateKey(event.kickoffAt) === todayKey;
     return (
-      kickoff <= priceCutoff &&
-      (
-        isToday ||
-        modelLeagues.has(event.league) ||
-        PRICE_LEAGUES.has(event.league)
-      )
+      (isToday || modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league)) &&
+      kickoff <= (modelLeagues.has(event.league) || PRICE_LEAGUES.has(event.league)
+        ? modelPriceCutoff
+        : generalPriceCutoff)
     );
   });
 
