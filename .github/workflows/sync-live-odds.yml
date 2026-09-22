@@ -11,10 +11,14 @@ on:
       - "web/scripts/sync-free-oddsportal.mjs"
       - "web/scripts/sync-free-flashscore.mjs"
 
+concurrency:
+  group: live-odds-refresh
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
       SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -29,9 +33,12 @@ jobs:
         run: node web/scripts/sync-live-odds.mjs
 
       - name: Collect free multi-bookmaker prices
+        id: collect
+        timeout-minutes: 24
         run: node web/scripts/sync-free-flashscore.mjs
 
       - name: Process alerts and closing lines
+        if: always() && steps.collect.outcome == 'success'
         env:
           PRICE_OPS_ONLY: "1"
         run: node web/scripts/sync-live-odds.mjs

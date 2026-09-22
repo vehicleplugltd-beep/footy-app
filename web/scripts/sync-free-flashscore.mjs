@@ -929,6 +929,10 @@ async function main() {
       2,
     ),
   );
+
+  if (!uniqueCurrentRows.length) {
+    throw new Error("Odds refresh returned zero usable prices; inspect footy_odds_feed_status before treating the feed as healthy.");
+  }
 }
 
 export { normalizeLeague, parseTodayFeed };
