@@ -1732,14 +1732,11 @@ def command_calibrate(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics(
         include_ratings=args.use_elo,
+        league=args.league,
+        seasons=args.season,
     )
     if frame.empty:
         raise RuntimeError("No historical Footy data found in Supabase.")
-
-    frame = frame[frame["league"] == args.league].copy()
-    if args.season:
-        wanted = {str(s) for s in args.season}
-        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
 
     if frame.empty:
         raise RuntimeError("No historical rows match the requested calibration scope.")
