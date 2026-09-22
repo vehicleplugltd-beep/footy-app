@@ -24,6 +24,11 @@ function dateTime(value: string) {
 
 function ReceiptCard({ receipt }: { receipt: PredictionReceipt }) {
   const priced = receipt.quotedOdds != null;
+  const qualifiedBet =
+    receipt.validationStatus === "APPROVED" &&
+    receipt.quotedOdds != null &&
+    receipt.minimumTakePrice != null &&
+    receipt.quotedOdds >= receipt.minimumTakePrice;
   const correct = receipt.resultStatus === "WON";
   const locked = new Date(receipt.publishedAt).getTime() < new Date(receipt.kickoffAt).getTime();
 
@@ -36,7 +41,9 @@ function ReceiptCard({ receipt }: { receipt: PredictionReceipt }) {
           <small>Kick-off {dateTime(receipt.kickoffAt)}</small>
         </div>
         <strong className={correct ? "receipt-correct" : "receipt-wrong"}>
-          {priced ? (correct ? "BET WON" : "BET LOST") : (correct ? "PREDICTION CORRECT" : "PREDICTION INCORRECT")}
+          {qualifiedBet
+            ? (correct ? "QUALIFIED BET WON" : "QUALIFIED BET LOST")
+            : (correct ? "PREDICTION CORRECT" : "PREDICTION INCORRECT")}
         </strong>
       </header>
 
@@ -67,9 +74,11 @@ function ReceiptCard({ receipt }: { receipt: PredictionReceipt }) {
           <strong>Published {dateTime(receipt.publishedAt)}</strong>
         </div>
         <p>
-          {priced
+          {qualifiedBet
             ? `CLV ${pct(receipt.clv, 2)} · unit P/L ${signed(receipt.unitProfit)}`
-            : "No bookmaker price was frozen, so this call is excluded from betting ROI/CLV."}
+            : priced
+              ? "A price was captured, but the frozen call did not qualify as a bet; excluded from betting ROI/CLV."
+              : "No bookmaker price was frozen, so this call is excluded from betting ROI/CLV."}
         </p>
       </footer>
     </article>
@@ -84,7 +93,7 @@ export function PredictionResults({ data }: { data: PredictionResultsData }) {
         <article><span>Predictions graded</span><strong>{summary.predictions}</strong><small>all published calls</small></article>
         <article><span>Correct</span><strong>{summary.correct}</strong><small>{summary.incorrect} incorrect</small></article>
         <article><span>Prediction accuracy</span><strong>{pct(summary.accuracy)}</strong><small>not the same as ROI</small></article>
-        <article><span>Price-qualified bets</span><strong>{summary.pricedBets}</strong><small>with frozen odds</small></article>
+        <article><span>Qualified bets</span><strong>{summary.pricedBets}</strong><small>approved + cleared frozen take price</small></article>
         <article><span>Bet ROI</span><strong>{pct(summary.roi)}</strong><small>{summary.units == null ? "no priced sample" : `${signed(summary.units)} units`}</small></article>
         <article><span>Average CLV</span><strong>{pct(summary.averageClv, 2)}</strong><small>priced bets only</small></article>
       </section>
@@ -93,8 +102,8 @@ export function PredictionResults({ data }: { data: PredictionResultsData }) {
         <strong>No cherry-picking.</strong>
         <p>
           A model prediction stays in the record whether it wins or loses. Betting
-          performance is reported separately and only when a bookmaker price was
-          actually captured before kick-off.
+          performance is reported separately and only when the frozen pre-kickoff
+          call was approved and the captured price cleared its minimum take.
         </p>
       </div>
 
