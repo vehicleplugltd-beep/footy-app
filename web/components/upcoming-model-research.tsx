@@ -53,10 +53,10 @@ function ResearchCard({ game }: { game: ResearchFixture }) {
       <footer>
         <span>
           {game.homeXg != null && game.awayXg != null
-            ? `Expected goals: ${game.homeXg.toFixed(2)} – ${game.awayXg.toFixed(2)}`
-            : "Expected goals unavailable"}
+            ? `Expected scoring: ${game.homeXg.toFixed(2)} – ${game.awayXg.toFixed(2)}`
+            : "Chance-quality estimate unavailable"}
         </span>
-        <small>{priceAvailable ? "Check each price and validation before acting." : "No fresh, fixture-matched bookmaker prices."}</small>
+        <small>{priceAvailable ? "Check the available odds and analysis before backing a selection." : "Waiting for a current bookmaker price for this match."}</small>
       </footer>
     </article>
   );
@@ -96,19 +96,19 @@ export function UpcomingModelResearch({
       <div className="betting-section-head">
         <div>
           <span>NEXT / MODELLED FIXTURES</span>
-          <h2>Actual Footy probabilities, not just a fixture list</h2>
+          <h2>Upcoming matches under the microscope</h2>
         </div>
         <p>
-          {games.length} complete 1X2 forecasts within the next 30 days. These
-          probabilities are research, not bookmaker quotes or automatic tips.
+          {games.length} upcoming matches assessed over the next 30 days. These are football assessments,
+          not confirmed value bets.
         </p>
       </div>
       {games.length ? (
         <>
           <p className="research-context">
             Next modelled kick-off: <strong>{formatKickoff(games[0].kickoffAt)}</strong>.
-            A market only becomes a BET after independent validation and a fresh
-            bookmaker price clears its uncertainty-adjusted take line.
+            We only flag a bet once the analysis has passed our checks and the current
+            bookmaker price is generous enough.
           </p>
           <div className="research-fixture-grid">
             {games.slice(0, 6).map((game) => (
@@ -128,7 +128,7 @@ export function UpcomingModelResearch({
         </>
       ) : (
         <div className="betting-empty">
-          <strong>No complete forward model available in the next 30 days.</strong>
+          <strong>No complete upcoming match assessments are available yet.</strong>
           <p>We will not substitute coverage-only fixtures, old predictions, or invented odds.</p>
         </div>
       )}

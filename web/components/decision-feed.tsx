@@ -37,7 +37,7 @@ function evidence(selection: BettingSelection) {
   const items: string[] = [];
   if (selection.homeXg != null && selection.awayXg != null) {
     items.push(
-      `Model scoring: ${selection.homeTeam} ${selection.homeXg.toFixed(2)} – ${selection.awayXg.toFixed(2)} ${selection.awayTeam}.`,
+      `Expected scoring: ${selection.homeTeam} ${selection.homeXg.toFixed(2)} – ${selection.awayXg.toFixed(2)} ${selection.awayTeam}.`,
     );
   }
 
@@ -45,20 +45,26 @@ function evidence(selection: BettingSelection) {
   const away = selection.awayProcess;
   if (home?.xg != null && away?.xga != null) {
     items.push(
-      `Recent process: ${selection.homeTeam} ${home.xg.toFixed(2)} xG vs ${selection.awayTeam} ${away.xga.toFixed(2)} xGA across the available sample.`,
+      `${selection.homeTeam} have averaged ${home.xg.toFixed(2)} xG in the available matches; ${selection.awayTeam} have allowed ${away.xga.toFixed(2)} xG per match. This is the chance-quality matchup, not a guarantee of goals.`,
     );
+  }
+
+  if (home?.goals != null && home.xg != null && home.sample >= 3) {
+    const difference = home.goals - home.xg;
+    if (difference > 0.35) items.push(`${selection.homeTeam} have scored more than their chance quality suggests (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); that finishing may not continue.`);
+    if (difference < -0.35) items.push(`${selection.homeTeam} have scored fewer than their chances suggest (${home.goals.toFixed(2)} goals against ${home.xg.toFixed(2)} xG per match); recent results may understate their attacking play.`);
   }
 
   if (selection.bookmakerQuotes.length) {
     const best = selection.bookmakerQuotes[0];
     items.push(
-      `Best live quote: ${best.bookmakerName} ${decimalToFractional(best.decimalOdds)}; Footy take line ${minimumTakeToFractional(selection.minimumTakePrice)}+.`,
+      `Best current bookmaker price: ${best.bookmakerName} ${decimalToFractional(best.decimalOdds)}; minimum price ${minimumTakeToFractional(selection.minimumTakePrice)}+.`,
     );
   } else {
     items.push(selection.verdictReason);
   }
 
-  return items.slice(0, 3);
+  return items.slice(0, 4);
 }
 
 function changeLine(selection: BettingSelection) {
@@ -68,7 +74,7 @@ function changeLine(selection: BettingSelection) {
     Math.abs(selection.modelProbabilityDelta) >= 0.001
   ) {
     const pp = selection.modelProbabilityDelta * 100;
-    pieces.push(`Model ${pp >= 0 ? "+" : ""}${pp.toFixed(1)}pp`);
+    pieces.push(`Our view ${pp >= 0 ? "+" : ""}${pp.toFixed(1)}pp`);
   }
 
   const quote = selection.bestPrice;
@@ -90,9 +96,9 @@ function priceLabel(selection: BettingSelection) {
 }
 
 function signalLabel(selection: BettingSelection) {
-  if (selection.verdict === "BET") return "TODAY'S BEST VALUE";
-  if (selection.verdict === "WATCH") return "STRONGEST WATCH";
-  return "STRONGEST MODEL LEAN";
+  if (selection.verdict === "BET") return "TODAY'S VALUE SELECTION";
+  if (selection.verdict === "WATCH") return "PRICE WATCH";
+  return "MATCH ASSESSMENT";
 }
 
 export function DecisionFeed({
@@ -134,7 +140,7 @@ export function DecisionFeed({
       <div className="decision-feed-heading">
         <div>
           <span>TODAY</span>
-          <h2>Football, priced properly.</h2>
+          <h2>The football case. Then the price.</h2>
         </div>
         <Link href="/betting/tools">Bet Analyzer ↗</Link>
       </div>
@@ -169,7 +175,7 @@ export function DecisionFeed({
                 <b>{monogram(game.awayTeam)}</b>
               </div>
               <strong>
-                {game.modelPick?.displaySelection ?? "Model pending"}
+                {game.modelPick?.displaySelection ?? "Analysis pending"}
               </strong>
               <small>
                 {game.modelPick
@@ -243,19 +249,19 @@ export function DecisionFeed({
             </div>
 
             <div className="signal-price-grid">
-              <div><span>Fair</span><strong>{decimalToFractional(signal.fairOdds)}</strong><small>{signal.fairOdds.toFixed(2)}</small></div>
-              <div className="signal-take"><span>Accept</span><strong>{minimumTakeToFractional(signal.minimumTakePrice)}+</strong><small>{signal.minimumTakePrice.toFixed(2)}+</small></div>
-              <div><span>Live</span><strong>{priceLabel(signal)}</strong><small>{signal.bestPrice?.bookmaker_name ?? "not verified"}</small></div>
-              <div><span>EV</span><strong>{signal.edge == null ? "—" : `${signal.edge >= 0 ? "+" : ""}${(signal.edge * 100).toFixed(1)}%`}</strong><small>at checked price</small></div>
+              <div><span>Our fair price</span><strong>{decimalToFractional(signal.fairOdds)}</strong><small>{signal.fairOdds.toFixed(2)}</small></div>
+              <div className="signal-take"><span>Minimum price</span><strong>{minimumTakeToFractional(signal.minimumTakePrice)}+</strong><small>{signal.minimumTakePrice.toFixed(2)}+</small></div>
+              <div><span>Bookmaker</span><strong>{priceLabel(signal)}</strong><small>{signal.bestPrice?.bookmaker_name ?? "not verified"}</small></div>
+              <div><span>Price edge</span><strong>{signal.edge == null ? "—" : `${signal.edge >= 0 ? "+" : ""}${(signal.edge * 100).toFixed(1)}%`}</strong><small>at checked price</small></div>
             </div>
 
             <div className="signal-change">
-              <span>WHAT CHANGED</span>
+              <span>WHAT'S CHANGED</span>
               <strong>{changeLine(signal)}</strong>
             </div>
 
             <div className="signal-insights">
-              <span>KEY EVIDENCE</span>
+              <span>THE FOOTBALL CASE</span>
               {evidence(signal).map((item, index) => (
                 <p key={item}><b>{index + 1}</b>{item}</p>
               ))}
@@ -263,7 +269,7 @@ export function DecisionFeed({
 
             {signal.bookmakerQuotes.length > 1 ? (
               <div className="line-shop">
-                <span>LINE SHOP</span>
+                <span>COMPARE BOOKMAKERS</span>
                 <div>
                   {signal.bookmakerQuotes.slice(0, 4).map((quote) => (
                     <p key={`${quote.bookmakerKey}:${quote.decimalOdds}`}>
@@ -282,11 +288,11 @@ export function DecisionFeed({
           </article>
         ) : (
           <div className="betting-empty">
-            <strong>No model-qualified selection for today's fixtures.</strong>
+            <strong>No selection has cleared our checks today.</strong>
             <p>
               {upcomingModelledCount > 0
                 ? `${upcomingModelledCount} upcoming fixtures have research probabilities above. Today's global fixtures remain coverage-only until a verified model and price exist.`
-                : "Footy will not invent a forecast or claim that a market is verified."}
+                : "We won't recommend a bet without a complete match assessment and a current bookmaker price."}
             </p>
             <a href="#next-modelled">View the next modelled fixtures →</a>
           </div>

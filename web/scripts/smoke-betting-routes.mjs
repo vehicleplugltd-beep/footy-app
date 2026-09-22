@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 const port = 3397;
 const base = `http://127.0.0.1:${port}`;
 const routes = [
-  ["/betting", "Actual Footy probabilities, not just a fixture list"],
+  ["/betting", "Upcoming matches under the microscope"],
   ["/betting/results", "What we said. When we said it."],
   ["/betting/tools", "Know the price. Know the risk."],
   ["/betting/my-bets", "Your bets become evidence."],
