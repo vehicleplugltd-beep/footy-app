@@ -5,6 +5,7 @@ import { DailyPredictions } from "@/components/daily-predictions";
 import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
 import { LeagueReadinessMap } from "@/components/league-readiness";
+import { UpcomingModelResearch } from "@/components/upcoming-model-research";
 import { getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
@@ -22,11 +23,6 @@ export default async function BettingPage() {
     <main className="betting-app">
       <BettingAgeGate />
       <BettingNav active="edge" />
-      <DecisionFeed
-        todayGames={data.todayGames}
-        accas={data.accas}
-      />
-
       <section className="betting-hero shell">
         <div>
           <span className="betting-kicker">FOOTY EDGE · 18+</span>
@@ -80,6 +76,13 @@ export default async function BettingPage() {
           <p>Doubles and trebles are built only from independently qualifying +EV legs.</p>
         </article>
       </section>
+
+      <UpcomingModelResearch selections={data.selections} />
+      <DecisionFeed
+        todayGames={data.todayGames}
+        accas={data.accas}
+        upcomingModelledCount={new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size}
+      />
 
       <div className="shell">
         {data.dataState !== "LIVE" ? (
