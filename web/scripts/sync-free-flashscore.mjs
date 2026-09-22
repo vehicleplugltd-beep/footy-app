@@ -843,10 +843,16 @@ async function main() {
   const uniqueFixtureRows = [
     ...new Map(fixtureRows.map((row) => [row.match_id, row])).values(),
   ];
+  const uniqueCurrentRows = [
+    ...new Map(currentRows.map((row) => [row.price_key, row])).values(),
+  ];
+  const uniqueHistoryRows = [
+    ...new Map(historyRows.map((row) => [row.price_key, row])).values(),
+  ];
 
   await upsert("footy_matches", uniqueFixtureRows, "match_id");
-  await upsert("footy_live_odds_current", currentRows, "price_key");
-  await insert("footy_live_odds_history", historyRows);
+  await upsert("footy_live_odds_current", uniqueCurrentRows, "price_key");
+  await insert("footy_live_odds_history", uniqueHistoryRows);
   await upsert(
     "footy_odds_feed_status",
     [{
@@ -855,7 +861,7 @@ async function main() {
       last_attempt_at: capturedAt,
       last_success_at: currentRows.length ? capturedAt : null,
       events_received: events.length,
-      prices_received: currentRows.length,
+      prices_received: uniqueCurrentRows.length,
       last_error: errors.length
         ? [
             `events=${events.length}`,
@@ -893,8 +899,9 @@ async function main() {
         market_entries: marketEntries,
         new_fixture_rows: uniqueFixtureRows.length,
         fixture_rows_deduped: fixtureRows.length - uniqueFixtureRows.length,
-        prices: currentRows.length,
-        changed_prices: historyRows.length,
+        prices: uniqueCurrentRows.length,
+        changed_prices: uniqueHistoryRows.length,
+        price_rows_deduped: currentRows.length - uniqueCurrentRows.length,
         bookmakers: new Set(currentRows.map((row) => row.bookmaker_name)).size,
         markets: [...new Set(currentRows.map((row) => row.market))].sort(),
         errors: errors.slice(0, 10),
