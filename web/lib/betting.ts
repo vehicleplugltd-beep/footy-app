@@ -662,10 +662,10 @@ export async function getBettingWorkspaceData() {
         `footy_model_market_validation?select=model_version,league,market,status,sample_size,model_log_loss,benchmark_log_loss,close_roi,clv_proxy,bookmaker_reference,notes,evaluated_at&model_version=eq.${MODEL_VERSION}`,
       ),
       rest<LivePriceRow>(
-        `footy_live_odds_current?select=match_id,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,captured_at&captured_at=gte.${encodeURIComponent(priceCutoff)}&limit=5000`,
+        `footy_live_odds_current?select=match_id,bookmaker_key,bookmaker_name,market,selection,line,decimal_odds,previous_decimal_odds,captured_at&captured_at=gte.${encodeURIComponent(priceCutoff)}&limit=30000`,
       ),
       rest<FeedRow>(
-        "footy_odds_feed_status?select=provider,last_success_at,last_attempt_at,events_received,prices_received,last_error&order=last_attempt_at.desc&limit=1",
+        "footy_odds_feed_status?select=provider,last_success_at,last_attempt_at,events_received,prices_received,last_error&provider=eq.flashscore-free&order=last_attempt_at.desc&limit=1",
       ),
       rest<MatchRow>(
         `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=240`,
@@ -749,12 +749,6 @@ export async function getBettingWorkspaceData() {
     for (const model of modelsByMatch.get(match.match_id) ?? []) {
       const key = `${match.match_id}:${model.market}:${model.selection}`;
       const prices = pricesByKey.get(key) ?? [];
-      const williamHill =
-        prices.find(
-          (row) =>
-            row.bookmaker_key.toLowerCase() === "williamhill" ||
-            row.bookmaker_name.toLowerCase().includes("william hill"),
-        ) ?? null;
       const sortedPrices = [...prices].sort(
         (a, b) => Number(b.decimal_odds) - Number(a.decimal_odds),
       );
