@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Iterable
 
 
 CORE_TEN_LEAGUES = (
-    "Premier League",
-    "Championship",
-    "La Liga",
-    "Segunda Division",
-    "Bundesliga",
-    "2. Bundesliga",
-    "Serie A",
-    "Serie B",
-    "Ligue 1",
-    "Ligue 2",
+    "ENG-Premier League",
+    "ENG-Championship",
+    "ESP-La Liga",
+    "ESP-La Liga 2",
+    "GER-Bundesliga",
+    "GER-2. Bundesliga",
+    "ITA-Serie A",
+    "ITA-Serie B",
+    "FRA-Ligue 1",
+    "FRA-Ligue 2",
 )
 
-CORE_REQUIRED_MARKETS = ("1X2", "TOTAL_2_5")
+CORE_REQUIRED_MARKETS = ("1X2", "TOTAL_2.5")
 
 GATE_STATUSES = {"READY", "LIMITED", "BLOCKED"}
 VALIDATION_STATUS_BY_GATE = {
@@ -263,3 +263,38 @@ def expansion_decision(
         True,
         ("all core ten league/market gates are READY and non-regressing",),
     )
+
+
+def quality_snapshot_record(
+    snapshot: QualitySnapshot,
+    result: QualityGateResult,
+    policy: QualityGatePolicy = QualityGatePolicy(),
+) -> dict:
+    """Serialize a frozen quality decision for append-only persistence."""
+    if (
+        snapshot.league != result.league
+        or snapshot.market != result.market
+        or snapshot.model_version != result.model_version
+    ):
+        raise ValueError("Snapshot and result identifiers must match.")
+
+    return {
+        "league": snapshot.league,
+        "market": snapshot.market,
+        "model_version": snapshot.model_version,
+        "sample_size": snapshot.sample_size,
+        "data_completeness": snapshot.data_completeness,
+        "model_log_loss": snapshot.model_log_loss,
+        "benchmark_log_loss": snapshot.benchmark_log_loss,
+        "calibration_error": snapshot.calibration_error,
+        "price_sample_size": snapshot.price_sample_size,
+        "mean_clv": snapshot.mean_clv,
+        "realized_roi": snapshot.realized_roi,
+        "previous_model_log_loss": snapshot.previous_model_log_loss,
+        "previous_calibration_error": snapshot.previous_calibration_error,
+        "previous_mean_clv": snapshot.previous_mean_clv,
+        "gate_status": result.status,
+        "validation_status": result.validation_status,
+        "reasons": list(result.reasons),
+        "policy": asdict(policy),
+    }
