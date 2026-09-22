@@ -1014,13 +1014,18 @@ export async function getPredictionResultsData(
     (row) => row.resultStatus === "WON" || row.resultStatus === "LOST",
   );
   const correct = graded.filter((row) => row.resultStatus === "WON").length;
-  const priced = receipts.filter(
-    (row) => row.quotedOdds != null && row.unitProfit != null,
+  const qualifiedBets = receipts.filter(
+    (row) =>
+      row.validationStatus === "APPROVED" &&
+      row.quotedOdds != null &&
+      row.minimumTakePrice != null &&
+      row.quotedOdds >= row.minimumTakePrice &&
+      row.unitProfit != null,
   );
-  const units = priced.length
-    ? priced.reduce((sum, row) => sum + Number(row.unitProfit), 0)
+  const units = qualifiedBets.length
+    ? qualifiedBets.reduce((sum, row) => sum + Number(row.unitProfit), 0)
     : null;
-  const clvRows = priced.filter((row) => row.clv != null);
+  const clvRows = qualifiedBets.filter((row) => row.clv != null);
   const averageClv = clvRows.length
     ? clvRows.reduce((sum, row) => sum + Number(row.clv), 0) / clvRows.length
     : null;
@@ -1032,9 +1037,12 @@ export async function getPredictionResultsData(
       correct,
       incorrect: graded.length - correct,
       accuracy: graded.length ? correct / graded.length : null,
-      pricedBets: priced.length,
+      pricedBets: qualifiedBets.length,
       units,
-      roi: priced.length && units != null ? units / priced.length : null,
+      roi:
+        qualifiedBets.length && units != null
+          ? units / qualifiedBets.length
+          : null,
       averageClv,
     },
   };
