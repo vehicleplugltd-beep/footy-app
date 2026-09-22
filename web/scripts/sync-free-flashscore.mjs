@@ -789,34 +789,6 @@ async function main() {
       }
 
       const { event, oddsRoot } = result.value;
-      if (event.eventId === "2NWwfbHL") {
-        const debugEntries = Array.isArray(oddsRoot?.odds) ? oddsRoot.odds : [];
-        const debugTypes = [...new Set(
-          debugEntries.map((entry) => String(entry?.bettingType || "")),
-        )].filter(Boolean);
-        const debugBooks = bookmakerMap(oddsRoot);
-        const debugQuotes = debugEntries.flatMap((entry) => normalizeMarket(entry));
-        await upsert(
-          "footy_odds_feed_status",
-          [{
-            provider: "flashscore-debug",
-            sport_key: event.eventId,
-            last_attempt_at: capturedAt,
-            last_success_at: capturedAt,
-            events_received: debugEntries.length,
-            prices_received: debugQuotes.length,
-            last_error: JSON.stringify({
-              league: event.league,
-              home: event.homeTeam,
-              away: event.awayTeam,
-              bookmakerCount: debugBooks.size,
-              bettingTypes: debugTypes.slice(0, 20),
-            }).slice(0, 1000),
-            updated_at: capturedAt,
-          }],
-          "provider",
-        );
-      }
       oddsResponses += 1;
       marketEntries += Array.isArray(oddsRoot?.odds)
         ? oddsRoot.odds.length
