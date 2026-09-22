@@ -7,7 +7,11 @@ import requests
 
 
 FOTMOB_LEAGUES = {
-    "ENG-Championship": 48,
+    "ENG-Championship": {"id": 48, "ccode3": "GBR"},
+    "ESP-La Liga 2": {"id": 140, "ccode3": "ESP"},
+    "GER-2. Bundesliga": {"id": 146, "ccode3": "GER"},
+    "ITA-Serie B": {"id": 86, "ccode3": "ITA"},
+    "FRA-Ligue 2": {"id": 110, "ccode3": "FRA"},
 }
 
 BASE_URLS = (
@@ -60,7 +64,7 @@ class FotMobSource:
             f"FotMob request failed for {path}: {' | '.join(errors)}"
         )
 
-    def league_id(self, league: str) -> int:
+    def league_config(self, league: str) -> dict[str, Any]:
         try:
             return FOTMOB_LEAGUES[league]
         except KeyError as exc:
@@ -68,14 +72,18 @@ class FotMobSource:
                 f"No verified FotMob league id configured for {league}"
             ) from exc
 
+    def league_id(self, league: str) -> int:
+        return int(self.league_config(league)["id"])
+
     def league(
         self,
         league: str,
         season: str | None = None,
     ) -> dict[str, Any]:
+        config = self.league_config(league)
         params: dict[str, Any] = {
-            "id": self.league_id(league),
-            "ccode3": self.country_code,
+            "id": int(config["id"]),
+            "ccode3": str(config.get("ccode3") or self.country_code),
         }
         if season:
             params["season"] = season
