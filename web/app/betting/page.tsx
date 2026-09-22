@@ -24,7 +24,6 @@ export default async function BettingPage() {
       <BettingNav active="edge" />
       <DecisionFeed
         todayGames={data.todayGames}
-        selections={data.selections}
         accas={data.accas}
       />
 
