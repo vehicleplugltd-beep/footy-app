@@ -840,7 +840,11 @@ async function main() {
     }
   }
 
-  await upsert("footy_matches", fixtureRows, "match_id");
+  const uniqueFixtureRows = [
+    ...new Map(fixtureRows.map((row) => [row.match_id, row])).values(),
+  ];
+
+  await upsert("footy_matches", uniqueFixtureRows, "match_id");
   await upsert("footy_live_odds_current", currentRows, "price_key");
   await insert("footy_live_odds_history", historyRows);
   await upsert(
@@ -887,7 +891,8 @@ async function main() {
         priced_league_events: targetEvents.length,
         odds_responses: oddsResponses,
         market_entries: marketEntries,
-        new_fixture_rows: fixtureRows.length,
+        new_fixture_rows: uniqueFixtureRows.length,
+        fixture_rows_deduped: fixtureRows.length - uniqueFixtureRows.length,
         prices: currentRows.length,
         changed_prices: historyRows.length,
         bookmakers: new Set(currentRows.map((row) => row.bookmaker_name)).size,
