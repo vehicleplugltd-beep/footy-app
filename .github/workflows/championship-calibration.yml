@@ -1,0 +1,97 @@
+name: championship-calibration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/championship-calibration.yml"
+
+concurrency:
+  group: championship-calibration
+  cancel-in-progress: true
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Baseline xG walk-forward
+        run: |
+          footy-data calibrate \
+            --league ENG-Championship \
+            --season 2223 --season 2324 --season 2425 --season 2526 \
+            --model-version championship-v1-xg-r16-p50-v20 \
+            --process-mode xg \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20
+
+      - name: Baseline xG quality
+        run: |
+          for MARKET in "1X2" "TOTAL_2.5"; do
+            footy-data quality-evaluate \
+              --league ENG-Championship \
+              --season 2223 --season 2324 --season 2425 --season 2526 \
+              --model-version championship-v1-xg-r16-p50-v20 \
+              --market "$MARKET" \
+              --bookmaker "Market Average" \
+              --source football-data.co.uk
+          done
+
+      - name: Schedule-adjusted walk-forward
+        run: |
+          footy-data calibrate \
+            --league ENG-Championship \
+            --season 2223 --season 2324 --season 2425 --season 2526 \
+            --model-version championship-v2-schedule-r16-p50-v20 \
+            --process-mode schedule_adjusted \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20
+
+      - name: Schedule-adjusted quality
+        run: |
+          for MARKET in "1X2" "TOTAL_2.5"; do
+            footy-data quality-evaluate \
+              --league ENG-Championship \
+              --season 2223 --season 2324 --season 2425 --season 2526 \
+              --model-version championship-v2-schedule-r16-p50-v20 \
+              --market "$MARKET" \
+              --bookmaker "Market Average" \
+              --source football-data.co.uk
+          done
+
+      - name: npxG-blend walk-forward
+        run: |
+          footy-data calibrate \
+            --league ENG-Championship \
+            --season 2223 --season 2324 --season 2425 --season 2526 \
+            --model-version championship-v3-npxg70-r16-p50-v20 \
+            --process-mode npxg_blend \
+            --npxg-weight 0.70 \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20
+
+      - name: npxG-blend quality
+        run: |
+          for MARKET in "1X2" "TOTAL_2.5"; do
+            footy-data quality-evaluate \
+              --league ENG-Championship \
+              --season 2223 --season 2324 --season 2425 --season 2526 \
+              --model-version championship-v3-npxg70-r16-p50-v20 \
+              --market "$MARKET" \
+              --bookmaker "Market Average" \
+              --source football-data.co.uk
+          done
