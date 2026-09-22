@@ -1,10 +1,7 @@
 name: fotmob-championship-2526-backfill
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/fotmob-championship-2526-backfill.yml"
+  workflow_dispatch:
 
 jobs:
   batch:
