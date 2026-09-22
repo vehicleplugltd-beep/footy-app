@@ -219,6 +219,11 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
         metric_frames.append(metrics)
 
     matches = pd.concat(match_frames, ignore_index=True)
+    if not metric_frames:
+        raise RuntimeError(
+            "FotMob batch contained no matches with usable process data."
+        )
+
     metrics = pd.concat(metric_frames, ignore_index=True)
     report = assess_match_team_metrics(metrics)
 
@@ -233,6 +238,8 @@ def command_fotmob_preview(args: argparse.Namespace) -> None:
         "finished_matches": len(finished),
         "sample_matches": len(matches),
         "metric_rows": len(metrics),
+        "skipped_matches": len(skipped_matches),
+        "skipped": skipped_matches,
         "quality": {
             "rows": report.rows,
             "missing_fraction": report.missing_fraction,
@@ -283,15 +290,27 @@ def command_fotmob_ingest(args: argparse.Namespace) -> None:
     match_rows: list[dict] = []
     metric_frames: list[pd.DataFrame] = []
     reconciled = 0
+    skipped_matches: list[dict[str, str]] = []
 
     for index, row in enumerate(batch):
-        details = source.match_details(row["id"])
-        matches, metrics = normalise_fotmob_match(
-            row,
-            details,
-            league=args.league,
-            season=args.season_code,
-        )
+        try:
+            details = source.match_details(row["id"])
+            matches, metrics = normalise_fotmob_match(
+                row,
+                details,
+                league=args.league,
+                season=args.season_code,
+            )
+        except (ValueError, RuntimeError) as exc:
+            skipped_matches.append({
+                "match_id": str(row.get("id", "")),
+                "home_team": str((row.get("home") or {}).get("name", "")),
+                "away_team": str((row.get("away") or {}).get("name", "")),
+                "reason": str(exc)[:500],
+            })
+            if args.sleep_ms > 0 and index < len(batch) - 1:
+                time.sleep(float(args.sleep_ms) / 1000.0)
+            continue
 
         normalized_match = matches.iloc[0].to_dict()
         existing_id = reconcile_fixture_id(
@@ -368,6 +387,8 @@ def command_fotmob_ingest(args: argparse.Namespace) -> None:
             "batch_offset": offset,
             "batch_matches": len(batch),
             "metric_rows": report.rows,
+            "skipped_matches": len(skipped_matches),
+            "skipped": skipped_matches,
             "missing_fraction": report.missing_fraction,
             "duplicate_rows": report.duplicate_rows,
             "impossible_values": report.impossible_values,
