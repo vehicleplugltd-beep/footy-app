@@ -10,10 +10,10 @@ import { CORE_MODEL_LEAGUES, getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
   if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
-  if (state === "LIVE") return "Model + fresh bookmaker prices";
-  if (state === "NO_FRESH_PRICES") return "Model ready · prices not fresh";
-  if (state === "NO_CURRENT_MODEL") return "Fixtures found · model refresh required";
-  return "Forward fixture refresh required";
+  if (state === "LIVE") return "Match assessments and current bookmaker prices";
+  if (state === "NO_FRESH_PRICES") return "Match assessments ready · awaiting current odds";
+  if (state === "NO_CURRENT_MODEL") return "Fixtures found · analysis being updated";
+  return "Upcoming fixture update required";
 }
 
 export default async function BettingPage() {
@@ -30,24 +30,24 @@ export default async function BettingPage() {
       <section className="betting-hero shell">
         <div>
           <span className="betting-kicker">FOOTY EDGE · 18+</span>
-          <h1>Find the price error. Not the likely winner.</h1>
+          <h1>Find value in the football, not just the result.</h1>
           <p>
-            Underlying football process becomes a probability. Probability becomes
-            a fair price. Only after that does Footy check the bookmaker market.
+            We study how teams create and concede chances, assess the matchup,
+            then compare our fair price with the odds on offer.
           </p>
           <div className="betting-hero-actions">
-            <a href="#singles">Scan edges</a>
+            <a href="#singles">Explore the analysis</a>
             <Link href="/betting/my-bets">Upload / track my bets</Link>
           </div>
         </div>
 
         <aside className="betting-live-card">
-          <span>LIVE DECISION STATE</span>
+          <span>TODAY'S MARKET CHECK</span>
           <strong>{statusCopy(data.dataState)}</strong>
           <div>
-            <p><b>{modelledFixtures}</b><small>modelled fixtures</small></p>
-            <p><b>{betCount}</b><small>BET singles</small></p>
-            <p><b>{data.accas.length}</b><small>qualifying accas</small></p>
+            <p><b>{modelledFixtures}</b><small>matches assessed</small></p>
+            <p><b>{betCount}</b><small>value selections</small></p>
+            <p><b>{data.accas.length}</b><small>qualifying multiples</small></p>
           </div>
           <small>
             Model {data.modelVersion}
@@ -61,30 +61,30 @@ export default async function BettingPage() {
       <section className="betting-principles shell">
         <article>
           <span>DATA</span>
-          <strong>Process before results</strong>
+          <strong>Look beyond the scoreline</strong>
           <p>xG, npxG, xGA, shots, big chances, box activity, xGOT, territory and verified player data.</p>
         </article>
         <article>
           <span>MODEL</span>
-          <strong>Probability before odds</strong>
-          <p>Expected scoring and uncertainty are calculated before bookmaker prices are considered.</p>
+          <strong>Study the matchup first</strong>
+          <p>Our assessment of the game comes first. The bookmaker's price is checked afterwards.</p>
         </article>
         <article>
           <span>PRICE</span>
-          <strong>Take-price discipline</strong>
-          <p>A likely outcome is still a PASS when the available price is too short.</p>
+          <strong>Only take the right price</strong>
+          <p>A strong football case is not enough when the odds are too short.</p>
         </article>
         <article>
           <span>ACCA</span>
-          <strong>No filler favourites</strong>
-          <p>Doubles and trebles are built only from independently qualifying +EV legs.</p>
+          <strong>No filler selections</strong>
+          <p>Every leg must offer value on its own.</p>
         </article>
       </section>
 
       {!data.configured ? (
         <section className="betting-section shell" role="status">
           <div className="betting-data-warning">
-            <strong>Model data is temporarily unavailable.</strong>
+            <strong>Our match analysis is temporarily unavailable.</strong>
             <p>The server has no configured database connection. Fixture discovery alone cannot provide probabilities or verified betting prices. This is a service configuration issue, not a model verdict.</p>
           </div>
         </section>
@@ -92,7 +92,7 @@ export default async function BettingPage() {
       {data.configured && modelledFixtures === 0 ? (
         <section className="betting-section shell" role="status">
           <div className="betting-data-warning">
-            <strong>No forward forecasts are reaching this deployment.</strong>
+            <strong>Our upcoming match assessments are not reaching this page.</strong>
             <p>The ten-league fixture feed is not a substitute for verified model output. The data pipeline or server-side read needs attention; no market will be promoted to BET from coverage-only fixtures.</p>
           </div>
         </section>
@@ -107,11 +107,10 @@ export default async function BettingPage() {
       <div className="shell">
         {data.dataState !== "LIVE" ? (
           <div className="betting-data-warning">
-            <strong>Fixture coverage and betting qualification are separate.</strong>
+            <strong>A fixture listing is not a betting recommendation.</strong>
             <p>
-              Today focuses on the ten model leagues. A fixture without a complete
-              current forecast or a fresh matched quote remains research-only;
-              stale model outputs are never promoted as live bets.
+              Today focuses on our ten leagues. We only flag a selection when the match
+              assessment is complete and the bookmaker price is current. Otherwise, it stays on the watchlist.
             </p>
           </div>
         ) : null}
@@ -124,11 +123,11 @@ export default async function BettingPage() {
         <BettingBoard selections={data.selections} accas={data.accas} />
 
         <details className="betting-section today-coverage-drawer">
-          <summary>Model governance · see validation evidence and limitations</summary>
+          <summary>How we check the reliability of our analysis</summary>
           <div className="betting-section-head">
             <div>
               <span>05 / MODEL GOVERNANCE</span>
-              <h2>What is allowed to become a tip?</h2>
+              <h2>When is a selection ready to back?</h2>
             </div>
           </div>
           <div className="validation-grid">
