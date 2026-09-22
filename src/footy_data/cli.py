@@ -1866,6 +1866,8 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         process_span=args.process_span,
         process_prior_weight=args.process_prior_weight,
         venue_split_weight=args.venue_split_weight,
+        process_mode=args.process_mode,
+        npxg_weight=args.npxg_weight,
     )
     if predictions.empty:
         raise RuntimeError("Upcoming fixtures produced no model predictions.")
@@ -2630,6 +2632,18 @@ def main() -> None:
         "--venue-split-weight",
         type=float,
         default=0.20,
+    )
+    predict_upcoming.add_argument(
+        "--process-mode",
+        choices=["xg", "npxg_blend", "schedule_adjusted"],
+        default="xg",
+        help="Must match the process mode used by the calibrated model.",
+    )
+    predict_upcoming.add_argument(
+        "--npxg-weight",
+        type=float,
+        default=0.70,
+        help="npxG weight when process-mode is npxg_blend.",
     )
 
 
