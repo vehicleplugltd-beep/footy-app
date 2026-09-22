@@ -60,6 +60,18 @@ from .upcoming import (
 from .results_ledger import refresh_results_ledger
 from .reconciliation import reconcile_fixture_id
 from .result_verification import verify_external_results
+from .quality_gate import (
+    QualitySnapshot,
+    evaluate_quality_gate,
+    quality_snapshot_record,
+)
+from .quality_evaluation import (
+    expected_calibration_error,
+    multiclass_expected_calibration_error,
+    benchmark_1x2_log_loss,
+    benchmark_total_2_5_log_loss,
+    qualified_clv,
+)
 
 
 def command_sources() -> None:
@@ -1336,6 +1348,335 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     printable["benchmark_log_loss"] = benchmark_log_loss
     print(json.dumps(printable, indent=2))
 
+def command_quality_evaluate(args: argparse.Namespace) -> None:
+    """
+    Freeze one league x market quality decision.
+
+    Model probabilities are generated before prices are inspected. This command
+    only evaluates already-stored walk-forward probabilities against verified
+    outcomes and historical prices, then applies the production gate.
+    """
+    reader = SupabaseRESTReader()
+    history = reader.historical_match_team_metrics(
+        league=args.league,
+        seasons=args.season,
+    )
+    if history.empty:
+        raise RuntimeError("No verified historical rows match quality scope.")
+
+    valid_match_ids = set(history["match_id"].astype(str))
+    predictions = reader.historical_predictions(args.model_version)
+    if predictions.empty:
+        raise RuntimeError(
+            f"No stored predictions for model version {args.model_version}."
+        )
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if predictions.empty:
+        raise RuntimeError("No stored predictions overlap verified history.")
+
+    home = (
+        history[history["home_away"] == "H"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "home_goals"})
+    )
+    away = (
+        history[history["home_away"] == "A"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "away_goals"})
+    )
+    outcomes = home.merge(
+        away,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    scored_match_ids = set(predictions["match_id"].astype(str))
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    if outcomes.empty:
+        raise RuntimeError("No verified outcomes overlap stored predictions.")
+
+    snapshot_prices = reader.bookmaker_prices(
+        bookmaker=args.bookmaker,
+        price_kind=args.snapshot_price_kind,
+        source=args.source,
+        market=args.market,
+    )
+    close_prices = reader.bookmaker_prices(
+        bookmaker=args.bookmaker,
+        price_kind=args.close_price_kind,
+        source=args.source,
+        market=args.market,
+    )
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    if snapshot_prices.empty or close_prices.empty:
+        raise RuntimeError(
+            "Both snapshot and closing price histories are required."
+        )
+
+    required_selections = (
+        {"home", "draw", "away"}
+        if args.market == "1X2"
+        else {"over", "under"}
+    )
+
+    def complete_price_matches(frame: pd.DataFrame) -> set[str]:
+        selections = (
+            frame.groupby("match_id")["selection"]
+            .agg(lambda values: set(values.astype(str)))
+        )
+        return {
+            str(match_id)
+            for match_id, values in selections.items()
+            if required_selections.issubset(values)
+        }
+
+    comparable_match_ids = (
+        scored_match_ids
+        & complete_price_matches(snapshot_prices)
+        & complete_price_matches(close_prices)
+    )
+    if not comparable_match_ids:
+        raise RuntimeError(
+            "No matches have complete model, snapshot and closing-price data."
+        )
+
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+
+    scored = predictions.merge(
+        outcomes,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    if scored.empty:
+        raise RuntimeError("No predictions overlap verified outcomes.")
+
+    if args.market == "1X2":
+        actual = pd.Series(
+            [
+                "home" if hg > ag else "away" if hg < ag else "draw"
+                for hg, ag in zip(
+                    scored["home_goals"],
+                    scored["away_goals"],
+                )
+            ],
+            index=scored.index,
+        )
+        probabilities = pd.DataFrame({
+            "home": scored["home_win_probability"],
+            "draw": scored["draw_probability"],
+            "away": scored["away_win_probability"],
+        })
+        model_log_loss = multiclass_log_loss(probabilities, actual)
+        calibration_error = multiclass_expected_calibration_error(
+            probabilities,
+            actual,
+        )
+        benchmark_log_loss = benchmark_1x2_log_loss(
+            close_prices,
+            outcomes,
+        )
+        assessed_snapshot = assess_1x2_history(
+            predictions,
+            snapshot_prices,
+            target_ev=args.target_ev,
+        )
+        snapshot_summary, _ = summarize_qualified_1x2(
+            assessed_snapshot,
+            outcomes,
+        )
+        assessed_close = assess_1x2_history(
+            predictions,
+            close_prices,
+            target_ev=args.target_ev,
+        )
+        close_summary, _ = summarize_qualified_1x2(
+            assessed_close,
+            outcomes,
+        )
+    elif args.market == "TOTAL_2.5":
+        actual_over = (
+            scored["home_goals"] + scored["away_goals"] >= 3
+        ).astype(int)
+        model_probability = scored["over_2_5_probability"]
+        _, model_log_loss = binary_metrics(
+            model_probability,
+            actual_over,
+        )
+        calibration_error = expected_calibration_error(
+            model_probability,
+            actual_over,
+        )
+        benchmark_log_loss = benchmark_total_2_5_log_loss(
+            close_prices,
+            outcomes,
+        )
+        assessed_snapshot = assess_total_2_5_history(
+            predictions,
+            snapshot_prices,
+            target_ev=args.target_ev,
+        )
+        snapshot_summary, _ = summarize_qualified_total_2_5(
+            assessed_snapshot,
+            outcomes,
+        )
+        assessed_close = assess_total_2_5_history(
+            predictions,
+            close_prices,
+            target_ev=args.target_ev,
+        )
+        close_summary, _ = summarize_qualified_total_2_5(
+            assessed_close,
+            outcomes,
+        )
+    else:
+        raise ValueError(f"Unsupported quality market: {args.market}")
+
+    price_sample_size, mean_clv = qualified_clv(
+        assessed_snapshot,
+        close_prices,
+    )
+    required_metrics = ["xg", "xga", "goals", "goals_conceded"]
+    data_completeness = float(
+        history[required_metrics].notna().all(axis=1).mean()
+    )
+
+    previous_model_log_loss = None
+    previous_calibration_error = None
+    previous_mean_clv = None
+    if args.baseline_model_version:
+        previous = reader.model_quality_snapshots(
+            league=args.league,
+            market=args.market,
+            model_version=args.baseline_model_version,
+        )
+    else:
+        previous = reader.model_quality_snapshots(
+            league=args.league,
+            market=args.market,
+        )
+        if not previous.empty:
+            previous = previous[
+                previous["model_version"].astype(str)
+                != str(args.model_version)
+            ].copy()
+
+    if not previous.empty:
+        prior = previous.iloc[0]
+        previous_model_log_loss = float(prior["model_log_loss"])
+        previous_calibration_error = float(prior["calibration_error"])
+        if pd.notna(prior["mean_clv"]):
+            previous_mean_clv = float(prior["mean_clv"])
+
+    snapshot = QualitySnapshot(
+        league=args.league,
+        market=args.market,
+        model_version=args.model_version,
+        sample_size=int(len(scored)),
+        data_completeness=data_completeness,
+        model_log_loss=float(model_log_loss),
+        benchmark_log_loss=float(benchmark_log_loss),
+        calibration_error=float(calibration_error),
+        price_sample_size=price_sample_size,
+        mean_clv=mean_clv,
+        realized_roi=(
+            None
+            if snapshot_summary.get("roi") is None
+            else float(snapshot_summary["roi"])
+        ),
+        previous_model_log_loss=previous_model_log_loss,
+        previous_calibration_error=previous_calibration_error,
+        previous_mean_clv=previous_mean_clv,
+    )
+    result = evaluate_quality_gate(snapshot)
+
+    writer = SupabaseRESTWriter()
+    writer.insert_model_quality_snapshots([
+        quality_snapshot_record(snapshot, result)
+    ])
+
+    existing_validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
+    existing = (
+        existing_validation[
+            existing_validation["market"] == args.market
+        ].iloc[0]
+        if (
+            not existing_validation.empty
+            and not existing_validation[
+                existing_validation["market"] == args.market
+            ].empty
+        )
+        else None
+    )
+    reasons = "; ".join(result.reasons)
+    writer.upsert_model_market_validation([{
+        "model_version": args.model_version,
+        "league": args.league,
+        "market": args.market,
+        "status": result.validation_status,
+        "sample_size": int(len(scored)),
+        "model_log_loss": float(model_log_loss),
+        "benchmark_log_loss": float(benchmark_log_loss),
+        "close_roi": (
+            None
+            if close_summary.get("roi") is None
+            else float(close_summary["roi"])
+        ),
+        "clv_proxy": mean_clv,
+        "bookmaker_reference": (
+            f"{args.bookmaker} snapshot/close / {args.source}"
+        ),
+        "notes": (
+            f"Continuous quality gate: {result.status}. {reasons}. "
+            "ROI remains diagnostic; promotion is driven by probability "
+            "quality, calibration, data completeness and CLV."
+        ),
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+    }])
+
+    print(json.dumps({
+        "league": args.league,
+        "market": args.market,
+        "model_version": args.model_version,
+        "sample_size": snapshot.sample_size,
+        "data_completeness": snapshot.data_completeness,
+        "model_log_loss": snapshot.model_log_loss,
+        "benchmark_log_loss": snapshot.benchmark_log_loss,
+        "calibration_error": snapshot.calibration_error,
+        "price_sample_size": snapshot.price_sample_size,
+        "mean_clv": snapshot.mean_clv,
+        "snapshot_roi": snapshot.realized_roi,
+        "close_roi": close_summary.get("roi"),
+        "gate_status": result.status,
+        "validation_status": result.validation_status,
+        "reasons": result.reasons,
+        "baseline_model_version": args.baseline_model_version,
+    }, indent=2, default=str))
+
+
 def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     history = reader.historical_match_team_metrics()
@@ -2159,6 +2500,50 @@ def main() -> None:
     )
     value_backtest.add_argument("--target-ev", type=float, default=0.02)
 
+    quality_evaluate = sub.add_parser(
+        "quality-evaluate",
+        help=(
+            "Freeze league-market probability, calibration and price-selection "
+            "quality, then apply the production gate"
+        ),
+    )
+    quality_evaluate.add_argument("--league", required=True)
+    quality_evaluate.add_argument(
+        "--season",
+        action="append",
+        required=True,
+        help="Completed stored season used for out-of-sample evaluation.",
+    )
+    quality_evaluate.add_argument("--model-version", required=True)
+    quality_evaluate.add_argument(
+        "--baseline-model-version",
+        help=(
+            "Optional champion model whose last frozen quality snapshot is "
+            "used for non-regression checks."
+        ),
+    )
+    quality_evaluate.add_argument(
+        "--market",
+        choices=["1X2", "TOTAL_2.5"],
+        required=True,
+    )
+    quality_evaluate.add_argument("--bookmaker", default="Market Average")
+    quality_evaluate.add_argument(
+        "--source",
+        default="football-data.co.uk",
+    )
+    quality_evaluate.add_argument(
+        "--snapshot-price-kind",
+        choices=["open", "close", "snapshot"],
+        default="snapshot",
+    )
+    quality_evaluate.add_argument(
+        "--close-price-kind",
+        choices=["open", "close", "snapshot"],
+        default="close",
+    )
+    quality_evaluate.add_argument("--target-ev", type=float, default=0.02)
+
     diagnose_upcoming = sub.add_parser(
         "diagnose-upcoming",
         help="Print pre-match process diagnostics for upcoming fixtures",
@@ -2379,6 +2764,8 @@ def main() -> None:
         command_football_data_odds_ingest(args)
     elif args.command == "value-backtest":
         command_value_backtest(args)
+    elif args.command == "quality-evaluate":
+        command_quality_evaluate(args)
     elif args.command == "diagnose-upcoming":
         command_diagnose_upcoming(args)
     elif args.command == "predict-upcoming":
