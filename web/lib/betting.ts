@@ -368,6 +368,7 @@ async function fetchFotMobFixtures(nowDate: Date): Promise<MatchRow[]> {
           Referer: "https://www.fotmob.com/",
         },
         next: { revalidate: 300 },
+        signal: AbortSignal.timeout(6000),
       });
       if (!response.ok) continue;
       const payload = await response.json();
@@ -419,17 +420,28 @@ function config() {
 async function rest<T>(path: string): Promise<T[]> {
   const cfg = config();
   if (!cfg) return [];
-  const response = await fetch(`${cfg.url}/rest/v1/${path}`, {
-    headers: {
-      apikey: cfg.key,
-      Authorization: `Bearer ${cfg.key}`,
-    },
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Supabase request failed: ${response.status}`);
+  try {
+    const response = await fetch(`${cfg.url}/rest/v1/${path}`, {
+      headers: {
+        apikey: cfg.key,
+        Authorization: `Bearer ${cfg.key}`,
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json() as Promise<T[]>;
+  } catch (error) {
+    // Missing source data must fail closed: no predictions, prices or validation
+    // may be fabricated, and an outage must not blank the entire user page.
+    console.warn("Footy read unavailable; returning empty verified dataset", {
+      table: path.split("?")[0],
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+    return [];
   }
-  return response.json() as Promise<T[]>;
 }
 
 function latestRows<T extends { match_id: string; market: string; selection: string; created_at: string }>(
