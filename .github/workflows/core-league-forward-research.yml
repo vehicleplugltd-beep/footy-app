@@ -1,0 +1,79 @@
+name: core-league-forward-research
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "25 6,18 * * *"
+
+concurrency:
+  group: core-league-forward-research
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        league:
+          - "ENG-Premier League"
+          - "ESP-La Liga"
+          - "GER-Bundesliga"
+          - "ITA-Serie A"
+          - "FRA-Ligue 1"
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      LEAGUE: ${{ matrix.league }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Refresh current-season underlying process
+        run: |
+          footy-data understat-ingest --league "$LEAGUE" --season "2026"
+
+      - name: Forecast eight-day fixture window from historical xG
+        run: |
+          footy-data predict-upcoming \
+            --league "$LEAGUE" \
+            --season "2026" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
+            --model-version "v7-r16-p50-v20" \
+            --process-mode "xg" \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20 \
+            --lambda-beta 1.0 \
+            --home-lambda-scale 1.0 \
+            --away-lambda-scale 1.0 \
+            --horizon-days 8 \
+            --target-ev 0.02
+
+      - name: Report validation status; never promote research automatically
+        run: |
+          python - <<'PY'
+          import os
+          from footy_data.storage import SupabaseRESTReader
+          league = os.environ["LEAGUE"]
+          validation = SupabaseRESTReader().model_market_validation(
+              "v7-r16-p50-v20", league=league
+          )
+          if validation.empty:
+              print(f"{league}: no validation record; research only.")
+          else:
+              print(validation[[
+                  "league", "market", "status",
+                  "model_log_loss", "benchmark_log_loss",
+              ]].to_string(index=False))
+          PY
