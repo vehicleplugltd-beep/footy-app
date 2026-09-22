@@ -23,3 +23,10 @@ jobs:
       - name: Ingest finished current-season Championship process
         run: |
           footy-data fotmob-ingest             --league "ENG-Championship"             --season-name "current"             --season-code "2627"             --offset 0             --limit 100             --sleep-ms 150             --write
+
+      - name: Sync future Championship fixtures
+        run: |
+          footy-data fotmob-fixtures-ingest \
+            --league "ENG-Championship" \
+            --season-name "current" \
+            --season-code "2627"
