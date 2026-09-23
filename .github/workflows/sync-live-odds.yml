@@ -10,6 +10,7 @@ on:
       - "web/scripts/sync-live-odds.mjs"
       - "web/scripts/sync-free-oddsportal.mjs"
       - "web/scripts/sync-free-flashscore.mjs"
+      - "web/scripts/edge-coverage-diagnostics.mjs"
 
 concurrency:
   group: live-odds-refresh
@@ -39,6 +40,10 @@ jobs:
       - name: Report collector status
         if: always()
         run: echo "Flashscore collection outcome=${{ steps.collect.outcome }}; zero prices must fail the collector."
+
+      - name: Report forecast-to-price coverage
+        if: always() && steps.collect.outcome == 'success'
+        run: node web/scripts/edge-coverage-diagnostics.mjs
 
       - name: Process alerts and closing lines
         if: always() && steps.collect.outcome == 'success'
