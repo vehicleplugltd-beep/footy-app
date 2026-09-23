@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { BettingAgeGate } from "@/components/age-gate";
 import { BettingNav } from "@/components/betting-nav";
 import { BetLab } from "@/components/bet-lab";
