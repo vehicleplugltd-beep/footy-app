@@ -6,7 +6,7 @@ import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
 import { LeagueReadinessMap } from "@/components/league-readiness";
 import { UpcomingModelResearch } from "@/components/upcoming-model-research";
-import { CORE_MODEL_LEAGUES, getBettingWorkspaceData, isInternationalCompetition } from "@/lib/betting";
+import { CORE_MODEL_LEAGUES, getBettingWorkspaceData } from "@/lib/betting";
 
 function statusCopy(state: string) {
   if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
@@ -20,8 +20,7 @@ export default async function BettingPage() {
   const data = await getBettingWorkspaceData();
   const coreLeagues = new Set<string>(CORE_MODEL_LEAGUES);
   const coreTodayGames = data.todayGames.filter((game) => coreLeagues.has(game.league));
-  const internationalGames = data.todayGames.filter((game) => isInternationalCompetition(game.league));
-  const featuredGames = [...coreTodayGames, ...internationalGames.filter((game) => !coreLeagues.has(game.league))];
+  const featuredGames = coreTodayGames;
   const betCount = data.selections.filter((row) => row.verdict === "BET").length;
   const modelledFixtures = new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size;
 
@@ -100,13 +99,6 @@ export default async function BettingPage() {
         </section>
       ) : null}
       <UpcomingModelResearch selections={data.selections} />
-      <section className="betting-section shell" aria-label="International football coverage">
-        <div className="betting-section-head">
-          <div><span>INTERNATIONAL FOOTBALL</span><h2>National teams, with their own standards.</h2></div>
-          <p>{internationalGames.length} international fixture{internationalGames.length === 1 ? "" : "s"} discovered today.</p>
-        </div>
-        <p>International fixtures appear in Today when the fixture feed identifies the competition. A national-team match is not a domestic-league forecast: squad availability, opponent strength, venue and match type require separate analysis and validation. Until that is available, fixtures remain coverage-only, not betting selections.</p>
-      </section>
       <DecisionFeed
         todayGames={featuredGames}
         accas={data.accas}
@@ -118,7 +110,7 @@ export default async function BettingPage() {
           <div className="betting-data-warning">
             <strong>A fixture listing is not a betting recommendation.</strong>
             <p>
-              Today covers our ten domestic leagues and discovered international fixtures. We only flag a selection when the match
+              Today focuses on our ten supported domestic leagues. We only flag a selection when the match
               assessment is complete and the bookmaker price is current. Otherwise, it stays on the watchlist.
             </p>
           </div>
@@ -126,7 +118,7 @@ export default async function BettingPage() {
 
         <DailyPredictions games={featuredGames} />
         <details className="today-coverage-drawer">
-          <summary>See data coverage and readiness across the domestic model leagues</summary>
+          <summary>See data coverage and readiness across our supported domestic leagues</summary>
           <LeagueReadinessMap leagues={data.leagueReadiness.filter((row) => row.modelScope === "CORE")} />
         </details>
         <BettingBoard selections={data.selections} accas={data.accas} />
