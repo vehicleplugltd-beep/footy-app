@@ -63,7 +63,7 @@ jobs:
             --lambda-beta 1.0 \
             --home-lambda-scale 1.0 \
             --away-lambda-scale 1.0 \
-            --horizon-days 8 \
+            --horizon-days 21 \
             --target-ev 0.02
 
       - name: Report validation status; never promote research automatically
@@ -106,11 +106,11 @@ jobs:
           leagues = ["ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"]
           total = 0
           for league in leagues:
-              fixtures = reader.upcoming_matches(league=league, season=None, horizon_days=8)
+              fixtures = reader.upcoming_matches(league=league, season=None, horizon_days=21)
               print(f"{league}: {len(fixtures)} upcoming stored fixtures")
               total += len(fixtures)
           if not total:
-              raise SystemExit("No upcoming core-league fixtures: fixture ingestion needs repair.")
+              raise SystemExit("No upcoming core-league fixtures within 21 days: fixture ingestion needs repair.")
           # Forecast jobs can return success with zero output. Verify the
           # persisted model rows directly before declaring the pipeline healthy.
           import os, requests
