@@ -203,6 +203,14 @@ function normalizeLeague(country, league) {
     l.includes("femin") ||
     l.includes("frauen");
 
+  // Never promote youth, reserve, or age-group competitions into senior
+  // leagues merely because their names contain "Premier League", etc.
+  const ageGroup = /(?:^|[^a-z0-9])u(?:1[5-9]|2[0-3])(?:[^a-z0-9]|$)|under[ -]?(?:1[5-9]|2[0-3])|youth|reserve|development|academy/.test(l);
+  if (ageGroup) {
+    const prefix = c ? c.slice(0, 3).toUpperCase() : "INT";
+    return `${prefix}-${league || "Youth Football"}`;
+  }
+
   if (!womensCompetition) {
     if (c === "england" && l.includes("premier league")) return "ENG-Premier League";
     if (c === "england" && l.includes("championship")) return "ENG-Championship";
