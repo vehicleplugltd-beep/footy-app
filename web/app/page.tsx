@@ -1,4 +1,5 @@
 
+import { redirect } from "next/navigation";
 import { TeamConnectForm } from "@/components/team-connect-form";
 import { FrontOffice } from "@/components/front-office";
 import { ProductNav } from "@/components/product-nav";
@@ -10,6 +11,7 @@ export default async function Home({
 }: {
   searchParams: Promise<{ team?: string | string[] }>;
 }) {
+  if (process.env.FOOTY_APP_MODE === "edge") redirect("/betting");
   const query = await searchParams;
   const rawTeam = Array.isArray(query.team) ? query.team[0] : query.team;
   const teamId = rawTeam ? Number(rawTeam.replace(/\D/g, "")) : undefined;
