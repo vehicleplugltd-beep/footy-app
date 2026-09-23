@@ -103,6 +103,7 @@ export default async function BettingPage() {
       <UpcomingModelResearch selections={data.selections} />
       <section className="betting-section shell" id="international-fixtures">
         <div className="betting-section-heading"><div><span>INTERNATIONAL RESEARCH</span><h2>National-team fixtures in the testing queue</h2></div></div>
+        <p>Pipeline status: {data.internationalReadiness.fixtures} fixtures · {data.internationalReadiness.fixturesWithVerifiedMatchMetrics} with verified match metrics · {data.internationalReadiness.fixturesWithCurrentModel} with current model output · {data.internationalReadiness.fixturesWithFreshPriceCandidates} with fresh price candidates. Price candidates are not confirmed fixture matches or +EV bets.</p>
         <p>Upcoming international fixtures are shown for coverage and model testing only. Domestic team ratings do not transfer to national teams; no fair odds, +EV picks or acca legs are generated without an independently validated international model and matched current prices.</p>
         {data.internationalFixtures.length ? (
           <details className="today-coverage-drawer" open>
