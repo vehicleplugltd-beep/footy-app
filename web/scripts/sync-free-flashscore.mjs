@@ -311,7 +311,11 @@ function parseTodayFeed(raw) {
       kickoffAt: new Date(timestamp * 1000).toISOString(),
       homeTeam: String(row.AE),
       awayTeam: String(row.AF),
-      league: normalizeLeague(context.country, context.league),
+      league: /(?:^|[^a-z0-9])u(?:1[5-9]|2[0-3])(?:[^a-z0-9]|$)|under[ -]?(?:1[5-9]|2[0-3])|youth|reserves?|academy/i.test(
+        `${row.AE} ${row.AF}`
+      )
+        ? `${clean(context.country).slice(0, 3).toUpperCase() || "INT"}-Youth Football`
+        : normalizeLeague(context.country, context.league),
       country: context.country,
       providerLeague: context.league,
       status: String(row.AB || "1"),
