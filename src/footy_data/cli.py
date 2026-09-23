@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from .sources.soccerdata_source import SoccerDataSource
+from .sources.fotmob_source import FotMobSource
+from .normalizers.fotmob import (
+    normalise_fotmob_match,
+    normalise_fotmob_fixtures,
+)
 from .normalizers.understat import (
     normalise_understat,
     normalise_understat_matches,
@@ -21,6 +27,7 @@ from .normalizers.fpl_core_insights import (
     normalise_fpl_core_player_priors,
 )
 from .sources.fpl_core_insights import FPLCoreInsightsSource
+from .sources.official_fpl import OfficialFPLSource
 from .verification import verify_provider_rows
 from .quality import assess_match_team_metrics
 from .storage import (
@@ -54,6 +61,20 @@ from .upcoming import (
     model_output_records,
 )
 from .results_ledger import refresh_results_ledger
+from .reconciliation import reconcile_fixture_id
+from .result_verification import verify_external_results
+from .quality_gate import (
+    QualitySnapshot,
+    evaluate_quality_gate,
+    quality_snapshot_record,
+)
+from .quality_evaluation import (
+    expected_calibration_error,
+    multiclass_expected_calibration_error,
+    benchmark_1x2_log_loss,
+    benchmark_total_2_5_log_loss,
+    qualified_clv,
+)
 
 
 def command_sources() -> None:
@@ -126,6 +147,451 @@ def command_understat(args: argparse.Namespace) -> None:
             "usable": report.usable,
         },
         "columns": list(normalized.columns),
+    }, indent=2))
+
+
+def _serializable_columns(frame: pd.DataFrame) -> list[str]:
+    names: list[str] = []
+    for column in frame.columns:
+        if isinstance(column, tuple):
+            parts = [
+                str(part)
+                for part in column
+                if str(part) not in {"", "nan", "None"}
+                and not str(part).startswith("Unnamed:")
+            ]
+            names.append(" | ".join(parts))
+        else:
+            names.append(str(column))
+    return names
+
+
+def command_fbref_smoke(args: argparse.Namespace) -> None:
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season],
+    )
+    schedule = source.fbref_schedule()
+
+    logs = pd.DataFrame()
+    if args.include_match_logs:
+        logs = source.fbref_team_match_stats(
+            stat_type=args.stat_type,
+            team=args.team,
+        )
+
+    print(json.dumps({
+        "status": "ok",
+        "league": args.league,
+        "season": args.season,
+        "team": args.team,
+        "stat_type": args.stat_type,
+        "schedule_rows": int(len(schedule)),
+        "schedule_columns": _serializable_columns(schedule),
+        "match_logs_requested": bool(args.include_match_logs),
+        "match_log_rows": int(len(logs)),
+        "match_log_columns": _serializable_columns(logs),
+    }, indent=2, default=str))
+
+
+def command_fotmob_preview(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
+    )
+    finished = [
+        row
+        for row in raw_matches
+        if isinstance(row.get("status"), dict)
+        and bool(row["status"].get("finished"))
+        and row.get("id") is not None
+    ]
+
+    if not finished:
+        raise RuntimeError(
+            f"No finished FotMob matches found for "
+            f"{args.league} / {args.season_name}."
+        )
+
+    sample = finished[: max(1, int(args.limit))]
+    match_frames: list[pd.DataFrame] = []
+    metric_frames: list[pd.DataFrame] = []
+    skipped_matches: list[dict[str, str]] = []
+
+    for row in sample:
+        try:
+            details = source.match_details(row["id"])
+            matches, metrics = normalise_fotmob_match(
+                row,
+                details,
+                league=args.league,
+                season=args.season_code,
+            )
+        except (ValueError, RuntimeError) as exc:
+            skipped_matches.append({
+                "match_id": str(row.get("id", "")),
+                "home_team": str((row.get("home") or {}).get("name", "")),
+                "away_team": str((row.get("away") or {}).get("name", "")),
+                "reason": str(exc)[:500],
+            })
+            continue
+        match_frames.append(matches)
+        metric_frames.append(metrics)
+
+    if not match_frames or not metric_frames:
+        raise RuntimeError(
+            "FotMob sample contained no matches with usable process data: "
+            + json.dumps(skipped_matches[:10])
+        )
+
+    matches = pd.concat(match_frames, ignore_index=True)
+    metrics = pd.concat(metric_frames, ignore_index=True)
+    report = assess_match_team_metrics(metrics)
+
+    print(json.dumps({
+        "status": "ok",
+        "mode": "read-only",
+        "source": "fotmob",
+        "league": args.league,
+        "season_name": args.season_name,
+        "season_code": args.season_code,
+        "season_matches": len(raw_matches),
+        "finished_matches": len(finished),
+        "sample_matches": len(matches),
+        "metric_rows": len(metrics),
+        "skipped_matches": len(skipped_matches),
+        "skipped": skipped_matches,
+        "quality": {
+            "rows": report.rows,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+            "usable": report.usable,
+        },
+        "match_columns": list(matches.columns),
+        "metric_columns": list(metrics.columns),
+        "sample_metric_rows": metrics.head(4).to_dict(orient="records"),
+    }, indent=2, default=str))
+
+
+def command_fotmob_fixtures_ingest(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
+    )
+    fixtures = normalise_fotmob_fixtures(
+        raw_matches,
+        league=args.league,
+        season=args.season_code,
+    )
+    if fixtures.empty:
+        print(json.dumps({
+            "status": "ok",
+            "source": "fotmob",
+            "league": args.league,
+            "season_code": args.season_code,
+            "fixtures": 0,
+            "message": "No future FotMob fixtures found.",
+        }, indent=2))
+        return
+
+    reader = SupabaseRESTReader()
+    existing = reader.season_matches(args.league, args.season_code)
+    reconciled = 0
+    rows = []
+    for row in fixtures.to_dict(orient="records"):
+        existing_id = reconcile_fixture_id(
+            str(row["home_team"]),
+            str(row["away_team"]),
+            row["kickoff_at"],
+            existing,
+        )
+        if existing_id:
+            row["match_id"] = existing_id
+            reconciled += 1
+        rows.append(row)
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_matches(frame_records(pd.DataFrame(rows), MATCH_FIELDS))
+
+    print(json.dumps({
+        "status": "ok",
+        "source": "fotmob",
+        "league": args.league,
+        "season_code": args.season_code,
+        "fixtures": len(rows),
+        "reconciled": reconciled,
+        "new_fixture_ids": len(rows) - reconciled,
+        "first_kickoff": str(fixtures["match_date"].min()),
+        "last_kickoff": str(fixtures["match_date"].max()),
+    }, indent=2, default=str))
+
+
+def command_fotmob_ingest(args: argparse.Namespace) -> None:
+    source = FotMobSource()
+    raw_matches = source.matches(
+        args.league,
+        season=(
+            None
+            if str(args.season_name).lower() == "current"
+            else args.season_name
+        ),
+    )
+    finished = [
+        row
+        for row in raw_matches
+        if isinstance(row.get("status"), dict)
+        and bool(row["status"].get("finished"))
+        and row.get("id") is not None
+    ]
+
+    if not finished:
+        raise RuntimeError(
+            f"No finished FotMob matches found for "
+            f"{args.league} / {args.season_name}."
+        )
+
+    offset = max(0, int(args.offset))
+    limit = max(1, int(args.limit))
+    batch = finished[offset:offset + limit]
+    if not batch:
+        raise RuntimeError(
+            f"FotMob batch is empty at offset {offset} / limit {limit}."
+        )
+
+    reader = SupabaseRESTReader()
+    existing = reader.season_matches(args.league, args.season_code)
+    match_rows: list[dict] = []
+    metric_frames: list[pd.DataFrame] = []
+    reconciled = 0
+    skipped_matches: list[dict[str, str]] = []
+
+    for index, row in enumerate(batch):
+        try:
+            details = source.match_details(row["id"])
+            matches, metrics = normalise_fotmob_match(
+                row,
+                details,
+                league=args.league,
+                season=args.season_code,
+            )
+        except (ValueError, RuntimeError) as exc:
+            skipped_matches.append({
+                "match_id": str(row.get("id", "")),
+                "home_team": str((row.get("home") or {}).get("name", "")),
+                "away_team": str((row.get("away") or {}).get("name", "")),
+                "reason": str(exc)[:500],
+            })
+            if args.sleep_ms > 0 and index < len(batch) - 1:
+                time.sleep(float(args.sleep_ms) / 1000.0)
+            continue
+
+        normalized_match = matches.iloc[0].to_dict()
+        existing_id = reconcile_fixture_id(
+            str(normalized_match["home_team"]),
+            str(normalized_match["away_team"]),
+            normalized_match["kickoff_at"],
+            existing,
+        )
+        if existing_id:
+            metrics = metrics.copy()
+            metrics["match_id"] = existing_id
+            reconciled += 1
+        else:
+            match_rows.append(normalized_match)
+
+        metric_frames.append(metrics)
+
+        if args.sleep_ms > 0 and index < len(batch) - 1:
+            time.sleep(float(args.sleep_ms) / 1000.0)
+
+    if not metric_frames:
+        raise RuntimeError(
+            "FotMob batch contained no matches with usable process data: "
+            + json.dumps(skipped_matches[:10])
+        )
+
+    metrics = pd.concat(metric_frames, ignore_index=True)
+    report = assess_match_team_metrics(metrics)
+    if not report.usable:
+        raise RuntimeError(
+            f"FotMob payload failed quality checks; no rows written: {report}"
+        )
+
+    payload = {
+        "status": "ok",
+        "source": "fotmob",
+        "league": args.league,
+        "season_name": args.season_name,
+        "season_code": args.season_code,
+        "offset": offset,
+        "requested_limit": limit,
+        "batch_matches": len(batch),
+        "new_matches": len(match_rows),
+        "reconciled_matches": reconciled,
+        "metric_rows": len(metrics),
+        "quality": {
+            "rows": report.rows,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+            "usable": report.usable,
+        },
+        "write": bool(args.write),
+    }
+
+    if not args.write:
+        payload["mode"] = "dry-run"
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    writer = SupabaseRESTWriter()
+    writer.upsert_matches(
+        frame_records(pd.DataFrame(match_rows), MATCH_FIELDS)
+        if match_rows
+        else []
+    )
+    writer.upsert_match_team_metrics(
+        frame_records(metrics, MATCH_TEAM_METRIC_FIELDS)
+    )
+    writer.insert_data_quality_run(
+        source="fotmob",
+        league=args.league,
+        season=args.season_code,
+        status="WARN",
+        report={
+            "basis": (
+                "FotMob match-detail structural/invariant gate; "
+                "independent cross-provider result verification pending"
+            ),
+            "batch_offset": offset,
+            "batch_matches": len(batch),
+            "metric_rows": report.rows,
+            "skipped_matches": len(skipped_matches),
+            "skipped": skipped_matches,
+            "missing_fraction": report.missing_fraction,
+            "duplicate_rows": report.duplicate_rows,
+            "impossible_values": report.impossible_values,
+        },
+    )
+    payload["mode"] = "written"
+    print(json.dumps(payload, indent=2, default=str))
+
+
+def command_fotmob_verify_results(args: argparse.Namespace) -> None:
+    reader = SupabaseRESTReader()
+    matches = reader.season_matches(args.league, args.season_code)
+    if matches.empty:
+        raise RuntimeError("No stored Footy matches found for verification.")
+
+    metrics = reader.match_team_metrics_for_ids(
+        matches["match_id"].astype(str).tolist(),
+        source="fotmob",
+    )
+    if metrics.empty:
+        raise RuntimeError("No FotMob team-process rows found for verification.")
+
+    fotmob_ids = set(metrics["match_id"].astype(str).unique().tolist())
+    matches = matches[
+        matches["match_id"].astype(str).isin(fotmob_ids)
+    ].copy()
+
+    source = SoccerDataSource(
+        leagues=[args.league],
+        seasons=[args.season_code],
+    )
+    external = source.football_data_matches()
+
+    home_goals_col = next(
+        (col for col in ("FTHG", "home_score", "HomeScore") if col in external.columns),
+        None,
+    )
+    away_goals_col = next(
+        (col for col in ("FTAG", "away_score", "AwayScore") if col in external.columns),
+        None,
+    )
+    if home_goals_col is None or away_goals_col is None:
+        raise RuntimeError(
+            "Football-Data result columns unavailable: "
+            + json.dumps(list(external.columns))
+        )
+
+    report = verify_external_results(
+        matches,
+        metrics,
+        external,
+        date_col="date",
+        home_team_col="home_team",
+        away_team_col="away_team",
+        home_goals_col=home_goals_col,
+        away_goals_col=away_goals_col,
+        minimum_match_rate=args.min_match_rate,
+    )
+
+    promoted_rows = 0
+    if args.promote:
+        if report.score_mismatches:
+            raise RuntimeError(
+                "FotMob promotion blocked by exact score mismatches: "
+                + json.dumps(report.__dict__)
+            )
+        if report.match_rate < args.min_match_rate:
+            raise RuntimeError(
+                "FotMob promotion blocked by low reconciliation: "
+                + json.dumps(report.__dict__)
+            )
+
+        writer = SupabaseRESTWriter()
+        promoted_rows = writer.update_match_team_verification(
+            report.matched_match_ids,
+            source="fotmob",
+            status="PASS",
+            verified=True,
+        )
+        writer.insert_data_quality_run(
+            source="fotmob",
+            league=args.league,
+            season=args.season_code,
+            status=(
+                "PASS"
+                if report.unmatched_matches == 0
+                else "WARN"
+            ),
+            report={
+                "basis": "Football-Data.co.uk identity + exact final-score cross-check",
+                "provider_matches": report.provider_matches,
+                "matched_matches": report.matched_matches,
+                "unmatched_matches": report.unmatched_matches,
+                "match_rate": report.match_rate,
+                "score_mismatches": report.score_mismatches,
+                "promoted_team_rows": promoted_rows,
+            },
+        )
+
+    print(json.dumps({
+        "status": report.status,
+        "source": "fotmob",
+        "reference": "football-data.co.uk",
+        "league": args.league,
+        "season_code": args.season_code,
+        "provider_matches": report.provider_matches,
+        "matched_matches": report.matched_matches,
+        "unmatched_matches": report.unmatched_matches,
+        "match_rate": report.match_rate,
+        "score_mismatches": report.score_mismatches,
+        "matched_match_ids": len(report.matched_match_ids),
+        "promote": bool(args.promote),
+        "promoted_team_rows": promoted_rows,
     }, indent=2))
 
 
@@ -670,10 +1136,28 @@ def command_football_data_odds_ingest(args: argparse.Namespace) -> None:
 
 def command_value_backtest(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
+
+    history = reader.historical_match_team_metrics()
+    if history.empty:
+        raise RuntimeError("No historical Footy data found in Supabase.")
+    history = history[history["league"] == args.league].copy()
+    if history.empty:
+        raise RuntimeError(
+            f"No historical Footy rows found for league {args.league}."
+        )
+    valid_match_ids = set(history["match_id"].astype(str).unique().tolist())
+
     predictions = reader.historical_predictions(args.model_version)
     if predictions.empty:
         raise RuntimeError(
             f"No stored predictions for model version {args.model_version}."
+        )
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if predictions.empty:
+        raise RuntimeError(
+            f"No stored predictions for {args.model_version} in {args.league}."
         )
 
     prices = reader.bookmaker_prices(
@@ -684,6 +1168,13 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     )
     if prices.empty:
         raise RuntimeError("No matching historical bookmaker prices found.")
+    prices = prices[
+        prices["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if prices.empty:
+        raise RuntimeError(
+            f"No matching historical prices found for {args.league}."
+        )
 
     if args.market == "1X2":
         assessed = assess_1x2_history(
@@ -700,7 +1191,6 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Unsupported value-backtest market: {args.market}")
 
-    history = reader.historical_match_team_metrics()
     home = (
         history[history["home_away"] == "H"]
         [["match_id", "goals"]]
@@ -718,19 +1208,101 @@ def command_value_backtest(args: argparse.Namespace) -> None:
         validate="one_to_one",
     )
 
+    benchmark_log_loss = None
+    model_log_loss = None
+    benchmark_sample = 0
+
     if args.market == "1X2":
         summary, bets = summarize_qualified_1x2(
             assessed,
             outcomes,
         )
+
+        model_pivot = assessed.pivot_table(
+            index="match_id",
+            columns="selection",
+            values="model_probability",
+            aggfunc="first",
+        )
+        market_pivot = assessed.pivot_table(
+            index="match_id",
+            columns="selection",
+            values="market_probability_devig",
+            aggfunc="first",
+        )
+        scored = (
+            model_pivot
+            .join(
+                market_pivot,
+                how="inner",
+                lsuffix="_model",
+                rsuffix="_market",
+            )
+            .reset_index()
+            .merge(outcomes, on="match_id", how="inner")
+        )
+        required = {
+            "home_model", "draw_model", "away_model",
+            "home_market", "draw_market", "away_market",
+        }
+        if required.issubset(scored.columns) and not scored.empty:
+            actual = pd.Series(
+                [
+                    "home" if hg > ag else "away" if hg < ag else "draw"
+                    for hg, ag in zip(
+                        scored["home_goals"],
+                        scored["away_goals"],
+                    )
+                ],
+                index=scored.index,
+            )
+            model_log_loss = multiclass_log_loss(
+                pd.DataFrame({
+                    "home": scored["home_model"],
+                    "draw": scored["draw_model"],
+                    "away": scored["away_model"],
+                }),
+                actual,
+            )
+            benchmark_log_loss = multiclass_log_loss(
+                pd.DataFrame({
+                    "home": scored["home_market"],
+                    "draw": scored["draw_market"],
+                    "away": scored["away_market"],
+                }),
+                actual,
+            )
+            benchmark_sample = int(len(scored))
     else:
         summary, bets = summarize_qualified_total_2_5(
             assessed,
             outcomes,
         )
 
+        over = assessed[assessed["selection"] == "over"].copy()
+        if not over.empty:
+            scored = over.merge(
+                outcomes,
+                on="match_id",
+                how="inner",
+                validate="one_to_one",
+            )
+            actual_over = (
+                scored["home_goals"] + scored["away_goals"] >= 3
+            ).astype(int)
+            _, model_log_loss = binary_metrics(
+                scored["model_probability"],
+                actual_over,
+            )
+            _, benchmark_log_loss = binary_metrics(
+                scored["market_probability_devig"],
+                actual_over,
+            )
+            benchmark_sample = int(len(scored))
+
     result = {
         "model_version": args.model_version,
+        "league": args.league,
         "bookmaker": args.bookmaker,
         "price_kind": args.price_kind,
         "source": args.source,
@@ -741,9 +1313,429 @@ def command_value_backtest(args: argparse.Namespace) -> None:
     writer = SupabaseRESTWriter()
     insert_value_backtest_run(writer, result)
 
+    if benchmark_sample > 0:
+        validation = reader.model_market_validation(
+            args.model_version,
+            league=args.league,
+        )
+        existing = (
+            validation[validation["market"] == args.market].iloc[0]
+            if (
+                not validation.empty
+                and not validation[validation["market"] == args.market].empty
+            )
+            else None
+        )
+        status = (
+            str(existing["status"])
+            if existing is not None
+            else "RESEARCH"
+        )
+        notes = (
+            str(existing["notes"])
+            if existing is not None and pd.notna(existing.get("notes"))
+            else "Research-only market validation."
+        )
+        if args.price_kind == "close":
+            notes = (
+                notes.split(" Closing benchmark refreshed")[0]
+                + " Closing benchmark refreshed from "
+                + f"{args.bookmaker} / {args.source}; "
+                + "promotion remains manual."
+            )
+
+        validation_row = {
+            "model_version": args.model_version,
+            "league": args.league,
+            "market": args.market,
+            "status": status,
+            "sample_size": benchmark_sample,
+            "model_log_loss": (
+                float(model_log_loss)
+                if model_log_loss is not None
+                else None
+            ),
+            "benchmark_log_loss": (
+                float(benchmark_log_loss)
+                if (
+                    benchmark_log_loss is not None
+                    and args.price_kind == "close"
+                )
+                else (
+                    float(existing["benchmark_log_loss"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("benchmark_log_loss"))
+                    )
+                    else None
+                )
+            ),
+            "close_roi": (
+                float(summary["roi"])
+                if (
+                    args.price_kind == "close"
+                    and summary.get("roi") is not None
+                )
+                else (
+                    float(existing["close_roi"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("close_roi"))
+                    )
+                    else None
+                )
+            ),
+            "bookmaker_reference": (
+                f"{args.bookmaker} {args.price_kind} / {args.source}"
+                if args.price_kind == "close"
+                else (
+                    str(existing["bookmaker_reference"])
+                    if (
+                        existing is not None
+                        and pd.notna(existing.get("bookmaker_reference"))
+                    )
+                    else None
+                )
+            ),
+            "notes": notes,
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        writer.upsert_model_market_validation([validation_row])
+
     printable = dict(result)
     printable["settled_bets"] = int(len(bets))
+    printable["benchmark_sample"] = benchmark_sample
+    printable["model_log_loss"] = model_log_loss
+    printable["benchmark_log_loss"] = benchmark_log_loss
     print(json.dumps(printable, indent=2))
+
+def command_quality_evaluate(args: argparse.Namespace) -> None:
+    """
+    Freeze one league x market quality decision.
+
+    Model probabilities are generated before prices are inspected. This command
+    only evaluates already-stored walk-forward probabilities against verified
+    outcomes and historical prices, then applies the production gate.
+    """
+    reader = SupabaseRESTReader()
+    history = reader.historical_match_team_metrics(
+        league=args.league,
+        seasons=args.season,
+    )
+    if history.empty:
+        raise RuntimeError("No verified historical rows match quality scope.")
+
+    valid_match_ids = set(history["match_id"].astype(str))
+    predictions = reader.historical_predictions(args.model_version)
+    if predictions.empty:
+        raise RuntimeError(
+            f"No stored predictions for model version {args.model_version}."
+        )
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(valid_match_ids)
+    ].copy()
+    if predictions.empty:
+        raise RuntimeError("No stored predictions overlap verified history.")
+
+    home = (
+        history[history["home_away"] == "H"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "home_goals"})
+    )
+    away = (
+        history[history["home_away"] == "A"]
+        [["match_id", "goals"]]
+        .rename(columns={"goals": "away_goals"})
+    )
+    outcomes = home.merge(
+        away,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    scored_match_ids = set(predictions["match_id"].astype(str))
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    if outcomes.empty:
+        raise RuntimeError("No verified outcomes overlap stored predictions.")
+
+    snapshot_prices = reader.bookmaker_prices(
+        bookmaker=args.bookmaker,
+        price_kind=args.snapshot_price_kind,
+        source=args.source,
+        market=args.market,
+    )
+    close_prices = reader.bookmaker_prices(
+        bookmaker=args.bookmaker,
+        price_kind=args.close_price_kind,
+        source=args.source,
+        market=args.market,
+    )
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(scored_match_ids)
+    ].copy()
+    if snapshot_prices.empty or close_prices.empty:
+        raise RuntimeError(
+            "Both snapshot and closing price histories are required."
+        )
+
+    required_selections = (
+        {"home", "draw", "away"}
+        if args.market == "1X2"
+        else {"over", "under"}
+    )
+
+    def complete_price_matches(frame: pd.DataFrame) -> set[str]:
+        selections = (
+            frame.groupby("match_id")["selection"]
+            .agg(lambda values: set(values.astype(str)))
+        )
+        return {
+            str(match_id)
+            for match_id, values in selections.items()
+            if required_selections.issubset(values)
+        }
+
+    comparable_match_ids = (
+        scored_match_ids
+        & complete_price_matches(snapshot_prices)
+        & complete_price_matches(close_prices)
+    )
+    if not comparable_match_ids:
+        raise RuntimeError(
+            "No matches have complete model, snapshot and closing-price data."
+        )
+
+    predictions = predictions[
+        predictions["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    outcomes = outcomes[
+        outcomes["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    snapshot_prices = snapshot_prices[
+        snapshot_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+    close_prices = close_prices[
+        close_prices["match_id"].astype(str).isin(comparable_match_ids)
+    ].copy()
+
+    scored = predictions.merge(
+        outcomes,
+        on="match_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    if scored.empty:
+        raise RuntimeError("No predictions overlap verified outcomes.")
+
+    if args.market == "1X2":
+        actual = pd.Series(
+            [
+                "home" if hg > ag else "away" if hg < ag else "draw"
+                for hg, ag in zip(
+                    scored["home_goals"],
+                    scored["away_goals"],
+                )
+            ],
+            index=scored.index,
+        )
+        probabilities = pd.DataFrame({
+            "home": scored["home_win_probability"],
+            "draw": scored["draw_probability"],
+            "away": scored["away_win_probability"],
+        })
+        model_log_loss = multiclass_log_loss(probabilities, actual)
+        calibration_error = multiclass_expected_calibration_error(
+            probabilities,
+            actual,
+        )
+        benchmark_log_loss = benchmark_1x2_log_loss(
+            close_prices,
+            outcomes,
+        )
+        assessed_snapshot = assess_1x2_history(
+            predictions,
+            snapshot_prices,
+            target_ev=args.target_ev,
+        )
+        snapshot_summary, _ = summarize_qualified_1x2(
+            assessed_snapshot,
+            outcomes,
+        )
+        assessed_close = assess_1x2_history(
+            predictions,
+            close_prices,
+            target_ev=args.target_ev,
+        )
+        close_summary, _ = summarize_qualified_1x2(
+            assessed_close,
+            outcomes,
+        )
+    elif args.market == "TOTAL_2.5":
+        actual_over = (
+            scored["home_goals"] + scored["away_goals"] >= 3
+        ).astype(int)
+        model_probability = scored["over_2_5_probability"]
+        _, model_log_loss = binary_metrics(
+            model_probability,
+            actual_over,
+        )
+        calibration_error = expected_calibration_error(
+            model_probability,
+            actual_over,
+        )
+        benchmark_log_loss = benchmark_total_2_5_log_loss(
+            close_prices,
+            outcomes,
+        )
+        assessed_snapshot = assess_total_2_5_history(
+            predictions,
+            snapshot_prices,
+            target_ev=args.target_ev,
+        )
+        snapshot_summary, _ = summarize_qualified_total_2_5(
+            assessed_snapshot,
+            outcomes,
+        )
+        assessed_close = assess_total_2_5_history(
+            predictions,
+            close_prices,
+            target_ev=args.target_ev,
+        )
+        close_summary, _ = summarize_qualified_total_2_5(
+            assessed_close,
+            outcomes,
+        )
+    else:
+        raise ValueError(f"Unsupported quality market: {args.market}")
+
+    price_sample_size, mean_clv = qualified_clv(
+        assessed_snapshot,
+        close_prices,
+    )
+    required_metrics = ["xg", "xga", "goals", "goals_conceded"]
+    data_completeness = float(
+        history[required_metrics].notna().all(axis=1).mean()
+    )
+
+    previous_model_log_loss = None
+    previous_calibration_error = None
+    previous_mean_clv = None
+    if args.baseline_model_version:
+        previous = reader.model_quality_snapshots(
+            league=args.league,
+            market=args.market,
+            model_version=args.baseline_model_version,
+        )
+    else:
+        previous = reader.model_quality_snapshots(
+            league=args.league,
+            market=args.market,
+        )
+        if not previous.empty:
+            previous = previous[
+                previous["model_version"].astype(str)
+                != str(args.model_version)
+            ].copy()
+
+    if not previous.empty:
+        prior = previous.iloc[0]
+        previous_model_log_loss = float(prior["model_log_loss"])
+        previous_calibration_error = float(prior["calibration_error"])
+        if pd.notna(prior["mean_clv"]):
+            previous_mean_clv = float(prior["mean_clv"])
+
+    snapshot = QualitySnapshot(
+        league=args.league,
+        market=args.market,
+        model_version=args.model_version,
+        sample_size=int(len(scored)),
+        data_completeness=data_completeness,
+        model_log_loss=float(model_log_loss),
+        benchmark_log_loss=float(benchmark_log_loss),
+        calibration_error=float(calibration_error),
+        price_sample_size=price_sample_size,
+        mean_clv=mean_clv,
+        realized_roi=(
+            None
+            if snapshot_summary.get("roi") is None
+            else float(snapshot_summary["roi"])
+        ),
+        previous_model_log_loss=previous_model_log_loss,
+        previous_calibration_error=previous_calibration_error,
+        previous_mean_clv=previous_mean_clv,
+    )
+    result = evaluate_quality_gate(snapshot)
+
+    writer = SupabaseRESTWriter()
+    writer.insert_model_quality_snapshots([
+        quality_snapshot_record(snapshot, result)
+    ])
+
+    existing_validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
+    existing = (
+        existing_validation[
+            existing_validation["market"] == args.market
+        ].iloc[0]
+        if (
+            not existing_validation.empty
+            and not existing_validation[
+                existing_validation["market"] == args.market
+            ].empty
+        )
+        else None
+    )
+    reasons = "; ".join(result.reasons)
+    writer.upsert_model_market_validation([{
+        "model_version": args.model_version,
+        "league": args.league,
+        "market": args.market,
+        "status": result.validation_status,
+        "sample_size": int(len(scored)),
+        "model_log_loss": float(model_log_loss),
+        "benchmark_log_loss": float(benchmark_log_loss),
+        "close_roi": (
+            None
+            if close_summary.get("roi") is None
+            else float(close_summary["roi"])
+        ),
+        "clv_proxy": mean_clv,
+        "bookmaker_reference": (
+            f"{args.bookmaker} snapshot/close / {args.source}"
+        ),
+        "notes": (
+            f"Continuous quality gate: {result.status}. {reasons}. "
+            "ROI remains diagnostic; promotion is driven by probability "
+            "quality, calibration, data completeness and CLV."
+        ),
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+    }])
+
+    print(json.dumps({
+        "league": args.league,
+        "market": args.market,
+        "model_version": args.model_version,
+        "sample_size": snapshot.sample_size,
+        "data_completeness": snapshot.data_completeness,
+        "model_log_loss": snapshot.model_log_loss,
+        "benchmark_log_loss": snapshot.benchmark_log_loss,
+        "calibration_error": snapshot.calibration_error,
+        "price_sample_size": snapshot.price_sample_size,
+        "mean_clv": snapshot.mean_clv,
+        "snapshot_roi": snapshot.realized_roi,
+        "close_roi": close_summary.get("roi"),
+        "gate_status": result.status,
+        "validation_status": result.validation_status,
+        "reasons": result.reasons,
+        "baseline_model_version": args.baseline_model_version,
+    }, indent=2, default=str))
 
 
 def command_diagnose_upcoming(args: argparse.Namespace) -> None:
@@ -758,14 +1750,37 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical Footy data found for league/history scope.")
 
-    source = SoccerDataSource(
-        leagues=[args.league],
-        seasons=[args.season],
-    )
-    schedule = source.understat_schedule()
+    schedule_source = "understat"
+    schedule = pd.DataFrame()
+
+    if args.league == "ENG-Premier League":
+        try:
+            schedule = OfficialFPLSource().schedule(
+                season=args.season,
+                league=args.league,
+            )
+            schedule_source = "official-fpl"
+        except Exception as exc:
+            print(
+                json.dumps({
+                    "status": "warning",
+                    "source": "official-fpl",
+                    "message": f"Official FPL schedule unavailable: {exc}",
+                })
+            )
+
+    if schedule.empty:
+        source = SoccerDataSource(
+            leagues=[args.league],
+            seasons=[args.season],
+        )
+        schedule = source.understat_schedule()
+        schedule_source = "understat"
+
     fixtures = normalise_upcoming_fixtures(
         schedule,
         horizon_days=args.horizon_days,
+        source_name=schedule_source,
     )
 
     diagnostics = []
@@ -785,9 +1800,83 @@ def command_diagnose_upcoming(args: argparse.Namespace) -> None:
     }, indent=2, default=str))
 
 
+def _stored_upcoming_fixtures(
+    reader: SupabaseRESTReader,
+    league: str,
+    horizon_days: int,
+) -> pd.DataFrame:
+    fixtures = reader.upcoming_matches(
+        league=league,
+        season=None,
+        horizon_days=horizon_days,
+    )
+    if fixtures.empty:
+        return fixtures
+
+    required = {
+        "match_id", "league", "season", "kickoff_at",
+        "home_team", "away_team",
+    }
+    missing = required - set(fixtures.columns)
+    if missing:
+        raise ValueError(
+            "Stored upcoming fixtures missing columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    frame = fixtures.copy()
+    frame["match_date"] = pd.to_datetime(
+        frame["kickoff_at"], errors="coerce", utc=True
+    )
+    frame = frame[frame["match_date"].notna()].copy()
+    frame["status"] = frame.get("status", "scheduled").fillna("scheduled")
+    frame["source"] = frame.get("source", "stored-fixtures").fillna(
+        "stored-fixtures"
+    )
+    frame["retrieved_at"] = frame.get(
+        "retrieved_at",
+        datetime.now(timezone.utc).isoformat(),
+    )
+    return frame[
+        [
+            "match_id", "league", "season", "match_date", "kickoff_at",
+            "home_team", "away_team", "status", "source", "retrieved_at",
+        ]
+    ].sort_values("match_date").reset_index(drop=True)
+
+
+def _load_upcoming_schedule(
+    league: str,
+    season: str,
+) -> tuple[pd.DataFrame, str]:
+    if league == "ENG-Premier League":
+        try:
+            schedule = OfficialFPLSource().schedule(
+                season=season,
+                league=league,
+            )
+            if not schedule.empty:
+                return schedule, "official-fpl"
+        except Exception as exc:
+            print(json.dumps({
+                "status": "warning",
+                "source": "official-fpl",
+                "message": f"Official FPL schedule unavailable: {exc}",
+            }))
+
+    source = SoccerDataSource(
+        leagues=[league],
+        seasons=[season],
+    )
+    return source.understat_schedule(), "understat"
+
+
 def command_predict_upcoming(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
-    history = reader.historical_match_team_metrics()
+    history = reader.historical_match_team_metrics(
+        league=args.league,
+        seasons=args.history_season,
+    )
     if history.empty:
         raise RuntimeError("No historical Footy data found in Supabase.")
 
@@ -800,15 +1889,23 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     if history.empty:
         raise RuntimeError("No historical rows match the requested league/history scope.")
 
-    source = SoccerDataSource(
-        leagues=[args.league],
-        seasons=[args.season],
-    )
-    schedule = source.understat_schedule()
-    fixtures = normalise_upcoming_fixtures(
-        schedule,
+    fixtures = _stored_upcoming_fixtures(
+        reader,
+        league=args.league,
         horizon_days=args.horizon_days,
     )
+    schedule_source = "stored-fixtures"
+
+    if fixtures.empty:
+        schedule, schedule_source = _load_upcoming_schedule(
+            args.league,
+            args.season,
+        )
+        fixtures = normalise_upcoming_fixtures(
+            schedule,
+            horizon_days=args.horizon_days,
+            source_name=schedule_source,
+        )
 
     if fixtures.empty:
         print(json.dumps({
@@ -833,9 +1930,44 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         process_span=args.process_span,
         process_prior_weight=args.process_prior_weight,
         venue_split_weight=args.venue_split_weight,
+        process_mode=args.process_mode,
+        npxg_weight=args.npxg_weight,
     )
+    if predictions.empty and schedule_source == "stored-fixtures":
+        # Retry canonical league fixtures when the stored provider fixture
+        # cannot be matched to verified process history.
+        schedule, fallback_source = _load_upcoming_schedule(
+            args.league, args.season,
+        )
+        fallback = normalise_upcoming_fixtures(
+            schedule, horizon_days=args.horizon_days,
+            source_name=fallback_source,
+        )
+        if not fallback.empty:
+            fallback_predictions = build_upcoming_predictions(
+                history=history, fixtures=fallback,
+                model_version=args.model_version,
+                min_team_matches=args.min_team_matches,
+                lambda_beta=args.lambda_beta,
+                home_lambda_scale=args.home_lambda_scale,
+                away_lambda_scale=args.away_lambda_scale,
+                process_span=args.process_span,
+                process_prior_weight=args.process_prior_weight,
+                venue_split_weight=args.venue_split_weight,
+                process_mode=args.process_mode,
+                npxg_weight=args.npxg_weight,
+            )
+            if not fallback_predictions.empty:
+                fixtures = fallback
+                predictions = fallback_predictions
+                schedule_source = fallback_source
+                writer.upsert_matches(frame_records(fixtures, MATCH_FIELDS))
     if predictions.empty:
-        raise RuntimeError("Upcoming fixtures produced no model predictions.")
+        raise RuntimeError(
+            f"No eligible predictions for {args.league}: "
+            f"{len(fixtures)} fixtures, source={schedule_source}. "
+            "Check team identity and verified process-history coverage."
+        )
 
     outputs = model_output_records(
         predictions,
@@ -843,7 +1975,10 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
     )
     writer.insert_model_outputs(outputs)
 
-    validation = reader.model_market_validation(args.model_version)
+    validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
     status = "RESEARCH"
     if not validation.empty:
         row = validation[validation["market"] == "1X2"]
@@ -863,6 +1998,7 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         "status": "ok",
         "model_version": args.model_version,
         "validation_status": status,
+        "fixture_source": schedule_source,
         "fixtures": int(len(fixtures)),
         "predictions": int(len(predictions)),
         "model_output_rows": int(len(outputs)),
@@ -1053,14 +2189,11 @@ def command_calibrate(args: argparse.Namespace) -> None:
     reader = SupabaseRESTReader()
     frame = reader.historical_match_team_metrics(
         include_ratings=args.use_elo,
+        league=args.league,
+        seasons=args.season,
     )
     if frame.empty:
         raise RuntimeError("No historical Footy data found in Supabase.")
-
-    frame = frame[frame["league"] == args.league].copy()
-    if args.season:
-        wanted = {str(s) for s in args.season}
-        frame = frame[frame["season"].astype(str).isin(wanted)].copy()
 
     if frame.empty:
         raise RuntimeError("No historical rows match the requested calibration scope.")
@@ -1171,6 +2304,53 @@ def command_calibrate(args: argparse.Namespace) -> None:
     )
     insert_backtest_run(writer, result)
 
+    existing_validation = reader.model_market_validation(
+        args.model_version,
+        league=args.league,
+    )
+    existing_by_market = (
+        {
+            str(row["market"]): row
+            for _, row in existing_validation.iterrows()
+        }
+        if not existing_validation.empty
+        else {}
+    )
+    validation_metrics = {
+        "1X2": one_x_two_log,
+        "TOTAL_2.5": over_log,
+        "BTTS": btts_log,
+    }
+    validation_rows = []
+    evaluated_at = datetime.now(timezone.utc).isoformat()
+    for market, model_log_loss in validation_metrics.items():
+        existing = existing_by_market.get(market)
+        status = (
+            str(existing["status"])
+            if existing is not None
+            else "RESEARCH"
+        )
+        notes = (
+            existing.get("notes")
+            if existing is not None
+            else (
+                "Research-only walk-forward calibration. "
+                "Closing-market benchmark and value backtest are required "
+                "before promotion."
+            )
+        )
+        validation_rows.append({
+            "model_version": args.model_version,
+            "league": args.league,
+            "market": market,
+            "status": status,
+            "sample_size": int(len(predictions)),
+            "model_log_loss": float(model_log_loss),
+            "notes": notes,
+            "evaluated_at": evaluated_at,
+        })
+    writer.upsert_model_market_validation(validation_rows)
+
     printable = dict(result)
     printable["calibration"] = {
         key: [
@@ -1204,6 +2384,104 @@ def main() -> None:
         help="Fetch, normalize, validate and upsert Understat data to Supabase",
     )
     _add_understat_args(ingest)
+
+    fbref_smoke = sub.add_parser(
+        "fbref-smoke",
+        help="Probe a custom FBref league without writing any data",
+    )
+    fbref_smoke.add_argument("--league", required=True)
+    fbref_smoke.add_argument("--season", required=True)
+    fbref_smoke.add_argument(
+        "--stat-type",
+        choices=["schedule", "shooting", "keeper", "misc"],
+        default="schedule",
+    )
+    fbref_smoke.add_argument("--team")
+    fbref_smoke.add_argument(
+        "--include-match-logs",
+        action="store_true",
+        help="Also crawl team match-log pages after the schedule probe.",
+    )
+
+    fotmob_preview = sub.add_parser(
+        "fotmob-preview",
+        help="Read-only FotMob process preview for a verified league/season",
+    )
+    fotmob_preview.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_preview.add_argument(
+        "--season-name",
+        required=True,
+        help='FotMob season id (e.g. 2025/2026) or "current".',
+    )
+    fotmob_preview.add_argument(
+        "--season-code",
+        required=True,
+        help="Footy stored season code, e.g. 2526.",
+    )
+    fotmob_preview.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="Finished matches to normalize during this read-only probe.",
+    )
+
+    fotmob_fixtures = sub.add_parser(
+        "fotmob-fixtures-ingest",
+        help="Store future FotMob fixtures for lower-league forward pricing",
+    )
+    fotmob_fixtures.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_fixtures.add_argument("--season-name", required=True)
+    fotmob_fixtures.add_argument("--season-code", required=True)
+
+    fotmob_ingest = sub.add_parser(
+        "fotmob-ingest",
+        help="Batch and quality-gate FotMob process data before optional write",
+    )
+    fotmob_ingest.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_ingest.add_argument("--season-name", required=True)
+    fotmob_ingest.add_argument("--season-code", required=True)
+    fotmob_ingest.add_argument("--offset", type=int, default=0)
+    fotmob_ingest.add_argument("--limit", type=int, default=50)
+    fotmob_ingest.add_argument(
+        "--sleep-ms",
+        type=int,
+        default=150,
+        help="Polite delay between match-detail requests.",
+    )
+    fotmob_ingest.add_argument(
+        "--write",
+        action="store_true",
+        help="Persist only after the batch passes the quality gate.",
+    )
+
+    fotmob_verify = sub.add_parser(
+        "fotmob-verify-results",
+        help="Cross-check FotMob results against Football-Data.co.uk",
+    )
+    fotmob_verify.add_argument(
+        "--league",
+        default="ENG-Championship",
+    )
+    fotmob_verify.add_argument("--season-code", required=True)
+    fotmob_verify.add_argument(
+        "--min-match-rate",
+        type=float,
+        default=0.97,
+    )
+    fotmob_verify.add_argument(
+        "--promote",
+        action="store_true",
+        help="Promote exactly reconciled FotMob rows to PASS.",
+    )
 
     fpl_core = sub.add_parser(
         "fpl-core-ingest",
@@ -1314,6 +2592,10 @@ def main() -> None:
         help="Backtest stored Footy probabilities against imported 1X2 prices",
     )
     value_backtest.add_argument("--model-version", required=True)
+    value_backtest.add_argument(
+        "--league",
+        default="ENG-Premier League",
+    )
     value_backtest.add_argument("--bookmaker", required=True)
     value_backtest.add_argument(
         "--price-kind",
@@ -1327,6 +2609,50 @@ def main() -> None:
         default="1X2",
     )
     value_backtest.add_argument("--target-ev", type=float, default=0.02)
+
+    quality_evaluate = sub.add_parser(
+        "quality-evaluate",
+        help=(
+            "Freeze league-market probability, calibration and price-selection "
+            "quality, then apply the production gate"
+        ),
+    )
+    quality_evaluate.add_argument("--league", required=True)
+    quality_evaluate.add_argument(
+        "--season",
+        action="append",
+        required=True,
+        help="Completed stored season used for out-of-sample evaluation.",
+    )
+    quality_evaluate.add_argument("--model-version", required=True)
+    quality_evaluate.add_argument(
+        "--baseline-model-version",
+        help=(
+            "Optional champion model whose last frozen quality snapshot is "
+            "used for non-regression checks."
+        ),
+    )
+    quality_evaluate.add_argument(
+        "--market",
+        choices=["1X2", "TOTAL_2.5"],
+        required=True,
+    )
+    quality_evaluate.add_argument("--bookmaker", default="Market Average")
+    quality_evaluate.add_argument(
+        "--source",
+        default="football-data.co.uk",
+    )
+    quality_evaluate.add_argument(
+        "--snapshot-price-kind",
+        choices=["open", "close", "snapshot"],
+        default="snapshot",
+    )
+    quality_evaluate.add_argument(
+        "--close-price-kind",
+        choices=["open", "close", "snapshot"],
+        default="close",
+    )
+    quality_evaluate.add_argument("--target-ev", type=float, default=0.02)
 
     diagnose_upcoming = sub.add_parser(
         "diagnose-upcoming",
@@ -1414,6 +2740,18 @@ def main() -> None:
         "--venue-split-weight",
         type=float,
         default=0.20,
+    )
+    predict_upcoming.add_argument(
+        "--process-mode",
+        choices=["xg", "npxg_blend", "schedule_adjusted"],
+        default="xg",
+        help="Must match the process mode used by the calibrated model.",
+    )
+    predict_upcoming.add_argument(
+        "--npxg-weight",
+        type=float,
+        default=0.70,
+        help="npxG weight when process-mode is npxg_blend.",
     )
 
 
@@ -1526,6 +2864,16 @@ def main() -> None:
         command_understat(args)
     elif args.command == "understat-ingest":
         command_understat_ingest(args)
+    elif args.command == "fbref-smoke":
+        command_fbref_smoke(args)
+    elif args.command == "fotmob-preview":
+        command_fotmob_preview(args)
+    elif args.command == "fotmob-fixtures-ingest":
+        command_fotmob_fixtures_ingest(args)
+    elif args.command == "fotmob-ingest":
+        command_fotmob_ingest(args)
+    elif args.command == "fotmob-verify-results":
+        command_fotmob_verify_results(args)
     elif args.command == "fpl-core-ingest":
         command_fpl_core_ingest(args)
     elif args.command == "fpl-core-priors-ingest":
@@ -1540,6 +2888,8 @@ def main() -> None:
         command_football_data_odds_ingest(args)
     elif args.command == "value-backtest":
         command_value_backtest(args)
+    elif args.command == "quality-evaluate":
+        command_quality_evaluate(args)
     elif args.command == "diagnose-upcoming":
         command_diagnose_upcoming(args)
     elif args.command == "predict-upcoming":

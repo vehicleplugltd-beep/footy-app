@@ -1,0 +1,28 @@
+name: fotmob-championship-ingest-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Install FotMob ingestion dependencies
+        run: |
+          pip install --no-deps -e .
+          pip install pandas numpy requests pyarrow pytest
+      - name: Run targeted FotMob safety tests
+        run: |
+          pytest -q             tests/test_fotmob_normalizer.py             tests/test_fotmob_source.py             tests/test_reconciliation.py
+      - name: Write three verified 2025-26 Championship matches
+        run: |
+          footy-data fotmob-ingest             --league "ENG-Championship"             --season-name "2025/2026"             --season-code "2526"             --offset 0             --limit 3             --sleep-ms 100             --write

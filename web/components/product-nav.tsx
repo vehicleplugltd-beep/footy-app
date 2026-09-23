@@ -39,6 +39,9 @@ export function ProductNav({
             {item.label}
           </Link>
         ))}
+        <Link href="/betting" aria-label="Open Footy Edge betting analytics">
+          Edge 18+
+        </Link>
       </div>
     </nav>
   );

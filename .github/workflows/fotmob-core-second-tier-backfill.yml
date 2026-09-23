@@ -1,0 +1,79 @@
+name: fotmob-core-second-tier-backfill
+
+on:
+  workflow_dispatch:
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        league:
+          - "ESP-La Liga 2"
+          - "GER-2. Bundesliga"
+          - "ITA-Serie B"
+          - "FRA-Ligue 2"
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      LEAGUE: ${{ matrix.league }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Install FotMob-only dependencies
+        run: |
+          pip install --no-deps -e .
+          pip install pandas numpy requests pyarrow
+      - name: Backfill verified process history
+        shell: bash
+        run: |
+          set -euo pipefail
+          ingest () {
+            local season_name="$1"
+            local season_code="$2"
+            echo "== $LEAGUE / $season_code =="
+            footy-data fotmob-ingest \
+              --league "$LEAGUE" \
+              --season-name "$season_name" \
+              --season-code "$season_code" \
+              --offset 0 \
+              --limit 10000 \
+              --sleep-ms 100 \
+              --write
+          }
+
+          ingest "2022/2023" "2223"
+          ingest "2023/2024" "2324"
+          ingest "2024/2025" "2425"
+          ingest "2025/2026" "2526"
+          ingest "current" "2627"
+
+      - name: Verify sufficient usable process history
+        run: |
+          python - <<'PY'
+          import os
+          from footy_data.storage import SupabaseRESTReader
+
+          league = os.environ["LEAGUE"]
+          history = SupabaseRESTReader().historical_match_team_metrics(
+              league=league,
+              seasons=["2223", "2324", "2425", "2526", "2627"],
+          )
+          if history.empty:
+              raise RuntimeError(f"{league}: no verified historical process rows")
+          usable = history.dropna(subset=["xg", "xga"])
+          counts = usable.groupby("team").size()
+          matches = usable["match_id"].nunique()
+          print(f"{league}: {matches} usable matches, {len(counts)} teams, "
+                f"{int((counts >= 5).sum())} teams with 5+ process observations")
+          if matches < 100 or int((counts >= 5).sum()) < 10:
+              raise RuntimeError(
+                  f"{league}: insufficient verified process coverage; "
+                  "keep this league research-only and do not generate picks"
+              )
+          PY

@@ -1,0 +1,73 @@
+name: bootstrap-model-leagues
+# Manual bootstrap only. Keep research backfills isolated from normal feature pushes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        league:
+          - "ESP-La Liga"
+          - "GER-Bundesliga"
+          - "ITA-Serie A"
+          - "FRA-Ligue 1"
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      LEAGUE: ${{ matrix.league }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Ingest five seasons of Understat process
+        shell: bash
+        run: |
+          set -euo pipefail
+          for season in 2022 2023 2024 2025 2026; do
+            echo "== $LEAGUE / Understat $season =="
+            footy-data understat-ingest               --league "$LEAGUE"               --season "$season"
+          done
+
+      - name: Enrich current season with shots
+        continue-on-error: true
+        run: |
+          footy-data understat-ingest             --league "$LEAGUE"             --season "2026"             --with-shots
+
+      - name: Walk-forward calibrate v7 process model
+        run: |
+          footy-data calibrate             --league "$LEAGUE"             --season "2223"             --season "2324"             --season "2425"             --season "2526"             --season "2627"             --model-version "v7-r16-p50-v20"             --process-mode "xg"             --process-span 16             --process-prior-weight 0.50             --venue-split-weight 0.20             --lambda-beta 1.0             --home-lambda-scale 1.0             --away-lambda-scale 1.0
+
+      - name: Import Football-Data historical closing prices
+        id: historical_odds
+        continue-on-error: true
+        run: |
+          footy-data football-data-odds-ingest             --league "$LEAGUE"             --season "2223"             --season "2324"             --season "2425"             --season "2526"             --min-match-rate 0.90
+
+      - name: Backtest 1X2 against market close
+        if: steps.historical_odds.outcome == 'success'
+        continue-on-error: true
+        run: |
+          footy-data value-backtest             --league "$LEAGUE"             --model-version "v7-r16-p50-v20"             --bookmaker "Market Average"             --price-kind "close"             --source "football-data.co.uk"             --market "1X2"             --target-ev 0.02
+
+      - name: Backtest totals against market close
+        if: steps.historical_odds.outcome == 'success'
+        continue-on-error: true
+        run: |
+          footy-data value-backtest             --league "$LEAGUE"             --model-version "v7-r16-p50-v20"             --bookmaker "Market Average"             --price-kind "close"             --source "football-data.co.uk"             --market "TOTAL_2.5"             --target-ev 0.02
+
+      - name: Price upcoming fixtures as research
+        run: |
+          footy-data predict-upcoming             --league "$LEAGUE"             --season "2026"             --history-season "2223"             --history-season "2324"             --history-season "2425"             --history-season "2526"             --history-season "2627"             --model-version "v7-r16-p50-v20"             --process-mode "xg"             --horizon-days 10             --target-ev 0.02             --lambda-beta 1.0             --home-lambda-scale 1.0             --away-lambda-scale 1.0             --process-span 16             --process-prior-weight 0.50             --venue-split-weight 0.20

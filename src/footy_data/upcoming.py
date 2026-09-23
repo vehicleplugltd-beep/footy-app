@@ -14,7 +14,11 @@ from .model import (
     market_probabilities,
     minimum_take_price,
 )
-from .walk_forward import _league_environment_before_match, _process_value
+from .walk_forward import (
+    _league_environment_before_match,
+    _league_strength_baseline_before_match,
+    _process_value,
+)
 from .xg_engine import TeamProcess, LeagueEnvironment, estimate_match_xg
 
 
@@ -22,6 +26,7 @@ def normalise_upcoming_fixtures(
     schedule: pd.DataFrame,
     horizon_days: int = 10,
     now: pd.Timestamp | None = None,
+    source_name: str = "understat",
 ) -> pd.DataFrame:
     required = {
         "league", "season", "game", "date", "home_team", "away_team",
@@ -54,7 +59,7 @@ def normalise_upcoming_fixtures(
     frame["match_id"] = frame["game"].astype(str)
     frame["kickoff_at"] = frame["match_date"]
     frame["status"] = "scheduled"
-    frame["source"] = "understat"
+    frame["source"] = source_name
     frame["retrieved_at"] = stamp
 
     columns = [
@@ -114,6 +119,8 @@ def build_upcoming_predictions(
     process_span: int = 16,
     process_prior_weight: float = 0.50,
     venue_split_weight: float = 0.20,
+    process_mode: str = "xg",
+    npxg_weight: float = 0.70,
 ) -> pd.DataFrame:
     if fixtures.empty:
         return pd.DataFrame()
@@ -128,6 +135,19 @@ def build_upcoming_predictions(
         raise ValueError(
             "History missing columns: " + ", ".join(sorted(missing))
         )
+    if process_mode not in {"xg", "npxg_blend", "schedule_adjusted"}:
+        raise ValueError(
+            "process_mode must be xg, npxg_blend, or schedule_adjusted."
+        )
+    if not 0 <= npxg_weight <= 1:
+        raise ValueError("npxg_weight must be in [0, 1].")
+    if process_mode == "npxg_blend":
+        missing_nonpen = {"npxg", "npxga"} - set(history.columns)
+        if missing_nonpen:
+            raise ValueError(
+                "npxg_blend requires columns: "
+                + ", ".join(sorted(missing_nonpen))
+            )
 
     historical = history.copy()
     historical["match_date"] = pd.to_datetime(
@@ -156,17 +176,18 @@ def build_upcoming_predictions(
             span=process_span,
             split_weight=venue_split_weight,
         )
-        combined = add_schedule_adjusted_process(
-            combined,
-            league_xg_prior=prior_goals_per_team_match,
-            league_npxg_prior=max(
-                prior_goals_per_team_match - 0.10,
-                0.5,
-            ),
-            span=process_span,
-            prior_weight=process_prior_weight,
-            split_weight=venue_split_weight,
-        )
+        if process_mode == "schedule_adjusted":
+            combined = add_schedule_adjusted_process(
+                combined,
+                league_xg_prior=prior_goals_per_team_match,
+                league_npxg_prior=max(
+                    prior_goals_per_team_match - 0.10,
+                    0.5,
+                ),
+                span=process_span,
+                prior_weight=process_prior_weight,
+                split_weight=venue_split_weight,
+            )
 
         current = combined[
             combined["match_id"].astype(str) == str(fixture["match_id"])
@@ -184,10 +205,51 @@ def build_upcoming_predictions(
         ):
             continue
 
-        home_attack = _process_value(home, "xg_sched")
-        home_defence = _process_value(home, "xga_sched")
-        away_attack = _process_value(away, "xg_sched")
-        away_defence = _process_value(away, "xga_sched")
+        home_attack_xg = _process_value(home, "xg")
+        home_defence_xg = _process_value(home, "xga")
+        away_attack_xg = _process_value(away, "xg")
+        away_defence_xg = _process_value(away, "xga")
+
+        if process_mode == "schedule_adjusted":
+            home_attack = _process_value(home, "xg_sched")
+            home_defence = _process_value(home, "xga_sched")
+            away_attack = _process_value(away, "xg_sched")
+            away_defence = _process_value(away, "xga_sched")
+        elif process_mode == "npxg_blend":
+            home_attack_np = _process_value(home, "npxg")
+            home_defence_np = _process_value(home, "npxga")
+            away_attack_np = _process_value(away, "npxg")
+            away_defence_np = _process_value(away, "npxga")
+            blend_values = [
+                home_attack_xg, home_defence_xg,
+                away_attack_xg, away_defence_xg,
+                home_attack_np, home_defence_np,
+                away_attack_np, away_defence_np,
+            ]
+            if any(pd.isna(v) for v in blend_values):
+                continue
+            home_attack = (
+                (1 - npxg_weight) * home_attack_xg
+                + npxg_weight * home_attack_np
+            )
+            home_defence = (
+                (1 - npxg_weight) * home_defence_xg
+                + npxg_weight * home_defence_np
+            )
+            away_attack = (
+                (1 - npxg_weight) * away_attack_xg
+                + npxg_weight * away_attack_np
+            )
+            away_defence = (
+                (1 - npxg_weight) * away_defence_xg
+                + npxg_weight * away_defence_np
+            )
+        else:
+            home_attack = home_attack_xg
+            home_defence = home_defence_xg
+            away_attack = away_attack_xg
+            away_defence = away_defence_xg
+
         values = [home_attack, home_defence, away_attack, away_defence]
         if any(pd.isna(v) for v in values):
             continue
@@ -198,6 +260,16 @@ def build_upcoming_predictions(
             match_date=fixture["match_date"],
             prior_goals_per_team_match=prior_goals_per_team_match,
         )
+        strength_baseline = league_xg
+        if process_mode == "npxg_blend":
+            strength_baseline = _league_strength_baseline_before_match(
+                frame=combined,
+                league=str(fixture["league"]),
+                match_date=fixture["match_date"],
+                npxg_weight=npxg_weight,
+                prior_goals_per_team_match=prior_goals_per_team_match,
+            )
+
         estimate = estimate_match_xg(
             TeamProcess(
                 attack_xg=float(home_attack),
@@ -212,7 +284,7 @@ def build_upcoming_predictions(
             LeagueEnvironment(
                 goals_per_team_match=float(league_xg),
                 home_advantage_ratio=1.10,
-                strength_baseline=float(league_xg),
+                strength_baseline=float(strength_baseline),
             ),
             use_elo=False,
         )
@@ -238,6 +310,10 @@ def build_upcoming_predictions(
             "home_win_probability": probs["home_win"],
             "draw_probability": probs["draw"],
             "away_win_probability": probs["away_win"],
+            "over_2_5_probability": probs["over_2_5"],
+            "under_2_5_probability": probs["under_2_5"],
+            "btts_yes_probability": probs["btts_yes"],
+            "btts_no_probability": probs["btts_no"],
         })
 
     if not rows:
@@ -251,26 +327,47 @@ def model_output_records(
 ) -> list[dict]:
     records: list[dict] = []
     for row in predictions.itertuples(index=False):
-        selections = (
-            ("home", float(row.home_win_probability)),
-            ("draw", float(row.draw_probability)),
-            ("away", float(row.away_win_probability)),
-        )
-        for selection, probability in selections:
-            records.append({
-                "match_id": str(row.match_id),
-                "model_version": str(row.model_version),
-                "home_xg": float(row.home_xg),
-                "away_xg": float(row.away_xg),
-                "market": "1X2",
-                "selection": selection,
-                "model_probability": probability,
-                "fair_odds": fair_odds(probability),
-                "uncertainty_haircut": float(row.uncertainty_haircut),
-                "minimum_take_price": minimum_take_price(
-                    probability,
-                    uncertainty_haircut=float(row.uncertainty_haircut),
-                    target_ev=target_ev,
+        markets = (
+            (
+                "1X2",
+                (
+                    ("home", float(row.home_win_probability)),
+                    ("draw", float(row.draw_probability)),
+                    ("away", float(row.away_win_probability)),
                 ),
-            })
+            ),
+            (
+                "TOTAL_2.5",
+                (
+                    ("over", float(row.over_2_5_probability)),
+                    ("under", float(row.under_2_5_probability)),
+                ),
+            ),
+            (
+                "BTTS",
+                (
+                    ("yes", float(row.btts_yes_probability)),
+                    ("no", float(row.btts_no_probability)),
+                ),
+            ),
+        )
+
+        for market, selections in markets:
+            for selection, probability in selections:
+                records.append({
+                    "match_id": str(row.match_id),
+                    "model_version": str(row.model_version),
+                    "home_xg": float(row.home_xg),
+                    "away_xg": float(row.away_xg),
+                    "market": market,
+                    "selection": selection,
+                    "model_probability": probability,
+                    "fair_odds": fair_odds(probability),
+                    "uncertainty_haircut": float(row.uncertainty_haircut),
+                    "minimum_take_price": minimum_take_price(
+                        probability,
+                        uncertainty_haircut=float(row.uncertainty_haircut),
+                        target_ev=target_ev,
+                    ),
+                })
     return records

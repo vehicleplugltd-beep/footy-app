@@ -13,6 +13,7 @@ on:
       - "src/footy_data/walk_forward.py"
       - "src/footy_data/features.py"
       - "src/footy_data/model.py"
+      - "src/footy_data/sources/official_fpl.py"
 
 jobs:
   forward:
@@ -46,6 +47,7 @@ jobs:
             --history-season "2526" \
             --history-season "2627" \
             --model-version "baseline-v6-schedule-calibrated" \
+            --process-mode "schedule_adjusted" \
             --horizon-days 10 \
             --target-ev 0.02 \
             --lambda-beta 1.05 \
@@ -63,6 +65,7 @@ jobs:
             --history-season "2526" \
             --history-season "2627" \
             --model-version "v7-r16-p50-v20" \
+            --process-mode "xg" \
             --horizon-days 10 \
             --target-ev 0.02 \
             --lambda-beta 1.0 \
@@ -76,3 +79,65 @@ jobs:
         run: |
           footy-data results-refresh \
             --model-version "v7-r16-p50-v20"
+
+  research-leagues:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        league:
+          - "ESP-La Liga"
+          - "GER-Bundesliga"
+          - "ITA-Serie A"
+          - "FRA-Ligue 1"
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      LEAGUE: ${{ matrix.league }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+
+      - name: Refresh current process data
+        run: |
+          footy-data understat-ingest \
+            --league "$LEAGUE" \
+            --season "2026"
+
+      - name: Enrich current process with shots
+        continue-on-error: true
+        run: |
+          footy-data understat-ingest \
+            --league "$LEAGUE" \
+            --season "2026" \
+            --with-shots
+
+      - name: Price upcoming fixtures as research
+        run: |
+          footy-data predict-upcoming \
+            --league "$LEAGUE" \
+            --season "2026" \
+            --history-season "2223" \
+            --history-season "2324" \
+            --history-season "2425" \
+            --history-season "2526" \
+            --history-season "2627" \
+            --model-version "v7-r16-p50-v20" \
+            --horizon-days 10 \
+            --target-ev 0.02 \
+            --lambda-beta 1.0 \
+            --home-lambda-scale 1.0 \
+            --away-lambda-scale 1.0 \
+            --process-span 16 \
+            --process-prior-weight 0.50 \
+            --venue-split-weight 0.20

@@ -29,7 +29,7 @@ VALIDATION_STATUS_BY_GATE = {
 
 @dataclass(frozen=True)
 class QualityGatePolicy:
-    """Conservative defaults for promoting a league/market into live betting."""
+    """Conservative promotion thresholds for one league x market."""
 
     min_model_sample: int = 250
     min_price_sample: int = 75
@@ -114,15 +114,12 @@ def evaluate_quality_gate(
     policy: QualityGatePolicy = QualityGatePolicy(),
 ) -> QualityGateResult:
     """
-    Convert a historical validation snapshot into a production gate.
+    Convert a frozen validation snapshot into a production gate.
 
-    READY is intentionally hard to earn: the model must have enough history,
-    beat the benchmark on log loss, be calibrated, avoid material regression,
-    and demonstrate acceptable price selection through CLV.
-
-    ROI is retained in the snapshot for diagnostics but is not a hard promotion
-    criterion because short-run ROI is substantially noisier than probability
-    quality and closing-line value.
+    READY requires probability quality, calibration, data integrity and price
+    selection quality. Realized ROI is retained for diagnosis, but is not a
+    hard promotion criterion because short-sample ROI is materially noisier
+    than log loss, calibration and closing-line value.
     """
     log_loss_ratio = snapshot.model_log_loss / snapshot.benchmark_log_loss
     log_loss_delta = _relative_regression(
@@ -165,10 +162,7 @@ def evaluate_quality_gate(
         ready_failures.append("closing-line value unavailable")
     elif snapshot.mean_clv < policy.min_mean_clv:
         ready_failures.append("closing-line value below READY minimum")
-    if (
-        clv_delta is not None
-        and clv_delta < -policy.max_clv_regression
-    ):
+    if clv_delta is not None and clv_delta < -policy.max_clv_regression:
         ready_failures.append("closing-line value regressed materially")
 
     if not ready_failures:
@@ -233,14 +227,7 @@ def expansion_decision(
     required_leagues: tuple[str, ...] = CORE_TEN_LEAGUES,
     required_markets: tuple[str, ...] = CORE_REQUIRED_MARKETS,
 ) -> ExpansionDecision:
-    """
-    Block league eleven until every core league/market is production-ready.
-
-    Because READY itself includes non-regression checks for probability quality,
-    calibration and CLV when previous snapshots exist, this makes continuous
-    improvement/stability a prerequisite for expansion rather than an optional
-    follow-up.
-    """
+    """Keep league eleven locked until the core-ten production gates are READY."""
     keyed = {(r.league, r.market): r for r in results}
     reasons: list[str] = []
 
@@ -258,7 +245,6 @@ def expansion_decision(
 
     if reasons:
         return ExpansionDecision(False, tuple(reasons))
-
     return ExpansionDecision(
         True,
         ("all core ten league/market gates are READY and non-regressing",),
@@ -270,7 +256,7 @@ def quality_snapshot_record(
     result: QualityGateResult,
     policy: QualityGatePolicy = QualityGatePolicy(),
 ) -> dict:
-    """Serialize a frozen quality decision for append-only persistence."""
+    """Serialize one frozen gate decision for append-only persistence."""
     if (
         snapshot.league != result.league
         or snapshot.market != result.market

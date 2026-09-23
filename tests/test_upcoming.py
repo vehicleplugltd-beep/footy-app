@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from footy_data.upcoming import (
     normalise_upcoming_fixtures,
@@ -87,6 +88,93 @@ def test_upcoming_prediction_uses_completed_history():
     )
     assert abs(total - 1.0) < 1e-8
 
+    assert abs(
+        row["over_2_5_probability"] + row["under_2_5_probability"] - 1.0
+    ) < 1e-8
+    assert abs(
+        row["btts_yes_probability"] + row["btts_no_probability"] - 1.0
+    ) < 1e-8
+
     records = model_output_records(out)
-    assert len(records) == 3
-    assert {r["selection"] for r in records} == {"home", "draw", "away"}
+    assert len(records) == 7
+    assert {
+        (record["market"], record["selection"])
+        for record in records
+    } == {
+        ("1X2", "home"),
+        ("1X2", "draw"),
+        ("1X2", "away"),
+        ("TOTAL_2.5", "over"),
+        ("TOTAL_2.5", "under"),
+        ("BTTS", "yes"),
+        ("BTTS", "no"),
+    }
+
+
+
+def test_upcoming_process_mode_matches_calibrated_family():
+    schedule = pd.DataFrame([{
+        "league": "TEST",
+        "season": "2627",
+        "game": "future2",
+        "date": "2026-09-21T15:00:00Z",
+        "home_team": "A",
+        "away_team": "B",
+        "is_result": False,
+    }])
+    fixtures = normalise_upcoming_fixtures(
+        schedule,
+        horizon_days=5,
+        now=pd.Timestamp("2026-09-19T12:00:00Z"),
+    )
+
+    history = _history()
+    # Create a meaningful penalty-noise discrepancy for A so the npxG
+    # challenger is observably different from the raw-xG model.
+    history.loc[history["team"] == "A", "npxg"] = 0.75
+    history.loc[history["team"] == "A", "npxga"] = 0.90
+
+    raw = build_upcoming_predictions(
+        history,
+        fixtures,
+        model_version="raw-xg",
+        min_team_matches=5,
+        process_mode="xg",
+    )
+    nonpen = build_upcoming_predictions(
+        history,
+        fixtures,
+        model_version="npxg",
+        min_team_matches=5,
+        process_mode="npxg_blend",
+        npxg_weight=0.70,
+    )
+
+    assert len(raw) == len(nonpen) == 1
+    assert nonpen.iloc[0]["home_xg"] != pytest.approx(
+        raw.iloc[0]["home_xg"]
+    )
+
+
+def test_upcoming_rejects_unknown_process_mode():
+    schedule = pd.DataFrame([{
+        "league": "TEST",
+        "season": "2627",
+        "game": "future3",
+        "date": "2026-09-21T15:00:00Z",
+        "home_team": "A",
+        "away_team": "B",
+        "is_result": False,
+    }])
+    fixtures = normalise_upcoming_fixtures(
+        schedule,
+        horizon_days=5,
+        now=pd.Timestamp("2026-09-19T12:00:00Z"),
+    )
+    with pytest.raises(ValueError, match="process_mode"):
+        build_upcoming_predictions(
+            _history(),
+            fixtures,
+            model_version="bad",
+            process_mode="not-a-model",
+        )

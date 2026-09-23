@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { minimumTakeToFractional } from "@/lib/odds";
 
 export function WatchPriceButton({
   matchId,
   eventName,
+  market,
   selection,
   targetOdds,
 }: {
   matchId: string;
   eventName: string;
+  market: string;
   selection: string;
   targetOdds: number;
 }) {
@@ -26,7 +29,7 @@ export function WatchPriceButton({
     const user = data.user;
 
     if (!user) {
-      window.location.href = "/account?return=/";
+      window.location.href = "/betting/my-bets";
       return;
     }
 
@@ -35,7 +38,7 @@ export function WatchPriceButton({
       .select("id")
       .eq("user_id", user.id)
       .eq("match_id", matchId)
-      .eq("market", "1X2")
+      .eq("market", market)
       .eq("selection", selection)
       .is("bookmaker", null)
       .maybeSingle();
@@ -59,7 +62,7 @@ export function WatchPriceButton({
           user_id: user.id,
           match_id: matchId,
           event_name: eventName,
-          market: "1X2",
+          market,
           selection,
           bookmaker: null,
           target_odds: targetOdds,
@@ -87,7 +90,7 @@ export function WatchPriceButton({
           ? "Watching ✓"
           : state === "saving"
             ? "Saving…"
-            : "Watch this price"}
+            : `Watch ${minimumTakeToFractional(targetOdds)}+`}
       </button>
       {error ? <small>{error}</small> : null}
     </div>

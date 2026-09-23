@@ -25,4 +25,14 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package.json
       - run: npm install --no-audit --no-fund
+      - run: node --check scripts/sync-live-odds.mjs
+      - run: node --check scripts/import-oddsharvester.mjs
+      - run: node --check scripts/sync-free-oddsportal.mjs
+      - run: node --check scripts/sync-free-flashscore.mjs
+      - run: node scripts/test-flashscore-parser.mjs
+      - run: node scripts/diagnose-flashscore-context.mjs
+      - run: python -m py_compile scripts/fetch-sofascore.py
       - run: npm run build
+      - run: timeout --signal=TERM --kill-after=5s 180s node scripts/smoke-betting-routes.mjs
+      - run: npm install --no-save --no-audit --no-fund puppeteer-core@24.21.0
+      - run: timeout --signal=TERM --kill-after=5s 180s node scripts/smoke-betting-browser.mjs

@@ -10,7 +10,11 @@ export function BettingAgeGate() {
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
-    setAccepted(window.localStorage.getItem(STORAGE_KEY) === "yes");
+    try {
+      setAccepted(window.localStorage.getItem(STORAGE_KEY) === "yes");
+    } catch {
+      // Private browsing / storage restrictions must not trap the user.
+    }
     setChecked(true);
   }, []);
 
@@ -22,18 +26,23 @@ export function BettingAgeGate() {
         <span className="eyebrow">18+ betting-information area</span>
         <h2>Confirm you are 18 or over</h2>
         <p>
-          Footy&apos;s betting-information tools are for adults only. We provide analysis and tips; we do not accept or place bets.
+          Footy&apos;s betting-information tools are for adults only. We provide
+          analytics and decision support; we do not accept or place bets.
         </p>
         <button
           type="button"
           onClick={() => {
-            window.localStorage.setItem(STORAGE_KEY, "yes");
+            try {
+              window.localStorage.setItem(STORAGE_KEY, "yes");
+            } catch {
+              // Accept for this view if the browser blocks persistence.
+            }
             setAccepted(true);
           }}
         >
           I am 18 or over
         </button>
-        <Link href="/fpl">Under 18? Use the free FPL assistant instead</Link>
+        <Link href="/">Under 18? Return to the FPL assistant</Link>
       </div>
     </div>
   );

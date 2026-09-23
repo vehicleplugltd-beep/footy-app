@@ -1,0 +1,38 @@
+name: verify-championship-fotmob-2526
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: Run result verification unit tests
+        run: pytest -q tests/test_result_verification.py
+      - name: Show Football-Data Championship identities
+        run: |
+          python - <<'PY'
+          from footy_data.sources.soccerdata_source import SoccerDataSource
+          frame = SoccerDataSource(
+              leagues=["ENG-Championship"],
+              seasons=["2526"],
+          ).football_data_matches()
+          teams = sorted(
+              set(frame["home_team"].dropna().astype(str))
+              | set(frame["away_team"].dropna().astype(str))
+          )
+          print("FOOTBALL_DATA_TEAMS", teams)
+          PY
+      - name: Verify and selectively promote FotMob rows
+        run: |
+          footy-data fotmob-verify-results             --league "ENG-Championship"             --season-code "2526"             --min-match-rate 0.97             --promote

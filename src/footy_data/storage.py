@@ -66,15 +66,11 @@ MODEL_OUTPUT_FIELDS = {
     "uncertainty_haircut", "minimum_take_price",
 }
 
-HISTORICAL_PREDICTION_FIELDS = {
-    "match_id", "model_version",
-    "model_home_xg", "model_away_xg",
-    "uncertainty_haircut",
-    "home_win_probability", "draw_probability", "away_win_probability",
-    "over_2_5_probability", "btts_yes_probability",
-    "home_elo", "away_elo",
+MODEL_MARKET_VALIDATION_FIELDS = {
+    "model_version", "league", "market", "status", "sample_size",
+    "model_log_loss", "benchmark_log_loss", "close_roi", "clv_proxy",
+    "bookmaker_reference", "notes", "evaluated_at",
 }
-
 
 MODEL_QUALITY_SNAPSHOT_FIELDS = {
     "league", "market", "model_version", "sample_size",
@@ -83,6 +79,15 @@ MODEL_QUALITY_SNAPSHOT_FIELDS = {
     "previous_model_log_loss", "previous_calibration_error",
     "previous_mean_clv", "gate_status", "validation_status",
     "reasons", "policy",
+}
+
+HISTORICAL_PREDICTION_FIELDS = {
+    "match_id", "model_version",
+    "model_home_xg", "model_away_xg",
+    "uncertainty_haircut",
+    "home_win_probability", "draw_probability", "away_win_probability",
+    "over_2_5_probability", "btts_yes_probability",
+    "home_elo", "away_elo",
 }
 
 
@@ -175,6 +180,11 @@ class SupabaseRESTWriter:
             json=payload,
             timeout=self.timeout,
         )
+        if hasattr(response, "ok") and not response.ok:
+            raise RuntimeError(
+                f"Supabase upsert failed for {table} "
+                f"({response.status_code}): {response.text[:1200]}"
+            )
         response.raise_for_status()
 
     def upsert_matches(self, rows: Iterable[Mapping[str, Any]]) -> None:
@@ -187,6 +197,55 @@ class SupabaseRESTWriter:
             "match_id,team,source",
             MATCH_TEAM_METRIC_FIELDS,
         )
+
+    def update_match_team_verification(
+        self,
+        match_ids: Iterable[str],
+        *,
+        source: str,
+        status: str,
+        verified: bool = True,
+        chunk_size: int = 100,
+    ) -> int:
+        if status not in {"UNVERIFIED", "PASS", "WARN", "BLOCKED"}:
+            raise ValueError(f"Unsupported verification status: {status}")
+
+        ids = sorted({str(value) for value in match_ids if str(value)})
+        if not ids:
+            return 0
+
+        changed = 0
+        stamp = datetime.now(timezone.utc).isoformat()
+        for start in range(0, len(ids), max(1, int(chunk_size))):
+            chunk = ids[start:start + max(1, int(chunk_size))]
+            quoted = ",".join(f'"{value}"' for value in chunk)
+            response = requests.patch(
+                f"{self.url}/rest/v1/footy_match_team_metrics",
+                params={
+                    "match_id": f"in.({quoted})",
+                    "source": f"eq.{source}",
+                },
+                headers={
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {self.key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation",
+                },
+                json={
+                    "verified": bool(verified),
+                    "verification_status": status,
+                    "verified_at": stamp,
+                },
+                timeout=self.timeout,
+            )
+            if not response.ok:
+                raise RuntimeError(
+                    "Supabase verification update failed "
+                    f"({response.status_code}): {response.text[:1200]}"
+                )
+            payload = response.json()
+            changed += len(payload) if isinstance(payload, list) else 0
+        return changed
 
     def upsert_player_match_metrics(
         self,
@@ -320,29 +379,16 @@ class SupabaseRESTWriter:
         )
         response.raise_for_status()
 
-    def insert_model_outputs(
+    def upsert_model_market_validation(
         self,
         rows: Iterable[Mapping[str, Any]],
     ) -> None:
-        payload = [
-            _project_row(row, MODEL_OUTPUT_FIELDS)
-            for row in rows
-        ]
-        if not payload:
-            return
-        response = requests.post(
-            f"{self.url}/rest/v1/footy_model_outputs",
-            headers={
-                "apikey": self.key,
-                "Authorization": f"Bearer {self.key}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json=payload,
-            timeout=self.timeout,
+        self._upsert(
+            "footy_model_market_validation",
+            rows,
+            "model_version,league,market",
+            MODEL_MARKET_VALIDATION_FIELDS,
         )
-        response.raise_for_status()
-
 
     def insert_model_quality_snapshots(
         self,
@@ -356,6 +402,29 @@ class SupabaseRESTWriter:
             return
         response = requests.post(
             f"{self.url}/rest/v1/footy_model_quality_snapshots",
+            headers={
+                "apikey": self.key,
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+
+    def insert_model_outputs(
+        self,
+        rows: Iterable[Mapping[str, Any]],
+    ) -> None:
+        payload = [
+            _project_row(row, MODEL_OUTPUT_FIELDS)
+            for row in rows
+        ]
+        if not payload:
+            return
+        response = requests.post(
+            f"{self.url}/rest/v1/footy_model_outputs",
             headers={
                 "apikey": self.key,
                 "Authorization": f"Bearer {self.key}",
@@ -412,7 +481,11 @@ class SupabaseRESTReader:
             end = start + self.page_size - 1
             response = requests.get(
                 f"{self.url}/rest/v1/{table}",
-                params={"select": select},
+                params={
+                    "select": select,
+                    **({"order": "match_id.asc"} if table == "footy_matches" else {}),
+                    **({"order": "id.asc"} if table == "footy_match_team_metrics" else {}),
+                },
                 headers={
                     "apikey": self.key,
                     "Authorization": f"Bearer {self.key}",
@@ -439,6 +512,10 @@ class SupabaseRESTReader:
         while True:
             end = start + self.page_size - 1
             params = {"select": select}
+            if table == "footy_matches":
+                params["order"] = "match_id.asc"
+            elif table == "footy_match_team_metrics":
+                params["order"] = "id.asc"
             if filters:
                 params.update(filters)
             response = requests.get(
@@ -510,22 +587,28 @@ class SupabaseRESTReader:
     def model_market_validation(
         self,
         model_version: str | None = None,
+        league: str | None = None,
     ) -> pd.DataFrame:
         rows = self._get_all(
             "footy_model_market_validation",
             (
-                "model_version,market,status,sample_size,"
+                "model_version,league,market,status,sample_size,"
                 "model_log_loss,benchmark_log_loss,close_roi,clv_proxy,"
                 "bookmaker_reference,notes,evaluated_at"
             ),
         )
         frame = pd.DataFrame(rows)
-        if frame.empty or model_version is None:
+        if frame.empty:
             return frame
-        return frame[
-            frame["model_version"].astype(str) == str(model_version)
-        ].reset_index(drop=True)
-
+        if model_version is not None:
+            frame = frame[
+                frame["model_version"].astype(str) == str(model_version)
+            ].copy()
+        if league is not None:
+            frame = frame[
+                frame["league"].astype(str) == str(league)
+            ].copy()
+        return frame.reset_index(drop=True)
 
     def model_quality_snapshots(
         self,
@@ -566,63 +649,146 @@ class SupabaseRESTReader:
         self,
         league: str,
         season: str | None = None,
+        horizon_days: int | None = None,
+        now: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         columns = (
-            "match_id,league,season,match_date,kickoff_at,"
+            "match_id,league,season,kickoff_at,"
             "home_team,away_team,status,source,retrieved_at"
         )
         rows = pd.DataFrame(self._get_all("footy_matches", columns))
         if rows.empty:
             return rows
+
         rows["kickoff_at"] = pd.to_datetime(
             rows["kickoff_at"], errors="coerce", utc=True
         )
-        rows["match_date"] = pd.to_datetime(
-            rows["match_date"], errors="coerce", utc=True
-        )
-        rows = rows[
+        current = now or pd.Timestamp.now(tz="UTC")
+        if current.tzinfo is None:
+            current = current.tz_localize("UTC")
+        else:
+            current = current.tz_convert("UTC")
+
+        mask = (
             (rows["league"].astype(str) == str(league))
-            & (rows["kickoff_at"] > pd.Timestamp.now(tz="UTC"))
-        ].copy()
+            & rows["kickoff_at"].notna()
+            & (rows["kickoff_at"] > current)
+        )
+        rows = rows[mask].copy()
+
         if season is not None:
             rows = rows[
                 rows["season"].astype(str) == str(season)
             ].copy()
+
+        if horizon_days is not None:
+            end = current + pd.Timedelta(days=int(horizon_days))
+            rows = rows[rows["kickoff_at"] <= end].copy()
+
+        rows["match_date"] = rows["kickoff_at"]
         return rows.sort_values("kickoff_at").reset_index(drop=True)
 
     def historical_match_team_metrics(
         self,
         include_ratings: bool = False,
         include_unverified: bool = False,
+        league: str | None = None,
+        seasons: Iterable[str] | None = None,
     ) -> pd.DataFrame:
-        matches = pd.DataFrame(self._get_all(
-            "footy_matches",
-            "match_id,league,season,kickoff_at,home_team,away_team",
-        ))
-        metrics = pd.DataFrame(self._get_all(
-            "footy_match_team_metrics",
-            (
-                "match_id,team,opponent,home_away,goals,goals_conceded,"
-                "xg,npxg,xga,npxga,shots,shots_on_target,"
-                "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
-                "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
-                "possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,"
-                "source,retrieved_at,verified,verification_status,verified_at"
-            ),
-        ))
+        match_select = (
+            "match_id,league,season,kickoff_at,home_team,away_team"
+        )
+        metric_select = (
+            "match_id,team,opponent,home_away,goals,goals_conceded,"
+            "xg,npxg,xga,npxga,shots,shots_on_target,"
+            "shots_conceded,sot_conceded,big_chances,big_chances_conceded,"
+            "box_touches,key_passes,xa,set_piece_xg,set_piece_xga,"
+            "possession,ppda,field_tilt,deep_completions,crosses,shots_inside_box,xgot,"
+            "source,retrieved_at,verified,verification_status,verified_at"
+        )
+
+        requested_seasons = (
+            sorted({str(value) for value in seasons})
+            if seasons is not None
+            else []
+        )
+        match_filters: dict[str, str] = {}
+        if league is not None:
+            match_filters["league"] = f"eq.{league}"
+        if requested_seasons:
+            match_filters["season"] = (
+                "in.(" + ",".join(requested_seasons) + ")"
+            )
+
+        if match_filters:
+            matches = pd.DataFrame(self._get_all_filtered(
+                "footy_matches",
+                match_select,
+                match_filters,
+            ))
+        else:
+            matches = pd.DataFrame(self._get_all(
+                "footy_matches",
+                match_select,
+            ))
+
+        if matches.empty:
+            return pd.DataFrame()
+
+        # Range-pagination without stable ordering can repeat a row while a
+        # live ingest updates the dataset. Exact repeats are harmless; a single
+        # match ID with conflicting metadata is never safe to model.
+        matches = matches.drop_duplicates().copy()
+        if matches["match_id"].duplicated().any():
+            raise RuntimeError("Conflicting match records in historical read.")
+
+        if match_filters:
+            metric_rows: list[dict[str, Any]] = []
+            match_ids = matches["match_id"].astype(str).tolist()
+            for start in range(0, len(match_ids), 200):
+                chunk = match_ids[start:start + 200]
+                quoted = ",".join(f'"{value}"' for value in chunk)
+                metric_rows.extend(self._get_all_filtered(
+                    "footy_match_team_metrics",
+                    metric_select,
+                    {"match_id": f"in.({quoted})"},
+                ))
+            metrics = pd.DataFrame(metric_rows)
+        else:
+            metrics = pd.DataFrame(self._get_all(
+                "footy_match_team_metrics",
+                metric_select,
+            ))
         if matches.empty or metrics.empty:
             return pd.DataFrame()
 
         if not include_unverified:
-            if "verified" not in metrics.columns:
-                raise ValueError(
-                    "Historical metric rows are missing the verified flag."
-                )
-            metrics = metrics[
-                metrics["verified"].fillna(False).astype(bool)
-            ].copy()
+            verified = metrics.get(
+                "verified",
+                pd.Series(False, index=metrics.index),
+            ).fillna(False).astype(bool)
+            status = metrics.get(
+                "verification_status",
+                pd.Series("", index=metrics.index),
+            ).fillna("").astype(str)
+            source = metrics["source"].fillna("").astype(str).str.lower()
+
+            # FotMob rows are structurally checked at ingestion, but Footy only
+            # admits them to modelling after the independent result verifier has
+            # promoted the exact matched fixture to PASS. Other established
+            # sources retain the existing verified-row policy.
+            fotmob = source.eq("fotmob")
+            admitted = (
+                (fotmob & status.eq("PASS"))
+                | (~fotmob & verified & ~status.eq("BLOCKED"))
+            )
+            metrics = metrics[admitted].copy()
             if metrics.empty:
                 return pd.DataFrame()
+
+        # Remove exact pagination repeats before provider consensus so an
+        # duplicated response does not inflate source agreement/confidence.
+        metrics = metrics.drop_duplicates().copy()
 
         # The storage table intentionally keeps provider-specific observations.
         # The model must consume exactly one canonical row per team/match.
@@ -633,6 +799,7 @@ class SupabaseRESTReader:
             matches[["match_id", "league", "season", "match_date"]],
             on="match_id",
             how="inner",
+            validate="many_to_one",
         )
 
         if not include_ratings:
@@ -777,7 +944,7 @@ def insert_value_backtest_run(
     row: Mapping[str, Any],
 ) -> None:
     allowed = {
-        "model_version", "bookmaker", "price_kind", "source", "market",
+        "model_version", "league", "bookmaker", "price_kind", "source", "market",
         "target_ev", "bets", "strike_rate", "average_odds", "roi",
         "average_raw_ev", "average_probability_edge",
         "average_market_overround", "by_selection", "by_edge_bucket",
