@@ -1933,8 +1933,41 @@ def command_predict_upcoming(args: argparse.Namespace) -> None:
         process_mode=args.process_mode,
         npxg_weight=args.npxg_weight,
     )
+    if predictions.empty and schedule_source == "stored-fixtures":
+        # Retry canonical league fixtures when the stored provider fixture
+        # cannot be matched to verified process history.
+        schedule, fallback_source = _load_upcoming_schedule(
+            args.league, args.season,
+        )
+        fallback = normalise_upcoming_fixtures(
+            schedule, horizon_days=args.horizon_days,
+            source_name=fallback_source,
+        )
+        if not fallback.empty:
+            fallback_predictions = build_upcoming_predictions(
+                history=history, fixtures=fallback,
+                model_version=args.model_version,
+                min_team_matches=args.min_team_matches,
+                lambda_beta=args.lambda_beta,
+                home_lambda_scale=args.home_lambda_scale,
+                away_lambda_scale=args.away_lambda_scale,
+                process_span=args.process_span,
+                process_prior_weight=args.process_prior_weight,
+                venue_split_weight=args.venue_split_weight,
+                process_mode=args.process_mode,
+                npxg_weight=args.npxg_weight,
+            )
+            if not fallback_predictions.empty:
+                fixtures = fallback
+                predictions = fallback_predictions
+                schedule_source = fallback_source
+                writer.upsert_matches(frame_records(fixtures, MATCH_FIELDS))
     if predictions.empty:
-        raise RuntimeError("Upcoming fixtures produced no model predictions.")
+        raise RuntimeError(
+            f"No eligible predictions for {args.league}: "
+            f"{len(fixtures)} fixtures, source={schedule_source}. "
+            "Check team identity and verified process-history coverage."
+        )
 
     outputs = model_output_records(
         predictions,
