@@ -727,7 +727,7 @@ export async function getBettingWorkspaceData() {
   const [dbScopeMatches, outputs, validations, liveOdds, feedRows, recentMatches, discoveredMatches, qualityRows] =
     await Promise.all([
       rest<MatchRow>(
-        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=5000`,
+        `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&league=in.(${CORE_MODEL_LEAGUES.map(encodeURIComponent).join(",")})&kickoff_at=gte.${encodeURIComponent(scopeStart)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
       ),
       rest<ModelRow>(
         `footy_model_outputs?select=match_id,model_version,home_xg,away_xg,market,selection,model_probability,fair_odds,uncertainty_haircut,minimum_take_price,created_at&model_version=eq.${MODEL_VERSION}&order=created_at.desc&limit=2000`,
