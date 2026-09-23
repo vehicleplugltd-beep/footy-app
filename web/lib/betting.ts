@@ -853,8 +853,28 @@ export async function getBettingWorkspaceData() {
     modelsByMatch.set(row.match_id, list);
   }
 
+  // A fixture is eligible for the betting workspace only when the current
+  // process-based model has a complete, finite expected-goals assessment.
+  // A discovered fixture or a bookmaker quote alone is not underlying data.
+  const eligibleMatchIds = new Set(
+    scopeMatches
+      .filter((match) => CORE_MODEL_LEAGUE_SET.has(match.league))
+      .filter((match) => (modelsByMatch.get(match.match_id) ?? []).some((model) =>
+        model.market === "1X2" &&
+        model.home_xg != null && Number.isFinite(Number(model.home_xg)) &&
+        model.away_xg != null && Number.isFinite(Number(model.away_xg)) &&
+        Number(model.home_xg) >= 0 && Number(model.away_xg) >= 0 &&
+        Number.isFinite(Number(model.model_probability)) &&
+        Number(model.model_probability) > 0 && Number(model.model_probability) < 1 &&
+        Number.isFinite(Number(model.fair_odds)) && Number(model.fair_odds) > 1 &&
+        Number.isFinite(Number(model.minimum_take_price)) &&
+        Number(model.minimum_take_price) >= Number(model.fair_odds)
+      ))
+      .map((match) => match.match_id),
+  );
+
   const selections: BettingSelection[] = [];
-  for (const match of scopeMatches) {
+  for (const match of scopeMatches.filter((row) => eligibleMatchIds.has(row.match_id))) {
     for (const model of modelsByMatch.get(match.match_id) ?? []) {
       const key = `${match.match_id}:${model.market}:${model.selection}`;
       const prices = pricesByKey.get(key) ?? [];
@@ -925,7 +945,7 @@ export async function getBettingWorkspaceData() {
     (selection) => new Date(selection.kickoffAt).getTime() > nowDate.getTime(),
   );
   const todayGames = buildDailyGames(
-    scopeMatches,
+    scopeMatches.filter((match) => eligibleMatchIds.has(match.match_id)),
     selections,
     verifiedOdds,
     nowDate,
