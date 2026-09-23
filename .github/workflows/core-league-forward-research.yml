@@ -2,6 +2,10 @@ name: core-league-forward-research
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["feature/betting-edge-workspace"]
+    paths:
+      - ".github/workflows/core-league-forward-research.yml"
   schedule:
     - cron: "25 6,18 * * *"
 
