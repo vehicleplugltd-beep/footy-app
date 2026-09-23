@@ -36,6 +36,9 @@ jobs:
         id: collect
         timeout-minutes: 24
         run: node web/scripts/sync-free-flashscore.mjs
+      - name: Report collector status
+        if: always()
+        run: echo "Flashscore collection outcome=${{ steps.collect.outcome }}; zero prices must fail the collector."
 
       - name: Process alerts and closing lines
         if: always() && steps.collect.outcome == 'success'
