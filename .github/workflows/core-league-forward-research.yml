@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/core-league-forward-research.yml"
       - "src/footy_data/cli.py"
+      - "web/scripts/sync-free-flashscore.mjs"
   schedule:
     - cron: "25 6,18 * * *"
 
