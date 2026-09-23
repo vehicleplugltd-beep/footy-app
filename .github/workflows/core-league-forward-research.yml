@@ -83,3 +83,54 @@ jobs:
                   "model_log_loss", "benchmark_log_loss",
               ]].to_string(index=False))
           PY
+
+  verify-output:
+    needs: forecast
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Require upcoming model output, not just green forecast jobs
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          from footy_data.storage import SupabaseRESTReader
+          reader = SupabaseRESTReader()
+          leagues = ["ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"]
+          total = 0
+          for league in leagues:
+              fixtures = reader.upcoming_matches(league=league, season=None, horizon_days=8)
+              print(f"{league}: {len(fixtures)} upcoming stored fixtures")
+              total += len(fixtures)
+          if not total:
+              raise SystemExit("No upcoming core-league fixtures: fixture ingestion needs repair.")
+          # Forecast jobs can return success with zero output. Verify the
+          # persisted model rows directly before declaring the pipeline healthy.
+          import os, requests
+          base = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          fixture_response = requests.get(
+              f"{base}/rest/v1/footy_matches",
+              params={"select": "match_id", "kickoff_at": f"gte.{datetime.now(timezone.utc).isoformat()}",
+                      "limit": "10000"},
+              headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=30,
+          )
+          fixture_response.raise_for_status()
+          ids = {row["match_id"] for row in fixture_response.json()}
+          response = requests.get(
+              f"{base}/rest/v1/footy_model_outputs",
+              params={"select": "match_id", "limit": "10000"},
+              headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=30,
+          )
+          response.raise_for_status()
+          if not any(row["match_id"] in ids for row in response.json()):
+              raise SystemExit("No upcoming persisted model outputs: forecast pipeline is NOT healthy.")
+          print("Verified at least one upcoming persisted model output.")
+          PY
