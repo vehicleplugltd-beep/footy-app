@@ -101,6 +101,24 @@ export default async function BettingPage() {
         </section>
       ) : null}
       <UpcomingModelResearch selections={data.selections} />
+      <section className="betting-section shell" id="international-fixtures">
+        <div className="betting-section-heading"><div><span>INTERNATIONAL RESEARCH</span><h2>National-team fixtures in the testing queue</h2></div></div>
+        <p>Upcoming international fixtures are shown for coverage and model testing only. Domestic team ratings do not transfer to national teams; no fair odds, +EV picks or acca legs are generated without an independently validated international model and matched current prices.</p>
+        {data.internationalFixtures.length ? (
+          <details className="today-coverage-drawer" open>
+            <summary>{data.internationalFixtures.length} international fixtures found · research only</summary>
+            <div className="international-fixture-list">
+              {data.internationalFixtures.slice(0, 80).map((match) => (
+                <article key={match.match_id} className="betting-data-warning">
+                  <strong>{match.home_team} vs {match.away_team}</strong>
+                  <p>{match.league} · {new Date(match.kickoff_at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} UK · MODEL PENDING</p>
+                </article>
+              ))}
+            </div>
+          </details>
+        ) : <p>Reliable upcoming international fixture data unavailable — excluded from the model.</p>}
+      </section>
+
       <DecisionFeed
         todayGames={featuredGames}
         accas={data.accas}

@@ -750,6 +750,15 @@ export async function getBettingWorkspaceData() {
       ),
     ]);
 
+  // International discovery is intentionally separate from domestic model eligibility.
+  // Filter at the database: a global fixture query hits the Supabase row cap.
+  const internationalCandidates = await rest<MatchRow>(
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
+  );
+  const internationalFixtures = internationalCandidates.filter((match) =>
+    isInternationalCompetition(match.league) && !/club friendly/i.test(match.league),
+  );
+
   const scopeMatches = [...dbScopeMatches];
   for (const discovered of discoveredMatches) {
     if (scopeMatches.some((existing) => sameFixture(existing, discovered))) continue;
@@ -1042,6 +1051,7 @@ export async function getBettingWorkspaceData() {
   const accas = buildAccas(futureSelections);
 
   return {
+    internationalFixtures,
     configured: Boolean(config()),
     modelVersion: MODEL_VERSION,
     matches: futureMatches,
