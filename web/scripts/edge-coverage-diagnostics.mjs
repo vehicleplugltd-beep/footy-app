@@ -4,16 +4,28 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 if (!base || !key) throw new Error("Missing Supabase credentials");
 const headers = { apikey: key, Authorization: `Bearer ${key}` };
 async function read(table, query) {
-  const response = await fetch(`${base}/rest/v1/${table}?${query}`, { headers });
-  if (!response.ok) throw new Error(`${table}: HTTP ${response.status}: ${await response.text()}`);
-  return response.json();
+  // PostgREST commonly caps responses at 1,000 rows even when limit is larger.
+  // Page explicitly: otherwise the coverage report silently undercounts prices
+  // and can miss model-to-price joins beyond the first page.
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const separator = query ? "&" : "";
+    const url = `${base}/rest/v1/${table}?${query}${separator}limit=${pageSize}&offset=${offset}`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error(`${table}: HTTP ${response.status}: ${await response.text()}`);
+    const page = await response.json();
+    if (!Array.isArray(page)) throw new Error(`${table}: expected an array`);
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
 }
 const now = Date.now();
 const iso = (ms) => new Date(ms).toISOString();
 const [fixtures, models, odds] = await Promise.all([
-  read("footy_matches", `select=match_id,league,kickoff_at&kickoff_at=gte.${encodeURIComponent(iso(now))}&kickoff_at=lte.${encodeURIComponent(iso(now+21*86400000))}&limit=10000`),
-  read("footy_model_outputs", "select=match_id,market,selection&limit=10000"),
-  read("footy_live_odds_current", `select=match_id,market,selection&captured_at=gte.${encodeURIComponent(iso(now-3*3600000))}&commence_time=gte.${encodeURIComponent(iso(now))}&limit=30000`),
+  read("footy_matches", `select=match_id,league,kickoff_at&kickoff_at=gte.${encodeURIComponent(iso(now))}&kickoff_at=lte.${encodeURIComponent(iso(now+21*86400000))}`),
+  read("footy_model_outputs", "select=match_id,market,selection"),
+  read("footy_live_odds_current", `select=match_id,market,selection&captured_at=gte.${encodeURIComponent(iso(now-3*3600000))}&commence_time=gte.${encodeURIComponent(iso(now))}`),
 ]);
 const core = new Set(["ENG-Premier League","ESP-La Liga","GER-Bundesliga","ITA-Serie A","FRA-Ligue 1"]);
 const byId = new Map(fixtures.map(f => [f.match_id, f]));
