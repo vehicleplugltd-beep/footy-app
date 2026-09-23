@@ -1007,10 +1007,11 @@ export async function getBettingWorkspaceData() {
     const modelledFixtures = new Set(
       leagueSelections.map((selection) => selection.matchId),
     ).size;
-    const freshPricedSelections = leagueGames.reduce(
-      (count, game) => count + game.coveragePrices.length,
-      0,
-    );
+    // Only count prices attached to an eligible model selection, not unrelated
+    // 1X2 coverage quotes from another fixture or market.
+    const freshPricedSelections = leagueSelections.filter(
+      (selection) => selection.bestPrice != null,
+    ).length;
     const quality = coreModelLeague
       ? latestQualityByLeague.get(league) ?? null
       : null;
@@ -1030,6 +1031,7 @@ export async function getBettingWorkspaceData() {
     if (
       modelledFixtures > 0 &&
       freshPricedSelections > 0 &&
+      quality?.status === "PASS" &&
       validation?.status === "APPROVED"
     ) {
       stage = "BETTING_READY";
