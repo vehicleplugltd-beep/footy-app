@@ -19,7 +19,7 @@ const CORE_MODEL_LEAGUE_SET = new Set<string>(CORE_MODEL_LEAGUES);
 /** Discovery only: international fixtures do not inherit domestic model approval. */
 export function isInternationalCompetition(league: string): boolean {
   const name = league.toLowerCase();
-  return /world cup|euro(?:pean championship| qualifiers| qualification| 20\\d\\d|s 20\\d\\d)|nations league|africa cup of nations|afcon|copa am[eé]rica|asian cup|concacaf|conmebol|international friendl|friendly internationals|women.s world cup|women.s euro|olympic.*football|fifa.*qualif|uefa.*qualif|caf.*qualif|afc.*qualif/.test(name);
+  return /world cup|euro(?:pean championship| qualifiers| qualification| 20\d\d|s 20\d\d)|nations league|africa cup of nations|afcon|copa am[eé]rica|asian cup|concacaf|conmebol|international friendl|friendly internationals|women.s world cup|women.s euro|olympic.*football|fifa.*qualif|uefa.*qualif|caf.*qualif|afc.*qualif/.test(name);
 }
 
 
