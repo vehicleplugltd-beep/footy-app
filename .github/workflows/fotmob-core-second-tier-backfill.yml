@@ -1,15 +1,11 @@
 name: fotmob-core-second-tier-backfill
 
 on:
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/workflows/fotmob-core-second-tier-backfill.yml"
   workflow_dispatch:
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -56,3 +52,28 @@ jobs:
           ingest "2024/2025" "2425"
           ingest "2025/2026" "2526"
           ingest "current" "2627"
+
+      - name: Verify sufficient usable process history
+        run: |
+          python - <<'PY'
+          import os
+          from footy_data.storage import SupabaseRESTReader
+
+          league = os.environ["LEAGUE"]
+          history = SupabaseRESTReader().historical_match_team_metrics(
+              league=league,
+              seasons=["2223", "2324", "2425", "2526", "2627"],
+          )
+          if history.empty:
+              raise RuntimeError(f"{league}: no verified historical process rows")
+          usable = history.dropna(subset=["xg", "xga"])
+          counts = usable.groupby("team").size()
+          matches = usable["match_id"].nunique()
+          print(f"{league}: {matches} usable matches, {len(counts)} teams, "
+                f"{int((counts >= 5).sum())} teams with 5+ process observations")
+          if matches < 100 or int((counts >= 5).sum()) < 10:
+              raise RuntimeError(
+                  f"{league}: insufficient verified process coverage; "
+                  "keep this league research-only and do not generate picks"
+              )
+          PY
