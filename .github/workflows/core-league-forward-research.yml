@@ -6,6 +6,7 @@ on:
     branches: ["feature/betting-edge-workspace"]
     paths:
       - ".github/workflows/core-league-forward-research.yml"
+      - "src/footy_data/cli.py"
   schedule:
     - cron: "25 6,18 * * *"
 
