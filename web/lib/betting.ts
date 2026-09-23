@@ -759,6 +759,23 @@ export async function getBettingWorkspaceData() {
     isInternationalCompetition(match.league) && !/club friendly/i.test(match.league),
   );
 
+  const internationalIds = internationalFixtures.map((match) => match.match_id);
+  const internationalMetricRows = internationalIds.length
+    ? await rest<MetricRow>(
+        `footy_match_team_metrics?select=match_id,team,goals,goals_conceded,xg,npxg,xga,npxga,shots,shots_on_target,big_chances,big_chances_conceded,box_touches,xa,set_piece_xg,possession,ppda,field_tilt,xgot,goals_prevented,verified&match_id=in.(${internationalIds.map(encodeURIComponent).join(",")})&limit=500`,
+      )
+    : [];
+  const internationalMetricIds = new Set(internationalMetricRows.filter((row) => row.verified && row.xg != null && row.xga != null).map((row) => row.match_id));
+  const internationalModelIds = new Set(outputs.filter((row) => internationalIds.includes(row.match_id) && row.market === "1X2" && row.home_xg != null && row.away_xg != null).map((row) => row.match_id));
+  const internationalPriceIds = new Set(liveOdds.filter((quote) => internationalFixtures.some((match) => sameFixture(match, { match_id: quote.match_id ?? "", kickoff_at: quote.commence_time, league: "", home_team: quote.home_team, away_team: quote.away_team }))).map((quote) => quote.match_id));
+  const internationalReadiness = {
+    fixtures: internationalFixtures.length,
+    fixturesWithVerifiedMatchMetrics: internationalMetricIds.size,
+    fixturesWithCurrentModel: internationalModelIds.size,
+    fixturesWithFreshPriceCandidates: internationalPriceIds.size,
+    lastPriceFeedAt: feedRows[0]?.last_success_at ?? null,
+  };
+
   const scopeMatches = [...dbScopeMatches];
   for (const discovered of discoveredMatches) {
     if (scopeMatches.some((existing) => sameFixture(existing, discovered))) continue;
@@ -1052,6 +1069,7 @@ export async function getBettingWorkspaceData() {
 
   return {
     internationalFixtures,
+    internationalReadiness,
     configured: Boolean(config()),
     modelVersion: MODEL_VERSION,
     matches: futureMatches,
