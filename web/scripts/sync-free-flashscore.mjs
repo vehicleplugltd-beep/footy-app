@@ -352,7 +352,7 @@ async function fetchDayFeed(dayOffset) {
   throw new Error(errors.join(" | ").slice(0, 1200));
 }
 
-async function fetchUpcomingFeeds(days = 8) {
+async function fetchUpcomingFeeds(days = 21) {
   const results = await Promise.allSettled(
     Array.from({ length: days }, (_, dayOffset) => fetchDayFeed(dayOffset)),
   );
@@ -665,7 +665,7 @@ async function main() {
   const modelLeagues = new Set(validation.map((row) => row.league));
 
   const start = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-  const end = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+  const end = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString();
   const matches =
     (await sb(
       `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&kickoff_at=gte.${encodeURIComponent(start)}&kickoff_at=lte.${encodeURIComponent(end)}&limit=10000`,
@@ -678,9 +678,10 @@ async function main() {
   const existingMap = new Map(existing.map((row) => [row.price_key, row]));
 
   const nowMs = Date.now();
-  const fixtureCutoff = nowMs + 8 * 24 * 60 * 60 * 1000;
+  const fixtureCutoff = nowMs + 21 * 24 * 60 * 60 * 1000;
   const generalPriceCutoff = nowMs + 48 * 60 * 60 * 1000;
-  const modelPriceCutoff = fixtureCutoff;
+  // Research fixtures span 21 days; do not expand paid/expensive odds requests.
+  const modelPriceCutoff = nowMs + 8 * 24 * 60 * 60 * 1000;
 
   const fixtureEvents = events
     .filter((event) => {
