@@ -115,6 +115,7 @@ export type LeagueReadiness = {
 
 type MetricRow = {
   match_id: string;
+  source?: string;
   team: string;
   goals: number | null;
   goals_conceded: number | null;
@@ -753,7 +754,7 @@ export async function getBettingWorkspaceData() {
   // International discovery is intentionally separate from domestic model eligibility.
   // Filter at the database: a global fixture query hits the Supabase row cap.
   const internationalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Copa%20Am*,league.ilike.*AFCON*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Copa%20Am*,league.ilike.*AFCON*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
   );
   const internationalFixtures = internationalCandidates.filter((match) =>
     isInternationalCompetition(match.league) && !/club friendly|champions league|europa league|conference league|club world cup|youth league|u-?1[579]|u-?2[013]|women/i.test(match.league),
@@ -770,7 +771,7 @@ export async function getBettingWorkspaceData() {
   // Explicitly include isolated StatsBomb history: a recent-500 global query
   // can be saturated by unrelated competitions and silently hide these records.
   const statsBombHistory = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&source=eq.statsbomb-open-international&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=1000`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&source=eq.statsbomb-open-international&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=1000`,
   );
   const internationalHistory = Array.from(
     new Map([...internationalHistoricalCandidates, ...statsBombHistory]
@@ -782,13 +783,16 @@ export async function getBettingWorkspaceData() {
   for (let offset = 0; offset < internationalHistory.length; offset += 100) {
     const historyIds = internationalHistory.slice(offset, offset + 100).map((match) => match.match_id);
     internationalMetricRows.push(...await rest<MetricRow>(
-      `footy_match_team_metrics?select=match_id,team,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
+      `footy_match_team_metrics?select=match_id,team,source,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
     ));
   }
   // Both sides must have verified finite process metrics before a historical
   // fixture contributes to international model-readiness evidence.
+  const historicalFixtureById = new Map(internationalHistory.map((match) => [match.match_id, match]));
   const verifiedTeamsByMatch = new Map<string, Set<string>>();
   for (const row of internationalMetricRows) {
+    const historicalFixture = historicalFixtureById.get(row.match_id);
+    if (!historicalFixture || !row.source || row.source !== historicalFixture.source) continue;
     if (!row.verified || row.xg == null || row.xga == null ||
         !Number.isFinite(Number(row.xg)) || !Number.isFinite(Number(row.xga)) ||
         Number(row.xg) < 0 || Number(row.xga) < 0) continue;
