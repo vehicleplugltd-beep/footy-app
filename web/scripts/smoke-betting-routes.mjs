@@ -47,6 +47,7 @@ async function run() {
     typeof readiness.freshPricedModelledFixtures !== "number" ||
     typeof readiness.approvedPricedFixtures !== "number" ||
     typeof readiness.nearTermModelledFixtures !== "number" ||
+    typeof readiness.nearTermPricedFixturesWithoutModel !== "number" ||
     readiness.modelVersion !== "v7-r16-p50-v20" ||
     ![200, 503].includes(readinessResponse.status)
   ) {
