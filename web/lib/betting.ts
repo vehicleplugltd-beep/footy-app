@@ -1030,7 +1030,7 @@ export async function getBettingWorkspaceData() {
     }
     if (
       modelledFixtures > 0 &&
-      freshPricedSelections > 0 &&
+      leagueSelections.some((selection) => selection.verdict === "BET") &&
       quality?.status === "PASS" &&
       validation?.status === "APPROVED"
     ) {
