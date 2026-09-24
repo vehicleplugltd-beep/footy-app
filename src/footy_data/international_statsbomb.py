@@ -59,7 +59,7 @@ def extract_match(match: dict, events: list[dict], competition: str, season: str
                    kickoff_at=kickoff, home_team=home, away_team=away, status="FINISHED",
                    source=SOURCE, retrieved_at=stamp)
     rows = []
-    for team, opponent, venue in ((home, away, "HOME"), (away, home, "AWAY")):
+    for team, opponent, venue in ((home, away, "H"), (away, home, "A")):
         own, other = totals[team], totals[opponent]
         rows.append(dict(match_id=match_id, team=team, opponent=opponent, home_away=venue,
                          goals=int(match["home_score"] if team == home else match["away_score"]),
