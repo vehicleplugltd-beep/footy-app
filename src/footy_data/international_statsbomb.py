@@ -16,7 +16,7 @@ import math
 from .sources.statsbomb_open import StatsBombOpenSource
 from .storage import SupabaseRESTWriter
 
-COMPETITIONS = {"FIFA World Cup", "UEFA Euro", "African Cup of Nations", "Copa America"}
+COMPETITIONS = {"FIFA World Cup", "UEFA Euro", "African Cup of Nations", "Copa America", "International Friendlies", "International Friendly", "Friendlies"}
 SEASONS = {"2018", "2022", "2020", "2024", "2023"}
 SOURCE = "statsbomb-open-international"
 
@@ -35,6 +35,9 @@ def extract_match(match: dict, events: list[dict], competition: str, season: str
         if team not in teams:
             raise ValueError(f"Unexpected shooting team in {match_id}: {team}")
         shot = event.get("shot") or {}
+        # Shootout attempts are not match xG and must never enter team totals.
+        if (event.get("period") == 5):
+            continue
         xg = shot.get("statsbomb_xg")
         if not isinstance(xg, (int, float)) or not math.isfinite(xg) or not 0 <= xg <= 1:
             raise ValueError(f"Missing/invalid StatsBomb xG for {match_id}")
@@ -46,7 +49,7 @@ def extract_match(match: dict, events: list[dict], competition: str, season: str
             totals[team]["shot_goals"] += 1
     if not all(shots.values()):
         raise ValueError(f"Missing shot events for one side of {match_id}")
-    # Knockout shootouts are not regulation goals; shot events can include them.
+    # Exclude shootouts and reject inconsistent event/score records.
     for team in teams:
         if totals[team]["shot_goals"] > int(match["home_score"] if team == home else match["away_score"]):
             raise ValueError(f"Goal reconciliation failed for {match_id}; exclude shootout/extra-time ambiguity")
@@ -75,7 +78,11 @@ def run(write: bool = False, limit: int = 0):
     fixtures, metrics, rejected = [], [], []
     competitions = [c for c in source.competitions()
                     if c.get("competition_name") in COMPETITIONS and c.get("season_name") in SEASONS
-                    and c.get("competition_gender") == "male"]
+                    and c.get("competition_gender") == "male"
+                    and c.get("competition_international") is True
+                    and c.get("competition_youth") is False]
+    available = sorted({c["competition_name"] for c in competitions})
+    print(f"Available eligible competitions: {available}; friendlies are ingested only if source events exist.")
     for competition in competitions:
         name, season = competition["competition_name"], competition["season_name"]
         for match in source.matches(competition["competition_id"], competition["season_id"]):
