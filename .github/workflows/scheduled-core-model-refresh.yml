@@ -101,40 +101,45 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e .
-      - name: Require upcoming model output, not just green forecast jobs
+      - name: Verify current model coverage and report schedule gap
         run: |
           python - <<'PY'
+          import os
           from datetime import datetime, timedelta, timezone
-          from footy_data.storage import SupabaseRESTReader
-          reader = SupabaseRESTReader()
-          leagues = ["ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"]
-          total = 0
-          for league in leagues:
-              fixtures = reader.upcoming_matches(league=league, season=None, horizon_days=21)
-              print(f"{league}: {len(fixtures)} upcoming stored fixtures")
-              total += len(fixtures)
-          if not total:
-              raise SystemExit("No upcoming core-league fixtures within 21 days: fixture ingestion needs repair.")
-          # Forecast jobs can return success with zero output. Verify the
-          # persisted model rows directly before declaring the pipeline healthy.
-          import os, requests
+          import requests
           base = os.environ["SUPABASE_URL"].rstrip("/")
           key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-          fixture_response = requests.get(
-              f"{base}/rest/v1/footy_matches",
-              params={"select": "match_id", "kickoff_at": f"gte.{datetime.now(timezone.utc).isoformat()}",
-                      "limit": "10000"},
-              headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=30,
-          )
-          fixture_response.raise_for_status()
-          ids = {row["match_id"] for row in fixture_response.json()}
-          response = requests.get(
-              f"{base}/rest/v1/footy_model_outputs",
-              params={"select": "match_id", "limit": "10000"},
-              headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=30,
-          )
+          headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+          now = datetime.now(timezone.utc)
+          horizon = now + timedelta(days=21)
+          response = requests.get(f"{base}/rest/v1/footy_matches",
+              params={"select": "match_id,league,kickoff_at",
+                      "kickoff_at": f"gt.{now.isoformat()}",
+                      "order": "kickoff_at.asc", "limit": "10000"},
+              headers=headers, timeout=30)
           response.raise_for_status()
-          if not any(row["match_id"] in ids for row in response.json()):
-              raise SystemExit("No upcoming persisted model outputs: forecast pipeline is NOT healthy.")
-          print("Verified at least one upcoming persisted model output.")
+          core = {"ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"}
+          fixtures = {r["match_id"]: r for r in response.json()
+                      if r["league"] in core and datetime.fromisoformat(r["kickoff_at"].replace("Z","+00:00")) <= horizon}
+          response = requests.get(f"{base}/rest/v1/footy_model_outputs",
+              params={"select": "match_id,selection,home_xg,away_xg,model_probability,fair_odds,minimum_take_price",
+                      "model_version": "eq.v7-r16-p50-v20", "market": "eq.1X2", "limit": "10000"},
+              headers=headers, timeout=30)
+          response.raise_for_status()
+          outcomes = {}
+          for r in response.json():
+              if r["match_id"] not in fixtures or r["home_xg"] is None or r["away_xg"] is None:
+                  continue
+              if not (0 < float(r["model_probability"]) < 1 and float(r["fair_odds"]) > 1 and float(r["minimum_take_price"]) >= float(r["fair_odds"])):
+                  continue
+              outcomes.setdefault(r["match_id"], set()).add(r["selection"])
+          complete = {mid for mid, selections in outcomes.items() if {"home","draw","away"} <= selections}
+          near = {mid for mid, row in fixtures.items() if datetime.fromisoformat(row["kickoff_at"].replace("Z","+00:00")) <= now + timedelta(days=8)}
+          print(f"core fixtures in 21d={len(fixtures)} complete forecasts={len(complete)} near-term fixtures={len(near)} near-term forecasts={len(complete & near)}")
+          if fixtures and not complete:
+              raise SystemExit("Core fixtures exist but no complete current-model forecasts were persisted.")
+          if near and not (complete & near):
+              raise SystemExit("Near-term core fixtures exist but the model generated none.")
+          if not near:
+              print("SCHEDULE GAP: no core domestic fixtures in eight days. International fixtures require separate verified process data and model; do not fabricate BET.")
           PY
