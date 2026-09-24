@@ -42,8 +42,10 @@ async function run() {
   });
   const readiness = await readinessResponse.json();
   if (
-    !["ready", "missing_configuration", "database_unavailable", "no_forward_model"].includes(readiness.state) ||
+    !["ready", "missing_configuration", "database_unavailable", "no_forward_model", "no_verified_price", "no_approved_market"].includes(readiness.state) ||
     typeof readiness.forwardModelledFixtures !== "number" ||
+    typeof readiness.freshPricedModelledFixtures !== "number" ||
+    typeof readiness.approvedPricedFixtures !== "number" ||
     readiness.modelVersion !== "v7-r16-p50-v20" ||
     ![200, 503].includes(readinessResponse.status)
   ) {
