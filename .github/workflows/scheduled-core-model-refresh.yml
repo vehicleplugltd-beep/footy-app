@@ -93,6 +93,11 @@ jobs:
       SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      - name: Require successful forecasts
+        env:
+          FORECAST_RESULT: ${{ needs.forecast.result }}
+        run: |
+          test "$FORECAST_RESULT" = "success" || { echo "Forecast matrix failed: $FORECAST_RESULT"; exit 1; }
       - uses: actions/checkout@v4
         with:
           ref: feature/betting-edge-workspace
@@ -115,19 +120,26 @@ jobs:
           response = requests.get(f"{base}/rest/v1/footy_matches",
               params={"select": "match_id,league,kickoff_at",
                       "kickoff_at": f"gt.{now.isoformat()}",
-                      "order": "kickoff_at.asc", "limit": "10000"},
+                      "league": "in.(ENG-Premier League,ESP-La Liga,GER-Bundesliga,ITA-Serie A,FRA-Ligue 1)",
+                      "order": "kickoff_at.asc", "limit": "1000"},
               headers=headers, timeout=30)
           response.raise_for_status()
           core = {"ENG-Premier League", "ESP-La Liga", "GER-Bundesliga", "ITA-Serie A", "FRA-Ligue 1"}
           fixtures = {r["match_id"]: r for r in response.json()
                       if r["league"] in core and datetime.fromisoformat(r["kickoff_at"].replace("Z","+00:00")) <= horizon}
-          response = requests.get(f"{base}/rest/v1/footy_model_outputs",
-              params={"select": "match_id,selection,home_xg,away_xg,model_probability,fair_odds,minimum_take_price",
-                      "model_version": "eq.v7-r16-p50-v20", "market": "eq.1X2", "limit": "10000"},
-              headers=headers, timeout=30)
-          response.raise_for_status()
+          outputs = []
+          fixture_ids = list(fixtures)
+          for offset in range(0, len(fixture_ids), 100):
+              batch = fixture_ids[offset:offset+100]
+              response = requests.get(f"{base}/rest/v1/footy_model_outputs",
+                  params={"select": "match_id,selection,home_xg,away_xg,model_probability,fair_odds,minimum_take_price",
+                          "match_id": "in.(" + ",".join(batch) + ")",
+                          "model_version": "eq.v7-r16-p50-v20", "market": "eq.1X2", "limit": "1000"},
+                  headers=headers, timeout=30)
+              response.raise_for_status()
+              outputs.extend(response.json())
           outcomes = {}
-          for r in response.json():
+          for r in outputs:
               if r["match_id"] not in fixtures or r["home_xg"] is None or r["away_xg"] is None:
                   continue
               if not (0 < float(r["model_probability"]) < 1 and float(r["fair_odds"]) > 1 and float(r["minimum_take_price"]) >= float(r["fair_odds"])):
