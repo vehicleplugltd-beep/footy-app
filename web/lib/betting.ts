@@ -765,7 +765,7 @@ export async function getBettingWorkspaceData() {
   // The global recent-240 query is dominated by domestic matches and cannot
   // establish national-team coverage. Query international history explicitly.
   const internationalHistoricalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Qualif*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
   );
   // Explicitly include isolated StatsBomb history: a recent-500 global query
   // can be saturated by unrelated competitions and silently hide these records.
@@ -800,7 +800,24 @@ export async function getBettingWorkspaceData() {
     const teams = verifiedTeamsByMatch.get(match.match_id);
     return teams?.has(match.home_team) && teams.has(match.away_team);
   }).map((match) => match.match_id));
-  const internationalModelIds = new Set(outputs.filter((row) => internationalIds.has(row.match_id) && row.market === "1X2" && row.home_xg != null && row.away_xg != null).map((row) => row.match_id));
+  // Research history cannot certify current form. Require a recent, verified
+  // process sample for EACH national team before calling a fixture model-ready.
+  const recentInternationalTeams = new Set<string>();
+  const recentCutoff = nowDate.getTime() - 365 * 24 * 60 * 60 * 1000;
+  for (const match of internationalHistory) {
+    if (new Date(match.kickoff_at).getTime() < recentCutoff ||
+        !internationalMetricIds.has(match.match_id)) continue;
+    recentInternationalTeams.add(match.home_team.toLowerCase());
+    recentInternationalTeams.add(match.away_team.toLowerCase());
+  }
+  const internationalModelIds = new Set(outputs.filter((row) => {
+    const fixture = internationalFixtures.find((match) => match.match_id === row.match_id);
+    return fixture && row.market === "1X2" &&
+      recentInternationalTeams.has(fixture.home_team.toLowerCase()) &&
+      recentInternationalTeams.has(fixture.away_team.toLowerCase()) &&
+      row.home_xg != null && Number.isFinite(Number(row.home_xg)) && Number(row.home_xg) >= 0 &&
+      row.away_xg != null && Number.isFinite(Number(row.away_xg)) && Number(row.away_xg) >= 0;
+  }).map((row) => row.match_id));
   // Count unique fixtures, not nullable provider event IDs; these are only
   // price candidates until the bidirectional fixture matcher verifies them.
   const internationalPriceIds = new Set(internationalFixtures.filter((match) =>
@@ -809,6 +826,7 @@ export async function getBettingWorkspaceData() {
   const internationalReadiness = {
     fixtures: internationalFixtures.length,
     historicalMatchesWithVerifiedMetrics: internationalMetricIds.size,
+    teamsWithRecentVerifiedProcess: recentInternationalTeams.size,
     fixturesWithCurrentModel: internationalModelIds.size,
     fixturesWithFreshPriceCandidates: internationalPriceIds.size,
     lastPriceFeedAt: feedRows[0]?.last_success_at ?? null,
