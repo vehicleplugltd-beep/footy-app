@@ -1,6 +1,9 @@
 name: international-statsbomb-research-ingest
 
 on:
+  push:
+    branches: [fix/international-competition-year-detection]
+    paths: [.github/workflows/international-statsbomb-research-ingest.yml]
   workflow_dispatch:
     inputs:
       write:
@@ -30,10 +33,12 @@ jobs:
           python-version: "3.11"
       - run: pip install -e . pytest
       - run: pytest -q tests/test_international_statsbomb.py
+      - name: Check database credentials
+        run: test -n "$SUPABASE_SERVICE_ROLE_KEY"
       - name: Ingest verified international research data
         env:
-          WRITE: ${{ inputs.write }}
-          LIMIT: ${{ inputs.limit }}
+          WRITE: ${{ github.event_name == 'push' || inputs.write }}
+          LIMIT: ${{ inputs.limit || '0' }}
         run: |
           if [ "$WRITE" = "true" ]; then
             python -m footy_data.international_statsbomb --write --limit "$LIMIT"
