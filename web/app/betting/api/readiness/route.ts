@@ -11,6 +11,7 @@ type Probe = {
   freshPricedModelledFixtures: number;
   approvedPricedFixtures: number;
   nearTermModelledFixtures: number;
+  nearTermPricedFixturesWithoutModel: number;
   checkedAt: string;
 };
 
@@ -25,6 +26,7 @@ export async function GET() {
     freshPricedModelledFixtures: 0,
     approvedPricedFixtures: 0,
     nearTermModelledFixtures: 0,
+    nearTermPricedFixturesWithoutModel: 0,
     checkedAt,
   };
   if (!key) {
@@ -77,6 +79,10 @@ export async function GET() {
       ["home", "draw", "away"].every((selection) => selections.has(selection)),
     ).map(([id]) => id));
     result.nearTermModelledFixtures = [...completeIds].filter((id) => nearTermIds.has(id)).length;
+    result.nearTermPricedFixturesWithoutModel = new Set(prices.filter((row) =>
+      row.match_id && nearTermIds.has(row.match_id) && !completeIds.has(row.match_id) &&
+      Number(row.decimal_odds) > 1 && Boolean(row.bookmaker_key),
+    ).map((row) => row.match_id)).size;
     result.freshPricedModelledFixtures = new Set(prices.filter((row) =>
       row.match_id && completeIds.has(row.match_id) && Number(row.decimal_odds) > 1 && Boolean(row.bookmaker_key),
     ).map((row) => row.match_id)).size;
