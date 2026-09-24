@@ -112,7 +112,8 @@ export default async function BettingPage() {
       <UpcomingModelResearch selections={data.selections} />
       <section className="betting-section shell" id="international-fixtures">
         <div className="betting-section-heading"><div><span>INTERNATIONAL RESEARCH</span><h2>National-team fixtures in the testing queue</h2></div></div>
-        <p>Pipeline status: {data.internationalReadiness.fixtures} fixtures · {data.internationalReadiness.historicalMatchesWithVerifiedMetrics} recent historical matches with verified process metrics · {data.internationalReadiness.fixturesWithCurrentModel} with current model output · {data.internationalReadiness.fixturesWithFreshPriceCandidates} with fresh price candidates. Price candidates are not confirmed fixture matches or +EV bets.</p>
+        <p>Pipeline status: {data.internationalReadiness.fixtures} fixtures · {data.internationalReadiness.historicalMatchesWithVerifiedMetrics} historical matches with verified process metrics · {data.internationalReadiness.teamsWithRecentVerifiedProcess} teams with verified process in the past 365 days · {data.internationalReadiness.fixturesWithCurrentModel} with current model output and recent process · {data.internationalReadiness.fixturesWithFreshPriceCandidates} with fresh price candidates. Price candidates are not confirmed fixture matches or +EV bets.</p>
+        <p>Historical tournament xG is not current squad form. Teams without verified recent process stay research-only, even when an old record or model row exists.</p>
         <p>Upcoming international fixtures are shown for coverage and model testing only. Domestic team ratings do not transfer to national teams; no fair odds, +EV picks or acca legs are generated without an independently validated international model and matched current prices.</p>
         {data.internationalFixtures.length ? (
           <details className="today-coverage-drawer" open>
