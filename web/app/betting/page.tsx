@@ -14,7 +14,7 @@ function statusCopy(state: string) {
   if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
   if (state === "LIVE") return "Match assessments and current bookmaker prices";
   if (state === "NO_FRESH_PRICES") return "Match assessments ready · awaiting current odds";
-  if (state === "NO_CURRENT_MODEL") return "Fixtures found · analysis being updated";
+  if (state === "NO_CURRENT_MODEL") return "Fixtures available · verified model coverage pending";
   return "Upcoming fixture update required";
 }
 
@@ -23,6 +23,7 @@ export default async function BettingPage() {
   const coreLeagues = new Set<string>(CORE_MODEL_LEAGUES);
   const coreTodayGames = data.todayGames.filter((game) => coreLeagues.has(game.league));
   const featuredGames = coreTodayGames;
+  const internationalBreak = data.internationalFixtures.length > 0 && coreTodayGames.length === 0;
   const betCount = data.selections.filter((row) => row.verdict === "BET").length;
   const modelledFixtures = new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size;
 
@@ -92,11 +93,19 @@ export default async function BettingPage() {
           </div>
         </section>
       ) : null}
-      {data.configured && modelledFixtures === 0 ? (
+      {data.configured && modelledFixtures === 0 && !internationalBreak ? (
         <section className="betting-section shell" role="status">
           <div className="betting-data-warning">
-            <strong>Our upcoming match assessments are not reaching this page.</strong>
-            <p>The ten-league fixture feed is not a substitute for verified model output. The data pipeline or server-side read needs attention; no market will be promoted to BET from coverage-only fixtures.</p>
+            <strong>No eligible modelled fixtures are currently available.</strong>
+            <p>Only fixtures with verified underlying process and complete current model output enter the value scanner. Fixture discovery or bookmaker quotes alone cannot produce a BET selection.</p>
+          </div>
+        </section>
+      ) : null}
+      {internationalBreak ? (
+        <section className="betting-section shell" role="status">
+          <div className="betting-data-warning">
+            <strong>International fixture window: matches are available, but the national-team model is not approved.</strong>
+            <p>Our domestic forecasts resume with their next scheduled fixtures. International games remain visible below for research; they cannot enter the value scanner until independently verified process data, model probabilities, validation and matched current prices are available.</p>
           </div>
         </section>
       ) : null}
@@ -131,8 +140,7 @@ export default async function BettingPage() {
           <div className="betting-data-warning">
             <strong>A fixture listing is not a betting recommendation.</strong>
             <p>
-              Today focuses on our ten supported domestic leagues. We only flag a selection when the match
-              assessment is complete and the bookmaker price is current. Otherwise, it stays on the watchlist.
+              The value scanner covers ten supported domestic leagues; international fixtures are listed separately for research. A selection requires complete process-based model output, validated market status and a fresh matched bookmaker price.
             </p>
           </div>
         ) : null}
