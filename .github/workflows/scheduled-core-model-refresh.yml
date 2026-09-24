@@ -85,6 +85,46 @@ jobs:
               ]].to_string(index=False))
           PY
 
+  international-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      group: international-statsbomb-research
+      cancel-in-progress: false
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/international-competition-year-detection
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_international_statsbomb.py
+      - name: Require configured database writer
+        run: test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Import source-verified international research history
+        run: python -m footy_data.international_statsbomb --write
+      - name: Confirm persisted research metrics
+        run: |
+          python - <<'PY'
+          import os, requests
+          base = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+          for table in ("footy_matches", "footy_match_team_metrics"):
+              response = requests.get(f"{base}/rest/v1/{table}",
+                  params={"select":"match_id","source":"eq.statsbomb-open-international","limit":"1"},
+                  headers={**headers,"Prefer":"count=exact"}, timeout=30)
+              response.raise_for_status()
+              print(f"{table}: {response.headers.get('content-range')}")
+              if not response.json():
+                  raise SystemExit(f"No persisted international research records in {table}")
+          PY
+
   verify-output:
     needs: forecast
     if: always()
