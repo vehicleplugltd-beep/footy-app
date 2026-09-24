@@ -41,3 +41,12 @@ def test_goal_reconciliation_rejected():
     with pytest.raises(ValueError):
         extract_match(fixture(), [shot("Alpha", .1, "Goal"),
                                   shot("Alpha", .2, "Goal"), shot("Beta", .1)], "UEFA Euro", "2024")
+
+
+def test_shootout_shots_excluded_from_xg():
+    shootout = shot("Alpha", .8, "Goal")
+    shootout["period"] = 5
+    _, rows = extract_match(fixture(), [shot("Alpha", .2, "Goal"),
+                                       shot("Beta", .3), shootout], "FIFA World Cup", "2022")
+    assert rows[0]["xg"] == .2
+    assert rows[0]["shots"] == 1
