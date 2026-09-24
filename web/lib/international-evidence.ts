@@ -48,10 +48,8 @@ export function reconcileInternationalEvidence(rows: readonly MatchEvidence[]): 
   if (values.some((value) => !Number.isFinite(value) || value < 0))
     return { status: "REVIEW", reason: "Invalid process value", sources };
   const pairs = rows.filter((row) => row.xgHome != null && row.xgAway != null);
-  const disagreement = pairs.length < 2 ? null : Math.max(
-    ...pairs.map((row) => row.xgHome!), ...pairs.map((row) => row.xgAway!),
-  ); // Calculate per-side difference below; never average vendor models.
-  const xgDisagreement = disagreement == null ? null : Math.max(
+  // Provider xG models are not interchangeable: report disagreement, never average.
+  const xgDisagreement = pairs.length < 2 ? null : Math.max(
     Math.max(...pairs.map((row) => row.xgHome!)) - Math.min(...pairs.map((row) => row.xgHome!)),
     Math.max(...pairs.map((row) => row.xgAway!)) - Math.min(...pairs.map((row) => row.xgAway!)),
   );
