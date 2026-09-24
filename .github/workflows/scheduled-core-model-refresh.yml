@@ -8,6 +8,7 @@ on:
       - ".github/workflows/scheduled-core-model-refresh.yml"
   schedule:
     - cron: "25 6,18 * * *"
+    - cron: "25 6 * * 0"
 
 concurrency:
   group: scheduled-core-model-refresh
@@ -86,6 +87,8 @@ jobs:
           PY
 
   international-research:
+    # Historical open-data tournaments do not need twice-daily re-downloads.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '25 6 * * 0')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     concurrency:
