@@ -1,6 +1,10 @@
 name: sync-live-odds
 on:
   workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/sync-live-odds.yml"
   schedule:
     - cron: "5 * * * *"
 
