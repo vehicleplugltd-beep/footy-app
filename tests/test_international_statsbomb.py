@@ -21,6 +21,7 @@ def test_verified_two_sided_xg_and_non_penalty():
     assert match["match_id"] == "statsbomb-int-123"
     assert match["source"] == "statsbomb-open-international"
     home, away = rows
+    assert home["home_away"] == "H" and away["home_away"] == "A"
     assert home["xg"] == .98 and home["npxg"] == .2
     assert home["xga"] == away["xg"] == .3
     assert away["xga"] == home["xg"]
