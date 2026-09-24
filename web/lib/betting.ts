@@ -762,14 +762,36 @@ export async function getBettingWorkspaceData() {
   const internationalIds = new Set(internationalFixtures.map((match) => match.match_id));
   // A future fixture cannot have completed match metrics. Count historical
   // national-team process separately, rather than implying future xG exists.
-  const internationalHistory = recentMatches.filter((match) => isInternationalCompetition(match.league));
-  const historyIds = internationalHistory.map((match) => match.match_id);
-  const internationalMetricRows = historyIds.length
-    ? await rest<MetricRow>(
-        `footy_match_team_metrics?select=match_id,team,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
-      )
-    : [];
-  const internationalMetricIds = new Set(internationalMetricRows.filter((row) => row.verified && row.xg != null && row.xga != null).map((row) => row.match_id));
+  // The global recent-240 query is dominated by domestic matches and cannot
+  // establish national-team coverage. Query international history explicitly.
+  const internationalHistoricalCandidates = await rest<MatchRow>(
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Qualif*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
+  );
+  const internationalHistory = internationalHistoricalCandidates.filter((match) =>
+    isInternationalCompetition(match.league) && !/club friendly/i.test(match.league),
+  );
+  const internationalMetricRows: MetricRow[] = [];
+  for (let offset = 0; offset < internationalHistory.length; offset += 100) {
+    const historyIds = internationalHistory.slice(offset, offset + 100).map((match) => match.match_id);
+    internationalMetricRows.push(...await rest<MetricRow>(
+      `footy_match_team_metrics?select=match_id,team,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
+    ));
+  }
+  // Both sides must have verified finite process metrics before a historical
+  // fixture contributes to international model-readiness evidence.
+  const verifiedTeamsByMatch = new Map<string, Set<string>>();
+  for (const row of internationalMetricRows) {
+    if (!row.verified || row.xg == null || row.xga == null ||
+        !Number.isFinite(Number(row.xg)) || !Number.isFinite(Number(row.xga)) ||
+        Number(row.xg) < 0 || Number(row.xga) < 0) continue;
+    const teams = verifiedTeamsByMatch.get(row.match_id) ?? new Set<string>();
+    teams.add(row.team);
+    verifiedTeamsByMatch.set(row.match_id, teams);
+  }
+  const internationalMetricIds = new Set(internationalHistory.filter((match) => {
+    const teams = verifiedTeamsByMatch.get(match.match_id);
+    return teams?.has(match.home_team) && teams.has(match.away_team);
+  }).map((match) => match.match_id));
   const internationalModelIds = new Set(outputs.filter((row) => internationalIds.has(row.match_id) && row.market === "1X2" && row.home_xg != null && row.away_xg != null).map((row) => row.match_id));
   // Count unique fixtures, not nullable provider event IDs; these are only
   // price candidates until the bidirectional fixture matcher verifies them.
