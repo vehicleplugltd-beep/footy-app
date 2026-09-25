@@ -37,4 +37,17 @@ assert.deepEqual(
   ],
 );
 
+
+// Regression: a new competition header without ZY/ZC cannot inherit Norway
+// (or any preceding tournament's country) and misclassify CONCACAF fixtures.
+const switched = parseTodayFeed([
+  "ZA÷NORWAY: Eliteserien¬ZY÷Norway",
+  "AA÷Nor1¬AD÷1790092800¬AE÷Bodo¬AF÷Molde",
+  "ZA÷NORTH & CENTRAL AMERICA: CONCACAF Nations League - League B",
+  "AA÷Conc1¬AD÷1790092800¬AE÷Jamaica¬AF÷Honduras",
+].join("~"));
+assert.equal(switched.length, 2);
+assert.equal(switched[1].country, "NORTH & CENTRAL AMERICA");
+assert.ok(!switched[1].league.startsWith("NOR-"));
+
 console.log("Flashscore parser regression checks passed.");
