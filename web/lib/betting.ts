@@ -1,27 +1,17 @@
+import { isSeniorMensInternationalCompetition } from "./international-scope";
+import { uniqueHistoricalFixtures } from "./international-fixture-identity";
 const MODEL_VERSION = "v7-r16-p50-v20";
 const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
 
 export const CORE_MODEL_LEAGUES = [
   "ENG-Premier League",
   "ENG-Championship",
-  "ESP-La Liga",
-  "ESP-La Liga 2",
-  "GER-Bundesliga",
-  "GER-2. Bundesliga",
-  "ITA-Serie A",
-  "ITA-Serie B",
-  "FRA-Ligue 1",
-  "FRA-Ligue 2",
 ] as const;
 
 const CORE_MODEL_LEAGUE_SET = new Set<string>(CORE_MODEL_LEAGUES);
 
-/** Discovery only: international fixtures do not inherit domestic model approval. */
-export function isInternationalCompetition(league: string): boolean {
-  const name = league.toLowerCase();
-  return /world cup|euro(?:pean championship| qualifiers| qualification| 20\\d\\d|s 20\\d\\d)|nations league|africa cup of nations|afcon|copa am[eé]rica|asian cup|concacaf|conmebol|international friendl|friendly internationals|women.s world cup|women.s euro|olympic.*football|fifa.*qualif|uefa.*qualif|caf.*qualif|afc.*qualif/.test(name);
-}
-
+/** Single discovery classifier; this never grants model or betting approval. */
+export const isInternationalCompetition = isSeniorMensInternationalCompetition;
 
 export type BettingVerdict = "BET" | "WATCH" | "PASS" | "FADE";
 
@@ -115,6 +105,8 @@ export type LeagueReadiness = {
 
 type MetricRow = {
   match_id: string;
+  source?: string;
+  home_away?: string;
   team: string;
   goals: number | null;
   goals_conceded: number | null;
@@ -753,24 +745,83 @@ export async function getBettingWorkspaceData() {
   // International discovery is intentionally separate from domestic model eligibility.
   // Filter at the database: a global fixture query hits the Supabase row cap.
   const internationalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Copa%20Am*,league.ilike.*AFCON*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
   );
   const internationalFixtures = internationalCandidates.filter((match) =>
-    isInternationalCompetition(match.league) && !/club friendly/i.test(match.league),
+    isSeniorMensInternationalCompetition(match.league),
   );
 
   const internationalIds = new Set(internationalFixtures.map((match) => match.match_id));
   // A future fixture cannot have completed match metrics. Count historical
   // national-team process separately, rather than implying future xG exists.
-  const internationalHistory = recentMatches.filter((match) => isInternationalCompetition(match.league));
-  const historyIds = internationalHistory.map((match) => match.match_id);
-  const internationalMetricRows = historyIds.length
-    ? await rest<MetricRow>(
-        `footy_match_team_metrics?select=match_id,team,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
-      )
-    : [];
-  const internationalMetricIds = new Set(internationalMetricRows.filter((row) => row.verified && row.xg != null && row.xga != null).map((row) => row.match_id));
-  const internationalModelIds = new Set(outputs.filter((row) => internationalIds.has(row.match_id) && row.market === "1X2" && row.home_xg != null && row.away_xg != null).map((row) => row.match_id));
+  // The global recent-240 query is dominated by domestic matches and cannot
+  // establish national-team coverage. Query international history explicitly.
+  const internationalHistoricalCandidates = await rest<MatchRow>(
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
+  );
+  // Explicitly include isolated StatsBomb history: a recent-500 global query
+  // can be saturated by unrelated competitions and silently hide these records.
+  const statsBombHistory = await rest<MatchRow>(
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&source=eq.statsbomb-open-international&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=1000`,
+  );
+  // Never let an identical provider ID from two sources silently overwrite
+  // fixture identity or provenance. Conflicts stay out of readiness evidence.
+  const internationalHistory = uniqueHistoricalFixtures(
+    [...internationalHistoricalCandidates, ...statsBombHistory].filter(
+      (match) => isSeniorMensInternationalCompetition(match.league),
+    ),
+  );
+  const internationalMetricRows: MetricRow[] = [];
+  for (let offset = 0; offset < internationalHistory.length; offset += 100) {
+    const historyIds = internationalHistory.slice(offset, offset + 100).map((match) => match.match_id);
+    internationalMetricRows.push(...await rest<MetricRow>(
+      `footy_match_team_metrics?select=match_id,team,source,home_away,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
+    ));
+  }
+  // Both sides must have verified finite process metrics before a historical
+  // fixture contributes to international model-readiness evidence.
+  const historicalFixtureById = new Map(internationalHistory.map((match) => [match.match_id, match]));
+  const verifiedSidesByMatch = new Map<string, Set<string>>();
+  const conflictingMetricIds = new Set<string>();
+  for (const row of internationalMetricRows) {
+    const fixture = historicalFixtureById.get(row.match_id);
+    if (!fixture || !row.source || row.source !== fixture.source) continue;
+    const side = row.home_away;
+    if ((side !== "H" && side !== "A") ||
+        row.team !== (side === "H" ? fixture.home_team : fixture.away_team) ||
+        !row.verified || row.xg == null || row.xga == null ||
+        !Number.isFinite(Number(row.xg)) || !Number.isFinite(Number(row.xga)) ||
+        Number(row.xg) < 0 || Number(row.xga) < 0) {
+      conflictingMetricIds.add(row.match_id);
+      continue;
+    }
+    const sides = verifiedSidesByMatch.get(row.match_id) ?? new Set<string>();
+    if (sides.has(side)) conflictingMetricIds.add(row.match_id);
+    sides.add(side);
+    verifiedSidesByMatch.set(row.match_id, sides);
+  }
+  const internationalMetricIds = new Set(internationalHistory.filter((match) => {
+    const sides = verifiedSidesByMatch.get(match.match_id);
+    return !conflictingMetricIds.has(match.match_id) && sides?.has("H") && sides.has("A");
+  }).map((match) => match.match_id));
+  // Research history cannot certify current form. Require a recent, verified
+  // process sample for EACH national team before calling a fixture model-ready.
+  const recentInternationalTeams = new Set<string>();
+  const recentCutoff = nowDate.getTime() - 365 * 24 * 60 * 60 * 1000;
+  for (const match of internationalHistory) {
+    if (new Date(match.kickoff_at).getTime() < recentCutoff ||
+        !internationalMetricIds.has(match.match_id)) continue;
+    recentInternationalTeams.add(match.home_team.toLowerCase());
+    recentInternationalTeams.add(match.away_team.toLowerCase());
+  }
+  const internationalModelIds = new Set(outputs.filter((row) => {
+    const fixture = internationalFixtures.find((match) => match.match_id === row.match_id);
+    return fixture && row.market === "1X2" &&
+      recentInternationalTeams.has(fixture.home_team.toLowerCase()) &&
+      recentInternationalTeams.has(fixture.away_team.toLowerCase()) &&
+      row.home_xg != null && Number.isFinite(Number(row.home_xg)) && Number(row.home_xg) >= 0 &&
+      row.away_xg != null && Number.isFinite(Number(row.away_xg)) && Number(row.away_xg) >= 0;
+  }).map((row) => row.match_id));
   // Count unique fixtures, not nullable provider event IDs; these are only
   // price candidates until the bidirectional fixture matcher verifies them.
   const internationalPriceIds = new Set(internationalFixtures.filter((match) =>
@@ -779,6 +830,7 @@ export async function getBettingWorkspaceData() {
   const internationalReadiness = {
     fixtures: internationalFixtures.length,
     historicalMatchesWithVerifiedMetrics: internationalMetricIds.size,
+    teamsWithRecentVerifiedProcess: recentInternationalTeams.size,
     fixturesWithCurrentModel: internationalModelIds.size,
     fixturesWithFreshPriceCandidates: internationalPriceIds.size,
     lastPriceFeedAt: feedRows[0]?.last_success_at ?? null,
@@ -910,6 +962,8 @@ export async function getBettingWorkspaceData() {
   const selections: BettingSelection[] = [];
   for (const match of scopeMatches.filter((row) => eligibleMatchIds.has(row.match_id))) {
     for (const model of modelsByMatch.get(match.match_id) ?? []) {
+      // V1 release scope: 1X2, total 2.5 and BTTS only.
+      if (!["1X2", "TOTAL_2.5", "BTTS"].includes(model.market)) continue;
       const key = `${match.match_id}:${model.market}:${model.selection}`;
       const prices = pricesByKey.get(key) ?? [];
       const sortedPrices = [...prices].sort(
@@ -1007,10 +1061,11 @@ export async function getBettingWorkspaceData() {
     const modelledFixtures = new Set(
       leagueSelections.map((selection) => selection.matchId),
     ).size;
-    const freshPricedSelections = leagueGames.reduce(
-      (count, game) => count + game.coveragePrices.length,
-      0,
-    );
+    // Only count prices attached to an eligible model selection, not unrelated
+    // 1X2 coverage quotes from another fixture or market.
+    const freshPricedSelections = leagueSelections.filter(
+      (selection) => selection.bestPrice != null,
+    ).length;
     const quality = coreModelLeague
       ? latestQualityByLeague.get(league) ?? null
       : null;
@@ -1029,7 +1084,8 @@ export async function getBettingWorkspaceData() {
     }
     if (
       modelledFixtures > 0 &&
-      freshPricedSelections > 0 &&
+      leagueSelections.some((selection) => selection.verdict === "BET") &&
+      quality?.status === "PASS" &&
       validation?.status === "APPROVED"
     ) {
       stage = "BETTING_READY";

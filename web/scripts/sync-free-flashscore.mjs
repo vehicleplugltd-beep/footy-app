@@ -166,6 +166,10 @@ function normalizeLeague(country, league) {
   const c = clean(country);
   const l = clean(league);
   const key = `${c}|${l}`;
+  // Confederation tournaments must not receive a three-letter country prefix
+  // (e.g. North & Central America must not become NOR/Norway).
+  if (l.includes("concacaf")) return `CONCACAF-${league}`;
+  if (l.includes("conmebol")) return `CONMEBOL-${league}`;
   const aliases = new Map([
     ["england|premier league", "ENG-Premier League"],
     ["england|championship", "ENG-Championship"],
@@ -292,13 +296,14 @@ function parseTodayFeed(raw) {
     if (!Object.keys(row).length) continue;
 
     if (row.ZA || row.ZE || row.ZY || row.ZC) {
-      const tournament = row.ZA || row.ZE || context.league;
+      const tournament = row.ZA || row.ZE || "";
+      const separator = tournament.indexOf(":");
+      // A new tournament header must not inherit the previous country's
+      // identity. Prefer explicit country; otherwise use this header's prefix.
+      const headerCountry = separator >= 0 ? tournament.slice(0, separator).trim() : "";
       context = {
-        country: row.ZY || row.ZC || context.country,
-        league:
-          tournament && tournament.includes(":")
-            ? tournament.split(":").slice(1).join(":").trim()
-            : tournament,
+        country: row.ZY || row.ZC || headerCountry,
+        league: separator >= 0 ? tournament.slice(separator + 1).trim() : tournament,
       };
     }
 

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 const port = 3397;
 const base = `http://127.0.0.1:${port}`;
 const routes = [
-  ["/betting", "Upcoming matches under the microscope"],
+  ["/betting", "Today's value"],
   ["/betting/results", "What we said. When we said it."],
   ["/betting/tools", "Know the price. Know the risk."],
   ["/betting/my-bets", "Your bets become evidence."],
@@ -42,8 +42,12 @@ async function run() {
   });
   const readiness = await readinessResponse.json();
   if (
-    !["ready", "missing_configuration", "database_unavailable", "no_forward_model"].includes(readiness.state) ||
+    !["ready", "missing_configuration", "database_unavailable", "no_forward_model", "no_verified_price", "models_ahead_of_price_window", "no_approved_market"].includes(readiness.state) ||
     typeof readiness.forwardModelledFixtures !== "number" ||
+    typeof readiness.freshPricedModelledFixtures !== "number" ||
+    typeof readiness.approvedPricedFixtures !== "number" ||
+    typeof readiness.nearTermModelledFixtures !== "number" ||
+    typeof readiness.nearTermPricedFixturesWithoutModel !== "number" ||
     readiness.modelVersion !== "v7-r16-p50-v20" ||
     ![200, 503].includes(readinessResponse.status)
   ) {

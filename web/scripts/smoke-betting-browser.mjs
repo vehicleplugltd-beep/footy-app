@@ -51,9 +51,9 @@ try {
   await page.click(".age-gate-card button");
   await page.waitForFunction(() => !document.querySelector(".age-gate-backdrop"), { timeout: 10000 });
   await page.waitForSelector('nav.betting-mobile-dock a[href="/betting/tools"]', { visible: true });
-  const today = await page.$eval("body", (body) => body.innerText);
-  if (!today.includes("Upcoming matches under the microscope")) {
-    throw new Error("Today did not render its model research/coverage state.");
+  const today = await page.$eval("main.betting-app h1", (heading) => heading.textContent?.trim() ?? "");
+  if (!today.toLowerCase().includes("today's value")) {
+    throw new Error(`Today heading mismatch: ${JSON.stringify(today)}; URL: ${page.url()}`);
   }
   console.log("PASS mobile Today and age confirmation");
 

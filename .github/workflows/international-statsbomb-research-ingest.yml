@@ -1,0 +1,47 @@
+name: international-statsbomb-research-ingest
+
+on:
+  push:
+    branches: [fix/international-competition-year-detection]
+    paths: [.github/workflows/international-statsbomb-research-ingest.yml]
+  workflow_dispatch:
+    inputs:
+      write:
+        description: "Persist verified research-only records"
+        required: true
+        type: boolean
+        default: false
+      limit:
+        description: "Maximum accepted fixtures (0 = all)"
+        required: true
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SUPABASE_URL: https://nlmtcimkqymynsyflimv.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_international_statsbomb.py
+      - name: Check database credentials
+        run: test -n "$SUPABASE_SERVICE_ROLE_KEY"
+      - name: Ingest verified international research data
+        env:
+          WRITE: ${{ github.event_name == 'push' || inputs.write }}
+          LIMIT: ${{ inputs.limit || '0' }}
+        run: |
+          if [ "$WRITE" = "true" ]; then
+            python -m footy_data.international_statsbomb --write --limit "$LIMIT"
+          else
+            python -m footy_data.international_statsbomb --dry-run --limit "$LIMIT"
+          fi
