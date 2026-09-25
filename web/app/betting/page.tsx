@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { INTERNATIONAL_SOURCES } from "@/lib/international-evidence";
 import { BettingAgeGate } from "@/components/age-gate";
 import { BettingBoard } from "@/components/betting-board";
 import { DailyPredictions } from "@/components/daily-predictions";
@@ -113,6 +114,20 @@ export default async function BettingPage() {
       <section className="betting-section shell" id="international-fixtures">
         <div className="betting-section-heading"><div><span>INTERNATIONAL RESEARCH</span><h2>National-team fixtures in the testing queue</h2></div></div>
         <p>Pipeline status: {data.internationalReadiness.fixtures} fixtures · {data.internationalReadiness.historicalMatchesWithVerifiedMetrics} historical matches with verified process metrics · {data.internationalReadiness.teamsWithRecentVerifiedProcess} teams with verified process in the past 365 days · {data.internationalReadiness.fixturesWithCurrentModel} with current model output and recent process · {data.internationalReadiness.fixturesWithFreshPriceCandidates} with fresh price candidates. Price candidates are not confirmed fixture matches or +EV bets.</p>
+        <details className="today-coverage-drawer">
+          <summary>International evidence sources and access status</summary>
+          <div className="international-fixture-list">
+            {INTERNATIONAL_SOURCES.map((source) => (
+              <p key={source.id}>
+                <a href={source.url} target="_blank" rel="noopener noreferrer">{source.id}</a>
+                {" · "}{source.authority === "official" ? "Official" : "Independent"}
+                {" · "}{source.access === "verify-access" ? "Automated access not verified" : source.access === "open-data" ? "Open dataset" : "Public match archive"}
+                {" · "}{source.evidence.join(", ")}
+              </p>
+            ))}
+          </div>
+          <p>Source listing does not mean a live feed is connected or that an xG value has been independently verified.</p>
+        </details>
         <p>Historical tournament xG is not current squad form. Teams without verified recent process stay research-only, even when an old record or model row exists.</p>
         <p>Upcoming international fixtures are shown for coverage and model testing only. Domestic team ratings do not transfer to national teams; no fair odds, +EV picks or acca legs are generated without an independently validated international model and matched current prices.</p>
         {data.internationalFixtures.length ? (
