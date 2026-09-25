@@ -37,9 +37,15 @@ export type Reconciliation =
 export function reconcileInternationalEvidence(rows: readonly MatchEvidence[]): Reconciliation {
   const sources = [...new Set(rows.map((row) => row.source))];
   if (rows.length < 2 || sources.length < 2) return { status: "INSUFFICIENT", reason: "Two independent sources required", sources };
+  if (sources.some((source) => !INTERNATIONAL_SOURCES.some((known) => known.id === source)))
+    return { status: "REVIEW", reason: "Unregistered evidence source", sources };
+  if (rows.length !== sources.length)
+    return { status: "REVIEW", reason: "Multiple conflicting records from one source", sources };
   if (rows.some((row) => !row.providerMatchId || !row.homeTeamId || !row.awayTeamId || !row.competition || !Number.isFinite(Date.parse(row.kickoffUtc))))
     return { status: "REVIEW", reason: "Missing identity or invalid kickoff", sources };
   const first = rows[0];
+  if (rows.some((row) => row.gender !== "men" || row.ageGroup !== "senior"))
+    return { status: "REVIEW", reason: "Outside the male senior international research cohort", sources };
   if (rows.some((row) => row.competition !== first.competition || row.homeTeamId !== first.homeTeamId ||
     row.awayTeamId !== first.awayTeamId || row.gender !== first.gender || row.ageGroup !== first.ageGroup ||
     Math.abs(Date.parse(row.kickoffUtc) - Date.parse(first.kickoffUtc)) > 90 * 60_000))
@@ -47,6 +53,8 @@ export function reconcileInternationalEvidence(rows: readonly MatchEvidence[]): 
   const values = rows.flatMap((row) => [row.xgHome, row.xgAway]).filter((value): value is number => value != null);
   if (values.some((value) => !Number.isFinite(value) || value < 0))
     return { status: "REVIEW", reason: "Invalid process value", sources };
+  if (rows.some((row) => (row.xgHome == null) !== (row.xgAway == null)))
+    return { status: "REVIEW", reason: "Incomplete home/away process pair", sources };
   const pairs = rows.filter((row) => row.xgHome != null && row.xgAway != null);
   // Provider xG models are not interchangeable: report disagreement, never average.
   const xgDisagreement = pairs.length < 2 ? null : Math.max(
