@@ -1,4 +1,5 @@
 import { isSeniorMensInternationalCompetition } from "./international-scope";
+import { uniqueHistoricalFixtures } from "./international-fixture-identity";
 const MODEL_VERSION = "v7-r16-p50-v20";
 const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
 
@@ -773,19 +774,10 @@ export async function getBettingWorkspaceData() {
   );
   // Never let an identical provider ID from two sources silently overwrite
   // fixture identity or provenance. Conflicts stay out of readiness evidence.
-  const historicalById = new Map<string, MatchRow>();
-  const conflictingHistoricalIds = new Set<string>();
-  for (const match of [...internationalHistoricalCandidates, ...statsBombHistory]) {
-    if (!isSeniorMensInternationalCompetition(match.league)) continue;
-    const previous = historicalById.get(match.match_id);
-    if (previous && (previous.source !== match.source ||
-      previous.league !== match.league || previous.home_team !== match.home_team ||
-      previous.away_team !== match.away_team || previous.kickoff_at !== match.kickoff_at))
-      conflictingHistoricalIds.add(match.match_id);
-    else if (!previous) historicalById.set(match.match_id, match);
-  }
-  const internationalHistory = [...historicalById.values()].filter(
-    (match) => !conflictingHistoricalIds.has(match.match_id),
+  const internationalHistory = uniqueHistoricalFixtures(
+    [...internationalHistoricalCandidates, ...statsBombHistory].filter(
+      (match) => isSeniorMensInternationalCompetition(match.league),
+    ),
   );
   const internationalMetricRows: MetricRow[] = [];
   for (let offset = 0; offset < internationalHistory.length; offset += 100) {
