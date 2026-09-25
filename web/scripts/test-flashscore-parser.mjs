@@ -48,6 +48,6 @@ const switched = parseTodayFeed([
 ].join("~"));
 assert.equal(switched.length, 2);
 assert.equal(switched[1].country, "NORTH & CENTRAL AMERICA");
-assert.ok(!switched[1].league.startsWith("NOR-"));
+assert.equal(switched[1].league, "CONCACAF-CONCACAF Nations League - League B");
 
 console.log("Flashscore parser regression checks passed.");
