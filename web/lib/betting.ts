@@ -6,14 +6,6 @@ const DEFAULT_SUPABASE_URL = "https://nlmtcimkqymynsyflimv.supabase.co";
 export const CORE_MODEL_LEAGUES = [
   "ENG-Premier League",
   "ENG-Championship",
-  "ESP-La Liga",
-  "ESP-La Liga 2",
-  "GER-Bundesliga",
-  "GER-2. Bundesliga",
-  "ITA-Serie A",
-  "ITA-Serie B",
-  "FRA-Ligue 1",
-  "FRA-Ligue 2",
 ] as const;
 
 const CORE_MODEL_LEAGUE_SET = new Set<string>(CORE_MODEL_LEAGUES);
@@ -970,6 +962,8 @@ export async function getBettingWorkspaceData() {
   const selections: BettingSelection[] = [];
   for (const match of scopeMatches.filter((row) => eligibleMatchIds.has(row.match_id))) {
     for (const model of modelsByMatch.get(match.match_id) ?? []) {
+      // V1 release scope: 1X2, total 2.5 and BTTS only.
+      if (!["1X2", "TOTAL_2.5", "BTTS"].includes(model.market)) continue;
       const key = `${match.match_id}:${model.market}:${model.selection}`;
       const prices = pricesByKey.get(key) ?? [];
       const sortedPrices = [...prices].sort(
