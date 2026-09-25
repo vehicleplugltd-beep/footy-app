@@ -117,6 +117,7 @@ export type LeagueReadiness = {
 type MetricRow = {
   match_id: string;
   source?: string;
+  home_away?: string;
   team: string;
   goals: number | null;
   goals_conceded: number | null;
@@ -784,26 +785,34 @@ export async function getBettingWorkspaceData() {
   for (let offset = 0; offset < internationalHistory.length; offset += 100) {
     const historyIds = internationalHistory.slice(offset, offset + 100).map((match) => match.match_id);
     internationalMetricRows.push(...await rest<MetricRow>(
-      `footy_match_team_metrics?select=match_id,team,source,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
+      `footy_match_team_metrics?select=match_id,team,source,home_away,xg,xga,verified&match_id=in.(${historyIds.map(encodeURIComponent).join(",")})&limit=500`,
     ));
   }
   // Both sides must have verified finite process metrics before a historical
   // fixture contributes to international model-readiness evidence.
   const historicalFixtureById = new Map(internationalHistory.map((match) => [match.match_id, match]));
-  const verifiedTeamsByMatch = new Map<string, Set<string>>();
+  const verifiedSidesByMatch = new Map<string, Set<string>>();
+  const conflictingMetricIds = new Set<string>();
   for (const row of internationalMetricRows) {
-    const historicalFixture = historicalFixtureById.get(row.match_id);
-    if (!historicalFixture || !row.source || row.source !== historicalFixture.source) continue;
-    if (!row.verified || row.xg == null || row.xga == null ||
+    const fixture = historicalFixtureById.get(row.match_id);
+    if (!fixture || !row.source || row.source !== fixture.source) continue;
+    const side = row.home_away;
+    if ((side !== "H" && side !== "A") ||
+        row.team !== (side === "H" ? fixture.home_team : fixture.away_team) ||
+        !row.verified || row.xg == null || row.xga == null ||
         !Number.isFinite(Number(row.xg)) || !Number.isFinite(Number(row.xga)) ||
-        Number(row.xg) < 0 || Number(row.xga) < 0) continue;
-    const teams = verifiedTeamsByMatch.get(row.match_id) ?? new Set<string>();
-    teams.add(row.team);
-    verifiedTeamsByMatch.set(row.match_id, teams);
+        Number(row.xg) < 0 || Number(row.xga) < 0) {
+      conflictingMetricIds.add(row.match_id);
+      continue;
+    }
+    const sides = verifiedSidesByMatch.get(row.match_id) ?? new Set<string>();
+    if (sides.has(side)) conflictingMetricIds.add(row.match_id);
+    sides.add(side);
+    verifiedSidesByMatch.set(row.match_id, sides);
   }
   const internationalMetricIds = new Set(internationalHistory.filter((match) => {
-    const teams = verifiedTeamsByMatch.get(match.match_id);
-    return teams?.has(match.home_team) && teams.has(match.away_team);
+    const sides = verifiedSidesByMatch.get(match.match_id);
+    return !conflictingMetricIds.has(match.match_id) && sides?.has("H") && sides.has("A");
   }).map((match) => match.match_id));
   // Research history cannot certify current form. Require a recent, verified
   // process sample for EACH national team before calling a fixture model-ready.
