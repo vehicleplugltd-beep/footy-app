@@ -25,6 +25,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package.json
       - run: npm install --no-audit --no-fund
+      - run: node scripts/test-international-evidence.mjs
       - run: node --check scripts/sync-live-odds.mjs
       - run: node --check scripts/import-oddsharvester.mjs
       - run: node --check scripts/sync-free-oddsportal.mjs
