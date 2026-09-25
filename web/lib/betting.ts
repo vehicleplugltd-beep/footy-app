@@ -764,7 +764,7 @@ export async function getBettingWorkspaceData() {
   // The global recent-240 query is dominated by domestic matches and cannot
   // establish national-team coverage. Query international history explicitly.
   const internationalHistoricalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
   );
   // Explicitly include isolated StatsBomb history: a recent-500 global query
   // can be saturated by unrelated competitions and silently hide these records.
@@ -773,8 +773,7 @@ export async function getBettingWorkspaceData() {
   );
   const internationalHistory = Array.from(
     new Map([...internationalHistoricalCandidates, ...statsBombHistory]
-      .filter((match) => isInternationalCompetition(match.league) &&
-        !/club friendly|champions league|europa league|conference league|club world cup|youth league|u-?1[579]|u-?2[013]|women/i.test(match.league))
+      .filter((match) => isSeniorMensInternationalCompetition(match.league))
       .map((match) => [match.match_id, match])).values(),
   );
   const internationalMetricRows: MetricRow[] = [];
