@@ -16,6 +16,8 @@ const base = {
 const a = { ...base, source: "fifa-match-archive", xgHome: null, xgAway: null };
 const b = { ...base, source: "statsbomb-open-international" };
 assert.equal(reconcile([a, b]).status, "MATCH");
+assert.equal(reconcile([{ ...a, xgHome: 1.3, xgAway: 0.9 }, b]).status, "REVIEW");
+assert.equal(reconcile([a, { ...b, xgHome: 1.3, xgAway: 0.9 }]).status, "MATCH");
 assert.equal(reconcile([a]).status, "INSUFFICIENT");
 assert.equal(reconcile([a, { ...b, source: "unknown" }]).status, "REVIEW");
 assert.equal(reconcile([a, b, { ...b, providerMatchId: "duplicate" }]).status, "REVIEW");
@@ -26,6 +28,7 @@ assert.equal(reconcile([a, { ...b, xgAway: null }]).status, "REVIEW");
 assert.equal(reconcile([a, { ...b, xgHome: -1 }]).status, "REVIEW");
 const c = { ...base, source: "fotmob", xgHome: 1.5, xgAway: 1.0 };
 assert.ok(Math.abs(reconcile([b, c]).xgDisagreement - 0.2) < 1e-9);
+assert.equal(reconcile([b, { ...c, xgHome: 2.0 }]).status, "REVIEW");
 const scopeSource = readFileSync(new URL("../lib/international-scope.ts", import.meta.url), "utf8");
 const scopeModule = { exports: {} };
 vm.runInNewContext(ts.transpileModule(scopeSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
@@ -33,4 +36,4 @@ vm.runInNewContext(ts.transpileModule(scopeSource, { compilerOptions: { module: 
 const eligible = scopeModule.exports.isSeniorMensInternationalCompetition;
 for (const league of ["INT-StatsBomb UEFA Euro", "INT-StatsBomb FIFA World Cup", "INT-StatsBomb African Cup of Nations", "INT-StatsBomb Copa America", "UEFA Nations League", "FIFA World Cup Qualifiers"]) assert.equal(eligible(league), true, league);
 for (const league of ["FIFA Club World Cup", "UEFA Champions League Qualifiers", "UEFA Women's Euro", "FIFA U-20 World Cup", "International Club Friendly", "Olympic Football"]) assert.equal(eligible(league), false, league);
-console.log("International evidence and competition scope: 22 assertions passed");
+console.log("International evidence and competition scope: 25 assertions passed");
