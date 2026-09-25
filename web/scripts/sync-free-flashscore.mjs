@@ -166,6 +166,10 @@ function normalizeLeague(country, league) {
   const c = clean(country);
   const l = clean(league);
   const key = `${c}|${l}`;
+  // Confederation tournaments must not receive a three-letter country prefix
+  // (e.g. North & Central America must not become NOR/Norway).
+  if (l.includes("concacaf")) return `CONCACAF-${league}`;
+  if (l.includes("conmebol")) return `CONMEBOL-${league}`;
   const aliases = new Map([
     ["england|premier league", "ENG-Premier League"],
     ["england|championship", "ENG-Championship"],
