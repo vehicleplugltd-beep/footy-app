@@ -755,7 +755,7 @@ export async function getBettingWorkspaceData() {
   // International discovery is intentionally separate from domestic model eligibility.
   // Filter at the database: a global fixture query hits the Supabase row cap.
   const internationalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Copa%20Am*,league.ilike.*AFCON*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team,source&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*Copa%20Am*,league.ilike.*AFCON*)&kickoff_at=gte.${encodeURIComponent(now)}&kickoff_at=lte.${encodeURIComponent(horizon)}&order=kickoff_at.asc&limit=1000`,
   );
   const internationalFixtures = internationalCandidates.filter((match) =>
     isSeniorMensInternationalCompetition(match.league),
@@ -767,7 +767,7 @@ export async function getBettingWorkspaceData() {
   // The global recent-240 query is dominated by domestic matches and cannot
   // establish national-team coverage. Query international history explicitly.
   const internationalHistoricalCandidates = await rest<MatchRow>(
-    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
+    `footy_matches?select=match_id,kickoff_at,league,home_team,away_team&or=(league.ilike.*Nations%20League*,league.ilike.*World%20Cup*,league.ilike.*Africa%20Cup%20of%20Nations*,league.ilike.*African%20Cup%20of%20Nations*,league.ilike.*Friendly%20International*,league.ilike.*Copa%20America*,league.ilike.*Asian%20Cup*,league.ilike.*Euro*,league.ilike.*AFCON*)&kickoff_at=lt.${encodeURIComponent(now)}&order=kickoff_at.desc&limit=500`,
   );
   // Explicitly include isolated StatsBomb history: a recent-500 global query
   // can be saturated by unrelated competitions and silently hide these records.
