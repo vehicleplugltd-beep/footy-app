@@ -43,6 +43,9 @@ export function reconcileInternationalEvidence(rows: readonly MatchEvidence[]): 
     return { status: "REVIEW", reason: "Multiple conflicting records from one source", sources };
   if (rows.some((row) => !row.providerMatchId || !row.homeTeamId || !row.awayTeamId || !row.competition || !Number.isFinite(Date.parse(row.kickoffUtc))))
     return { status: "REVIEW", reason: "Missing identity or invalid kickoff", sources };
+  if (rows.some((row) => (row.xgHome != null || row.xgAway != null) &&
+    !INTERNATIONAL_SOURCES.find((source) => source.id === row.source)?.evidence.includes("process")))
+    return { status: "REVIEW", reason: "Source is not registered to provide process metrics", sources };
   const first = rows[0];
   if (rows.some((row) => row.gender !== "men" || row.ageGroup !== "senior"))
     return { status: "REVIEW", reason: "Outside the male senior international research cohort", sources };
@@ -61,5 +64,9 @@ export function reconcileInternationalEvidence(rows: readonly MatchEvidence[]): 
     Math.max(...pairs.map((row) => row.xgHome!)) - Math.min(...pairs.map((row) => row.xgHome!)),
     Math.max(...pairs.map((row) => row.xgAway!)) - Math.min(...pairs.map((row) => row.xgAway!)),
   );
+  // A large cross-provider difference requires manual review; do not silently
+  // promote contradictory process observations into model-ready evidence.
+  if (xgDisagreement != null && xgDisagreement >= 0.5)
+    return { status: "REVIEW", reason: "Cross-provider xG disagreement of at least 0.5", sources };
   return { status: "MATCH", sources, xgDisagreement };
 }
