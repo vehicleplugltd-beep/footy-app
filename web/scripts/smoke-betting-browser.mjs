@@ -52,7 +52,7 @@ try {
   await page.waitForFunction(() => !document.querySelector(".age-gate-backdrop"), { timeout: 10000 });
   await page.waitForSelector('nav.betting-mobile-dock a[href="/betting/tools"]', { visible: true });
   const today = await page.$eval("body", (body) => body.innerText);
-  if (!today.includes("Upcoming matches under the microscope")) {
+  if (!today.includes("Today's value")) {
     throw new Error("Today did not render its model research/coverage state.");
   }
   console.log("PASS mobile Today and age confirmation");
