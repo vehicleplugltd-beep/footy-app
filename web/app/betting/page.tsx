@@ -1,32 +1,21 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { INTERNATIONAL_SOURCES } from "@/lib/international-evidence";
 import { BettingAgeGate } from "@/components/age-gate";
 import { BettingBoard } from "@/components/betting-board";
 import { DailyPredictions } from "@/components/daily-predictions";
-import { DecisionFeed } from "@/components/decision-feed";
 import { BettingNav } from "@/components/betting-nav";
-import { LeagueReadinessMap } from "@/components/league-readiness";
-import { UpcomingModelResearch } from "@/components/upcoming-model-research";
 import { CORE_MODEL_LEAGUES, getBettingWorkspaceData } from "@/lib/betting";
-
-function statusCopy(state: string) {
-  if (state === "DATABASE_NOT_CONFIGURED") return "Data connection needs configuration";
-  if (state === "LIVE") return "Match assessments and current bookmaker prices";
-  if (state === "NO_FRESH_PRICES") return "Match assessments ready · awaiting current odds";
-  if (state === "NO_CURRENT_MODEL") return "Fixtures available · verified model coverage pending";
-  return "Upcoming fixture update required";
-}
 
 export default async function BettingPage() {
   const data = await getBettingWorkspaceData();
-  const coreLeagues = new Set<string>(CORE_MODEL_LEAGUES);
-  const coreTodayGames = data.todayGames.filter((game) => coreLeagues.has(game.league));
-  const featuredGames = coreTodayGames;
-  const internationalBreak = data.internationalFixtures.length > 0 && coreTodayGames.length === 0;
-  const betCount = data.selections.filter((row) => row.verdict === "BET").length;
-  const modelledFixtures = new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size;
+  const core = new Set<string>(CORE_MODEL_LEAGUES);
+  const games = data.todayGames.filter((game) => core.has(game.league));
+  const selections = data.selections.filter((row) =>
+    core.has(row.league) && ["1X2", "TOTAL_2.5", "BTTS"].includes(row.market),
+  );
+  const assessed = new Set(selections.map((row) => row.matchId)).size;
+  const bets = selections.filter((row) => row.verdict === "BET").length;
 
   return (
     <main className="betting-app">
@@ -34,182 +23,46 @@ export default async function BettingPage() {
       <BettingNav active="edge" />
       <section className="betting-hero shell">
         <div>
-          <span className="betting-kicker">FOOTY EDGE · 18+</span>
-          <h1>Find value in the football, not just the result.</h1>
-          <p>
-            We study how teams create and concede chances, assess the matchup,
-            then compare our fair price with the odds on offer.
-          </p>
+          <span className="betting-kicker">FOOTY EDGE · V1 · 18+</span>
+          <h1>Today's value</h1>
+          <p>Premier League and Championship. We assess verified underlying performance before comparing fair odds with current prices. Missing data means no selection.</p>
           <div className="betting-hero-actions">
-            <a href="#singles">Explore the analysis</a>
-            <Link href="/betting/my-bets">Upload / track my bets</Link>
+            <a href="#singles">View market analysis</a>
+            <Link href="/betting/my-bets">Track results</Link>
           </div>
         </div>
-
         <aside className="betting-live-card">
-          <span>TODAY'S MARKET CHECK</span>
-          <strong>{statusCopy(data.dataState)}</strong>
+          <span>MODEL STATUS</span>
+          <strong>{data.dataState === "LIVE" ? "Market assessment available" : "Research / data pending"}</strong>
           <div>
-            <p><b>{modelledFixtures}</b><small>matches assessed</small></p>
-            <p><b>{betCount}</b><small>value selections</small></p>
-            <p><b>{data.accas.length}</b><small>qualifying multiples</small></p>
+            <p><b>{assessed}</b><small>matches assessed</small></p>
+            <p><b>{bets}</b><small>qualified selections</small></p>
           </div>
-          <small>
-            Model {data.modelVersion}
-            {data.latestModelAt
-              ? ` · last model ${new Date(data.latestModelAt).toLocaleString("en-GB")}`
-              : ""}
-          </small>
+          <small>Model {data.modelVersion}{data.latestModelAt ? ` · updated ${new Date(data.latestModelAt).toLocaleString("en-GB")}` : ""}</small>
         </aside>
       </section>
-
-      <section className="betting-principles shell">
-        <article>
-          <span>DATA</span>
-          <strong>Look beyond the scoreline</strong>
-          <p>xG, npxG, xGA, shots, big chances, box activity, xGOT, territory and verified player data.</p>
-        </article>
-        <article>
-          <span>MODEL</span>
-          <strong>Study the matchup first</strong>
-          <p>Our assessment of the game comes first. The bookmaker's price is checked afterwards.</p>
-        </article>
-        <article>
-          <span>PRICE</span>
-          <strong>Only take the right price</strong>
-          <p>A strong football case is not enough when the odds are too short.</p>
-        </article>
-        <article>
-          <span>ACCA</span>
-          <strong>No filler selections</strong>
-          <p>Every leg must offer value on its own.</p>
-        </article>
-      </section>
-
-      {!data.configured ? (
+      {!data.configured || assessed === 0 ? (
         <section className="betting-section shell" role="status">
           <div className="betting-data-warning">
-            <strong>Our match analysis is temporarily unavailable.</strong>
-            <p>The server has no configured database connection. Fixture discovery alone cannot provide probabilities or verified betting prices. This is a service configuration issue, not a model verdict.</p>
+            <strong>{!data.configured ? "Database connection unavailable." : "No eligible modelled fixtures right now."}</strong>
+            <p>Only verified process, complete model output, validated markets and fresh matched bookmaker prices can produce a BET. We do not substitute fixture lists or odds for underlying data.</p>
           </div>
         </section>
       ) : null}
-      {data.configured && modelledFixtures === 0 && !internationalBreak ? (
-        <section className="betting-section shell" role="status">
-          <div className="betting-data-warning">
-            <strong>No eligible modelled fixtures are currently available.</strong>
-            <p>Only fixtures with verified underlying process and complete current model output enter the value scanner. Fixture discovery or bookmaker quotes alone cannot produce a BET selection.</p>
-          </div>
-        </section>
-      ) : null}
-      {internationalBreak ? (
-        <section className="betting-section shell" role="status">
-          <div className="betting-data-warning">
-            <strong>International fixture window: matches are available, but the national-team model is not approved.</strong>
-            <p>Our domestic forecasts resume with their next scheduled fixtures. International games remain visible below for research; they cannot enter the value scanner until independently verified process data, model probabilities, validation and matched current prices are available.</p>
-          </div>
-        </section>
-      ) : null}
-      <UpcomingModelResearch selections={data.selections} />
-      <section className="betting-section shell" id="international-fixtures">
-        <div className="betting-section-heading"><div><span>INTERNATIONAL RESEARCH</span><h2>National-team fixtures in the testing queue</h2></div></div>
-        <p>Pipeline status: {data.internationalReadiness.fixtures} fixtures · {data.internationalReadiness.historicalMatchesWithVerifiedMetrics} historical matches with verified process metrics · {data.internationalReadiness.teamsWithRecentVerifiedProcess} teams with verified process in the past 365 days · {data.internationalReadiness.fixturesWithCurrentModel} with current model output and recent process · {data.internationalReadiness.fixturesWithFreshPriceCandidates} with fresh price candidates. Price candidates are not confirmed fixture matches or +EV bets.</p>
-        <details className="today-coverage-drawer">
-          <summary>International evidence sources and access status</summary>
-          <div className="international-fixture-list">
-            {INTERNATIONAL_SOURCES.map((source) => (
-              <p key={source.id}>
-                <a href={source.url} target="_blank" rel="noopener noreferrer">{source.id}</a>
-                {" · "}{source.authority === "official" ? "Official" : "Independent"}
-                {" · "}{source.access === "verify-access" ? "Automated access not verified" : source.access === "open-data" ? "Open dataset" : "Public match archive"}
-                {" · "}{source.evidence.join(", ")}
-              </p>
-            ))}
-          </div>
-          <p>Source listing does not mean a live feed is connected or that an xG value has been independently verified.</p>
-        </details>
-        <p>Historical tournament xG is not current squad form. Teams without verified recent process stay research-only, even when an old record or model row exists.</p>
-        <p>Upcoming international fixtures are shown for coverage and model testing only. Domestic team ratings do not transfer to national teams; no fair odds, +EV picks or acca legs are generated without an independently validated international model and matched current prices.</p>
-        {data.internationalFixtures.length ? (
-          <details className="today-coverage-drawer" open>
-            <summary>{data.internationalFixtures.length} international fixtures found · research only</summary>
-            <div className="international-fixture-list">
-              {data.internationalFixtures.slice(0, 80).map((match) => (
-                <article key={match.match_id} className="betting-data-warning">
-                  <strong>{match.home_team} vs {match.away_team}</strong>
-                  <p>{match.league} · {new Date(match.kickoff_at).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} UK · MODEL PENDING</p>
-                </article>
-              ))}
-            </div>
-          </details>
-        ) : <p>Reliable upcoming international fixture data unavailable — excluded from the model.</p>}
-      </section>
-
-      <DecisionFeed
-        todayGames={featuredGames}
-        accas={data.accas}
-        upcomingModelledCount={new Set(data.selections.filter((row) => row.market === "1X2").map((row) => row.matchId)).size}
-      />
-
+      <DailyPredictions games={games} />
       <div className="shell">
-        {data.dataState !== "LIVE" ? (
-          <div className="betting-data-warning">
-            <strong>A fixture listing is not a betting recommendation.</strong>
-            <p>
-              The value scanner covers ten supported domestic leagues; international fixtures are listed separately for research. A selection requires complete process-based model output, validated market status and a fresh matched bookmaker price.
-            </p>
-          </div>
-        ) : null}
-
-        <DailyPredictions games={featuredGames} />
-        <details className="today-coverage-drawer">
-          <summary>See data coverage and readiness across our supported domestic leagues</summary>
-          <LeagueReadinessMap leagues={data.leagueReadiness.filter((row) => row.modelScope === "CORE")} />
-        </details>
-        <BettingBoard selections={data.selections} accas={data.accas} />
-
-        <details className="betting-section today-coverage-drawer">
-          <summary>How we check the reliability of our analysis</summary>
-          <div className="betting-section-head">
-            <div>
-              <span>05 / MODEL GOVERNANCE</span>
-              <h2>When is a selection ready to back?</h2>
-            </div>
-          </div>
-          <div className="validation-grid">
-            {data.validations.length ? data.validations.map((row) => (
-              <article key={`${row.league}:${row.market}`}>
-                <span>{row.league} · {row.market}</span>
-                <strong>{row.status}</strong>
-                <small>{row.sample_size.toLocaleString()} validation samples</small>
-                <p>{row.notes ?? "Validation evidence stored in the model ledger."}</p>
-              </article>
-            )) : (
-              <article>
-                <span>VALIDATION</span>
-                <strong>RESEARCH</strong>
-                <p>No current production validation row is available.</p>
-              </article>
-            )}
-          </div>
-        </details>
-
+        <BettingBoard selections={selections} accas={[]} />
         <section className="betting-section betting-feedback-cta">
           <div>
-            <span>YOUR DATA</span>
-            <h2>Bring your own bets into the model loop.</h2>
-            <p>
-              Upload a CSV or enter singles and accas manually. Track ROI and CLV,
-              settle results, and attach structured feedback when Footy&apos;s
-              reasoning or data needs scrutiny.
-            </p>
+            <span>PERFORMANCE</span>
+            <h2>Track what happens after the selection.</h2>
+            <p>Review settled results, ROI and price movement. This release is limited to 1X2, Over/Under 2.5 and BTTS.</p>
           </div>
           <Link href="/betting/my-bets">Open My Bets →</Link>
         </section>
       </div>
-
       <footer className="betting-footer shell">
-        <p><strong>18+ only.</strong> Footy provides analytics and decision support; it does not accept or place bets.</p>
+        <p><strong>18+ only.</strong> Footy provides analytics; it does not accept or place bets.</p>
         <p>DATA → PROCESS → PROBABILITY → FAIR PRICE → MARKET → EDGE</p>
       </footer>
     </main>
