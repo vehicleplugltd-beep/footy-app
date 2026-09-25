@@ -25,5 +25,5 @@ assert.equal(reconcile([a, { ...b, kickoffUtc: "2026-10-01T21:00:00Z" }]).status
 assert.equal(reconcile([a, { ...b, xgAway: null }]).status, "REVIEW");
 assert.equal(reconcile([a, { ...b, xgHome: -1 }]).status, "REVIEW");
 const c = { ...base, source: "fotmob", xgHome: 1.5, xgAway: 1.0 };
-assert.equal(reconcile([b, c]).xgDisagreement, 0.19999999999999996);
+assert.ok(Math.abs(reconcile([b, c]).xgDisagreement - 0.2) < 1e-9);
 console.log("International evidence reconciliation: 10 assertions passed");
